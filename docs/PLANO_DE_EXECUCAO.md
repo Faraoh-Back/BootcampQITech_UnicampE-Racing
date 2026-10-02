@@ -96,9 +96,10 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 - **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras.
 - **Pronto quando:** as três pessoas leram e disseram "ok" no PR.
 
-### T0.3 RFC no repositório e caminho até o PDF (B, 1,5h)
-- **Fazer:** copiar a RFC v2 para `docs/RFC.md`. Testar até achar **um** caminho que gere PDF com o diagrama mermaid renderizado (por exemplo exportar o diagrama como imagem e converter com pandoc, ou imprimir para PDF a partir de um visualizador Markdown). Anotar o comando ou os passos em `docs/COMO-GERAR-PDF.md`.
-- **Pronto quando:** existe um PDF de teste com o ER visível e a contagem de páginas anotada (meta de 2 a 4).
+### T0.3 [Postergado para a Entrega / R5] RFC no modelo oficial da QI Tech e PDF
+- **Status:** Postergado para o fechamento (T5.3 na Rodada 5).
+- **Fazer:** Na etapa final, adaptar a RFC diretamente no formato/template oficial fornecido pela QI Tech e gerar o PDF final conforme as diretrizes do desafio.
+
 
 ### T0.4 Compose, mock e variáveis de ambiente (B, 1,5h)
 - **Fazer:**

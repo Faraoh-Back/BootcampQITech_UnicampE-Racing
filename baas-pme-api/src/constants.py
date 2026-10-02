@@ -22,10 +22,18 @@ INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN")
 BANKSLIP_API_URL = os.environ.get("BANKSLIP_API_URL", "http://localhost:8080")
 BANKSLIP_API_INTERNAL_TOKEN = os.environ.get("BANKSLIP_API_INTERNAL_TOKEN", "default_token")
 
-# Quantos segundos esperar pelo serviço de boletos antes de desistir.
-# Todo connector TEM um timeout — o porquê está em
-# src/connectors/rest_connector.py.
-BANKSLIP_API_TIMEOUT = int(os.environ.get("BANKSLIP_API_TIMEOUT", "5"))
+# A API do Banco Central (consulta a índices como IPCA e IGPM)
+CENTRAL_BANK_API_URL = os.environ.get("CENTRAL_BANK_API_URL", "http://mock:1080")
+CENTRAL_BANK_API_INTERNAL_TOKEN = os.environ.get("CENTRAL_BANK_API_INTERNAL_TOKEN", "default_token")
+CENTRAL_BANK_API_TIMEOUT = int(os.environ.get("CENTRAL_BANK_API_TIMEOUT", "5"))
+
+# Regras e parâmetros de negócio (D1 e D8)
+TRANSFER_FEE_CENTS = int(os.environ.get("TRANSFER_FEE_CENTS", "100"))
+ADVANCE_FEE_PERCENT = int(os.environ.get("ADVANCE_FEE_PERCENT", "3"))
+NIGHT_START = os.environ.get("NIGHT_START", "20:00")
+NIGHT_END = os.environ.get("NIGHT_END", "06:00")
+NIGHT_LIMIT_CENTS = int(os.environ.get("NIGHT_LIMIT_CENTS", "100000"))
+TIMEZONE = os.environ.get("TIMEZONE", "America/Sao_Paulo")
 
 # Rotas públicas: não exigem o header INTERNAL-TOKEN. São as duas que
 # precisam responder pra quem ainda não tem token nenhum: a raiz, que
