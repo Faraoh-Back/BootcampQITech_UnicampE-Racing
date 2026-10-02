@@ -2,9 +2,8 @@
 
 | | |
 |---|---|
-| **Time** | \<nome 1\> · \<nome 2\> · \<nome 3\> |
-| **Data** | 02/10/2026 |
-| **Versão** | 2 |
+| **Time** | Cairê Belo · \<nome 2\> · \<nome 3\> |
+| **Versão** | 2.0 |
 
 ## Contextualização
 
