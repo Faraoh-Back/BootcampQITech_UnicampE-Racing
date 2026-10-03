@@ -1,7 +1,16 @@
+from dataclasses import dataclass
+
 from controllers.base_controller import BaseController
+from controllers.idempotency_controller import IdempotencyController
 from dtos import TransactionDTO
 from errors import AccountNotApproved, AccountNotFound, InsufficientBalance, InvalidSchema
 from repositories import AccountRepository, TransactionRepository
+
+
+@dataclass(frozen=True)
+class TransactionExecution:
+    body: dict
+    replayed: bool = False
 
 
 class TransactionController(BaseController):
@@ -16,12 +25,27 @@ class TransactionController(BaseController):
         super().__init__(__name__)
         self.account_repository = AccountRepository(self.context)
         self.transaction_repository = TransactionRepository(self.context)
+        self.idempotency_controller = IdempotencyController(self.context)
 
-    def create(self, account_key: str, payload: dict) -> dict:
+    def create(self, account_key: str, payload: dict, idempotency_key: str) -> TransactionExecution:
         # O JSON Schema considera 10.0 como integer; no domínio monetário
         # somente o tipo inteiro do JSON é aceito.
         if type(payload["amount"]) is not int:
             raise InvalidSchema("amount must be an integer amount in cents.")
+
+        # A chave é registrada antes da trava da conta. Se houver duas
+        # requisições iguais, o UNIQUE do PostgreSQL faz a segunda aguardar
+        # a confirmação da primeira e então receber o replay, sem disputar
+        # o saldo ou criar um segundo lançamento.
+        account = self.account_repository.get_by_key(account_key)
+        if account is None:
+            raise AccountNotFound(account_key)
+
+        idempotency = self.idempotency_controller.begin(
+            account.id, "transaction", idempotency_key, payload
+        )
+        if idempotency.should_replay:
+            return TransactionExecution(body=idempotency.response_body, replayed=True)
 
         account = self.account_repository.get_by_key_for_update(account_key)
         if account is None:
@@ -45,5 +69,6 @@ class TransactionController(BaseController):
             account, transaction_type, signed_amount
         )
         transaction_dto = TransactionDTO.obj_to_created_dict(transaction)
+        self.idempotency_controller.store_response(idempotency.record, 201, transaction_dto)
         self.session.commit()
-        return transaction_dto
+        return TransactionExecution(body=transaction_dto)

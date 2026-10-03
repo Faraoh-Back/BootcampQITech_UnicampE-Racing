@@ -97,6 +97,17 @@ class IdempotencyConflict(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class MissingIdempotencyKey(QIException):
+    code = "QIT001018"
+
+    def __init__(self) -> None:
+        title = "Missing Idempotency-Key"
+        http_status = 400
+        description = "The Idempotency-Key header is required for this operation."
+        translation = "O cabeçalho Idempotency-Key é obrigatório para esta operação."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class InvalidAccountStatusTransition(QIException):
     """A máquina de estados não permite a transição solicitada."""
 
