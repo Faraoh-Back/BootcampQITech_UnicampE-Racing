@@ -95,7 +95,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R5 
 - **Pronto quando:** cada pessoa tem print do `docker compose ps` com tudo `healthy` e do `pytest` verde.
 
 ### T0.2 Decisões fixas e contratos (A, 1h, com 15 min do time todo)
-- **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras.
+- **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). D10–D13 serão acrescentadas na R4.5 como decisões planejadas, sem antecipar contratos inexistentes. Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras.
 - **Pronto quando:** as três pessoas leram e disseram "ok" no PR.
 
 ### T0.3 [Postergado para a Entrega / R5] RFC no modelo oficial da QI Tech e PDF
@@ -231,7 +231,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R5 
 - **Pronto quando:** 5 repetições seguidas verdes; se instável, a causa foi achada, não escondida com `sleep`.
 
 ### T3.1 Checkpoint da RFC (C, 1,5h)
-- **Status:** concluído no checkpoint RFC 2.1.
+- **Status:** concluído no checkpoint original RFC 2.1 e consolidado na RFC 2.2 após S7c e o roadmap da R4.5.
 - **Feito:** releitura de `docs/RFC.md` contra código, `DECISOES.md`, DDL, schemas e testes; revisão de rotas, códigos de erro, DER e fluxos; versão da RFC elevada para 2.1. O checkpoint registrou explicitamente o que ainda era futuro naquele momento. As entregas posteriores S7b, S10 e S7c estão documentadas como concluídas nas respectivas seções abaixo.
 - **PDF:** adiado de propósito para T5.3, como já determina T0.3; ainda não existe template oficial nem gerador de PDF no repositório. Assim não há um PDF provisório a regenerar ou páginas a contar neste checkpoint.
 - **Pronto quando:** nenhuma divergência conhecida entre RFC e código no escopo entregue; itens futuros explicitamente marcados como planejados.
