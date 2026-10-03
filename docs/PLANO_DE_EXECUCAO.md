@@ -39,7 +39,7 @@
 | D4 | Antecipação | Lastreada em `bank_slip_keys` (como na RFC v2), não em valor livre. |
 | D5 | Formato da taxa do índice | Percentual em string: `"4.83"` significa 4,83%, fator `1 + 4.83/100`. |
 | D6 | Contratos dos mocks | BankSlip: `POST /bank-slips` com `{external_reference, installments:[{installment_number, amount, due_date}]}` responde `200 {bank_slips:[{installment_number, barcode}]}`. Banco Central: `GET /index/{IPCA\|IGPM}` responde `200 {index, accumulated_rate}`. |
-| D7 | Eventos visíveis por HTTP | O R4 (nada que entrou deixa de existir) só é testável em caixa-preta se os eventos saírem na resposta. `GET /account/{key}` e `GET .../billing-plan/{key}` devolvem `status_events` (cada item com `status` e `event_datetime`). Atualize a RFC. |
+| D7 | Eventos visíveis por HTTP | O R4 (nada que entrou deixa de existir) só é testável em caixa-preta se os eventos saírem na resposta. `GET /account/{key}` devolve `status_events` da conta; `GET .../billing-plan/{key}` devolve `status_events` de cada boleto (cada item com `status` e `event_datetime`). Atualize a RFC. |
 | D8 | Janela noturna no ambiente de avaliação | O avaliador sobe com `docker compose up` e não edita nada, e o teste não pode depender do relógio. O `.env` versionado deixa a janela cobrindo as 24h (com comentário), e a RFC e o README explicam. |
 | D9 | `RestConnector` | Confirme no repositório se a classe existe. Se existir, herde dela; se não, use `requests` direto em `src/connectors/`. |
 

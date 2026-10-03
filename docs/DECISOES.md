@@ -15,7 +15,7 @@
 | **D4** | **Modelo de Antecipação de Recebíveis** | Antecipação lastreada em **`bank_slip_keys`** (1 a 50 chaves por chamada). | Antecipação por valor arbitrário abre brecha para criar dinheiro sem lastro. Vincular às chaves dos boletos garante que cada boleto seja antecipado no máximo uma vez através do vínculo `bank_slip.credit_advance_id`. |
 | **D5** | **Formato da Taxa do Banco Central** | Retornada em string percentual, ex: `"4.83"` (significa 4,83%). | O cálculo do novo valor utiliza `Decimal` com arredondamento *half-up* para centavos inteiros:<br>`fator = Decimal("1") + (Decimal(rate_str) / Decimal("100"))`<br>`novo_valor = int((Decimal(base_amount) * fator).quantize(Decimal("1"), rounding=ROUND_HALF_UP))` |
 | **D6** | **Contratos dos Mocks (MockServer)** | Contratos fixos para os conectores externos: | **BankSlip Mock (`POST /bank-slips`):**<br>Entrada: `{ external_reference: str, installments: [{ installment_number: int, amount: int, due_date: "AAAA-MM-DD" }] }`<br>Saída: `200 { bank_slips: [{ installment_number: int, barcode: str }] }`<br><br>**CentralBank Mock (`GET /index/{IPCA\|IGPM}`):**<br>Saída: `200 { index: str, accumulated_rate: "4.83" }` |
-| **D7** | **Histórico de Eventos Visível por HTTP (R4)** | `GET /account/{account_key}` e `GET .../billing-plan/{plan_key}` expõem o campo `status_events`. | A regra R4 (imutabilidade e auditabilidade: nada deixa de existir) só é testável em caixa-preta se os eventos históricos de status forem inspecionáveis via resposta HTTP. Formato: `[{ "status": "APPROVED", "event_datetime": "2026-10-02T12:00:00Z" }]`. |
+| **D7** | **Histórico de Eventos Visível por HTTP (R4)** | `GET /account/{account_key}` expõe `status_events` da conta; `GET .../billing-plan/{plan_key}` expõe `status_events` dentro de cada boleto. | A regra R4 (imutabilidade e auditabilidade: nada deixa de existir) só é testável em caixa-preta se os eventos históricos de status forem inspecionáveis via resposta HTTP. Formato: `[{ "status": "APPROVED", "event_datetime": "2026-10-02T12:00:00Z" }]`. |
 | **D8** | **Janela e Limite Noturno** | Transferências noturnas têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte. | A regra segue o limite padrão de transferências noturnas (Pix e TED) para pessoa física. A aplicação usa `TIMEZONE=America/Sao_Paulo`; os testes da S7b devem controlar o relógio/configuração para não depender da hora em que a banca executa a suíte. |
 | **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout (5s padrão), log padronizado de ida e volta e interpretação JSON com `Decimal`. O `INTERNAL-TOKEN` **não** é enviado automaticamente a APIs externas; somente um contrato explícito de serviço interno pode exigi-lo. |
 
@@ -308,12 +308,8 @@ INTERNAL-TOKEN: <token_configurado>
     "plan_key": "7b1c3e5a-4f8d-4a9c-9e2b-1a3d5e7f9a1b",
     "account_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
     "base_amount": 15000,
-    "status_events": [
-      {
-        "status": "ACTIVE",
-        "event_datetime": "2026-10-02T15:20:00Z"
-      }
-    ],
+    "first_due_date": "2026-11-10",
+    "created_at": "2026-10-02T15:20:00Z",
     "bank_slips": [
       {
         "bank_slip_key": "11111111-2222-3333-4444-555555555555",
@@ -321,7 +317,13 @@ INTERNAL-TOKEN: <token_configurado>
         "amount": 15000,
         "due_date": "2026-11-10",
         "barcode": "34191.09008 00000.123456 7 8901234567890",
-        "status": "PENDING"
+        "status": "PENDING",
+        "status_events": [
+          {
+            "status": "PENDING",
+            "event_datetime": "2026-10-02T15:20:00Z"
+          }
+        ]
       }
     ]
   }
