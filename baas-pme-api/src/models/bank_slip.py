@@ -30,9 +30,10 @@ class BankSlip(Base):
     created_at = Column(DateTime, nullable=False, server_default=text("NOW()"))
 
     status = relationship("BankSlipStatus")
+    billing_plan = relationship("BillingPlan", back_populates="bank_slips")
     status_events = relationship(
         "BankSlipStatusEvent",
-        order_by="BankSlipStatusEvent.event_datetime.asc()",
+        order_by="(BankSlipStatusEvent.event_datetime.asc(), BankSlipStatusEvent.id.asc())",
         back_populates="bank_slip"
     )
 

@@ -2,3 +2,4 @@ from resources.health_check import HealthCheckResource
 from resources.sample_entity import SampleEntityResource
 from resources.customer import CustomerResource
 from resources.account import AccountResource
+from resources.billing_plan import BillingPlanResource

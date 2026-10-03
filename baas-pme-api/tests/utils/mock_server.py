@@ -109,6 +109,14 @@ def expect_bankslip_invalid_json() -> None:
     )
 
 
+def expect_bankslip_missing_barcode() -> None:
+    """Configura uma resposta 200 sem o campo obrigatório ``barcode``."""
+    _expect(
+        {"method": "POST", "path": "/bank-slips"},
+        _json_response(200, {"bank_slips": [{"installment_number": 1}]}),
+    )
+
+
 def expect_central_bank_rate(index: str, rate: str) -> None:
     """Configura a taxa acumulada para um indice, por exemplo IPCA ou IGPM."""
     _expect(

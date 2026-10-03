@@ -36,6 +36,41 @@ class AccountNotFound(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class AccountNotApproved(QIException):
+    """A operação financeira só é permitida para contas aprovadas."""
+
+    code = "QIT001006"
+
+    def __init__(self, account_key: str) -> None:
+        title = "Account not approved"
+        http_status = 409
+        description = f"Account with key {account_key} is not approved for this operation."
+        translation = "A conta não está aprovada para esta operação."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class BillingPlanNotFound(QIException):
+    code = "QIT001013"
+
+    def __init__(self, plan_key: str) -> None:
+        title = "Billing plan not found"
+        http_status = 404
+        description = f"Billing plan with key {plan_key} was not found for this account."
+        translation = "O plano de cobrança não foi encontrado para esta conta."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class InvalidFirstDueDate(QIException):
+    code = "QIT001017"
+
+    def __init__(self, first_due_date: str) -> None:
+        title = "Invalid first due date"
+        http_status = 422
+        description = f"The first due date {first_due_date} cannot be in the past."
+        translation = "O primeiro vencimento não pode estar no passado."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class NotFoundSampleEntity(QIException):
     """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
 

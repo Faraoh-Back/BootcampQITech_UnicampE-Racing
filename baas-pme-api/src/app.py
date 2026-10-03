@@ -9,7 +9,7 @@ from middlewares import (
     register_request_logger_middleware,
     register_session_manager_middleware,
 )
-from resources import AccountResource, CustomerResource, HealthCheckResource, SampleEntityResource
+from resources import AccountResource, BillingPlanResource, CustomerResource, HealthCheckResource, SampleEntityResource
 from utils.logger import setup_logging
 
 
@@ -126,6 +126,7 @@ def create_app() -> FastAPI:
     sample_entity_resource = SampleEntityResource()
     customer_resource = CustomerResource()
     account_resource = AccountResource()
+    billing_plan_resource = BillingPlanResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route(
@@ -163,6 +164,16 @@ def create_app() -> FastAPI:
     application.add_api_route("/customer/{customer_key}", customer_resource.on_get_by_key, methods=["GET"])
     application.add_api_route("/account", account_resource.on_post, methods=["POST"])
     application.add_api_route("/account/{account_key}", account_resource.on_get_by_key, methods=["GET"])
+    application.add_api_route(
+        "/account/{account_key}/billing-plan",
+        billing_plan_resource.on_post,
+        methods=["POST"],
+    )
+    application.add_api_route(
+        "/account/{account_key}/billing-plan/{plan_key}",
+        billing_plan_resource.on_get_by_key,
+        methods=["GET"],
+    )
 
     register_error_handlers(application)
 
