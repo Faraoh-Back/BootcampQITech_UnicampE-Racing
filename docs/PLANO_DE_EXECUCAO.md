@@ -54,15 +54,17 @@
 | **R2** Dinheiro | S2 Conta, S3 Depósito e saque | S8 Plano de boletos, T2.1 componente de idempotência | S2b Bloqueio, S4 Extrato e R8 | ~7h |
 | **R3** Transferência | S5 Transferência e tarifa | S9 Reajuste (lote 2) | S7a Concorrência (saque), T3.1 Checkpoint da RFC | ~5h |
 | **R4** Garantias | S6 Idempotência nas rotas, S7b Limite noturno | S10 Antecipação | S7c Concorrência (transferência, idempotência, antecipação) | ~6h |
+| **R4.5** Evolução operacional | S11 Identidade e autorização, S14 timeouts | S13 Observabilidade, S15 notificações | S12 Auditoria verificável, T4.5 benchmark | ~19h |
 | **R5** Entrega | T5.2, T5.4, T5.5, T5.7, T5.8 | T5.3, T5.6, T5.7, T5.8 | T5.1, T5.6, T5.7, T5.8, T5.9 | ~9h |
 
-Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total de horas-pessoa: cerca de 100h (aproximadamente 33h por pessoa).
+Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R5 55h. A R4.5 é uma expansão opcional de produção; o núcleo do desafio permanece pronto no Gate 2.
 
 ### Gates e linha de corte
 
 - **Gate 0** (fim da R0): as três máquinas sobem `docker compose up` com tudo `healthy`, `pytest` verde nos testes de fumaça e o PDF de teste da RFC sai com o diagrama renderizado.
 - **Gate 1** (fim da R2): cliente, conta, depósito, saque, extrato paginado e a R8 verdes; plano de boletos funcionando contra o MockServer.
 - **Gate 2** (fim da R4): núcleo completo, testes de concorrência e idempotência verdes, extras integrados.
+- **Gate 3** (fim da R4.5, opcional): autenticação, auditoria, métricas e timeouts possuem contrato, testes e evidência operacional reproduzível.
 - **Linha de corte:** se ao fim de qualquer rodada o tempo gasto passar de 1,3 vezes o previsto, corte nesta ordem: **S10, depois S9, depois S8** (e os conectores). Declare o que saiu em "fora do escopo" na RFC e redistribua a trilha B para S6, S7 e testes. Um sistema menor, correto e testado vale mais que um ambicioso pela metade.
 
 ### Mapa do plano antigo para este
@@ -275,7 +277,50 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 
 ---
 
-## 8. Rodada 5: Entrega (~9h)
+## 8. Rodada 4.5: Evolução operacional e evidências (~19h, opcional)
+
+Esta rodada não muda o critério de entrega do núcleo financeiro. Ela transforma
+o protótipo em uma demonstração mais próxima de produção e deve começar somente
+com o Gate 2 verde.
+
+### S11 Identidade, sessões e autorização (A, 8h)
+- **Depende de:** Gate 2.
+- **Fazer:** criar `user`, vínculo de usuário à PME/conta e `user_session`; cadastro, login, refresh e logout/revogação de uma sessão. Senhas somente com Argon2 ou bcrypt. Emitir JWT de acesso curto e refresh token rotativo com validade máxima de 8 horas; o `jti` e a sessão permitem vários dispositivos e revogação individual. Definir papéis mínimos (`OWNER`, `OPERATOR`, `VIEWER`) e verificar acesso à conta antes de rotas financeiras.
+- **Não fazer:** substituir a autenticação por JWT de 8 horas sem sessão persistida, armazenar senha em texto, ou remover `INTERNAL-TOKEN` sem definir a fronteira serviço-a-serviço.
+- **Pronto quando:** dois dispositivos do mesmo usuário funcionam; revogar um não invalida o outro; senha nunca aparece em resposta/log; usuário sem vínculo recebe resposta autorizada pelo contrato; todos os fluxos financeiros preservam idempotência.
+
+### S12 Auditoria append-only verificável (C, 6h)
+- **Depende de:** S11 para registrar ator; pode iniciar o DDL e os testes antes.
+- **Fazer:** tabela `audit_event` com ator (usuário ou serviço), ação, tipo/chave do recurso, `request_id`, origem, timestamp, resumo anterior/posterior e hashes `previous_hash`/`event_hash`. Proibir `UPDATE` e `DELETE` no banco para essa tabela; correções usam evento compensatório. Exportar ou assinar checkpoints do hash para detectar adulteração fora do banco.
+- **Não fazer:** chamar isso de blockchain nem permitir edição do histórico. Blockchain não é requisito para encadear hashes e provar violação.
+- **Pronto quando:** criar, bloquear, cancelar, transferir e antecipar produzem eventos; tentativa de alterar/apagar evento é recusada; teste recalcula a cadeia de hashes e detecta adulteração.
+
+### S13 Logs estruturados e métricas (B, 5h)
+- **Depende de:** Gate 2. **Paralelo com:** S11 e S12.
+- **Fazer:** manter logs no stdout, mas em JSON com `request_id`, rota, status, duração, conta mascarada e usuário quando existir. Expor métricas Prometheus de requisições/latência, códigos QIT, falhas de conectores, replay idempotente, espera por lock e saldo de sessões. Documentar quais rótulos não podem conter dados pessoais.
+- **Pronto quando:** uma requisição pode ser acompanhada pelo `request_id`; `/metrics` é consultável no ambiente de observabilidade; teste prova contador de replay e falha de conector.
+
+### S14 Timeouts e política de retentativa (A, 4h)
+- **Depende de:** Gate 2. **Paralelo com:** S13.
+- **Fazer:** separar timeout de conexão e leitura dos conectores, configurar `lock_timeout` e `statement_timeout` do PostgreSQL e definir prazo máximo de requisição. Documentar o status de resposta para cada esgotamento e reforçar que transação financeira após timeout só pode ser reenviada com a mesma `Idempotency-Key`.
+- **Pronto quando:** MockServer prova timeout de conexão/leitura; lock longo não esgota workers; resposta e logs preservam `request_id`; teste demonstra replay seguro após o cliente interromper a espera.
+
+### S15 Alertas e notificações confiáveis (B, 5h)
+- **Depende de:** S12 e S13.
+- **Fazer:** criar `outbox_event` na mesma transação do fato de negócio e um publicador separado. Alarmes operacionais cobrem aumento de `5xx`, falha de conector, lock lento e uso sustentado de recursos; notificações de domínio podem comunicar bloqueio/cancelamento ao responsável da PME.
+- **Não fazer:** enviar e-mail ou webhook dentro do controller antes do commit, pois uma falha externa não pode desfazer ou duplicar uma operação financeira.
+- **Pronto quando:** o commit cria o evento de saída junto com a mudança de domínio; repetição do publicador é idempotente; falha de entrega é retentável e observável.
+
+### T4.5 Benchmark reproduzível de concorrência (C, 2h)
+- **Depende de:** S13; pode ser antecipado como rascunho depois do Gate 2.
+- **Fazer:** registrar em `docs/BENCHMARK.md` hardware/ambiente, versão do Compose, carga, número de threads, duração, resultado da S7c e leitura de CPU/memória via `docker stats`. Medir pelo menos cenário ocioso e as 40 transferências cruzadas.
+- **Pronto quando:** outra pessoa consegue repetir o comando e distinguir limite da máquina de regressão de concorrência; a RFC cita o método, não números sem contexto.
+
+**Gate 3 (opcional).**
+
+---
+
+## 9. Rodada 5: Entrega (~9h)
 
 ### T5.1 Teste de pipeline da jornada da PME (C, 3h)
 - **Fazer:** um teste de ponta a ponta: criar cliente, criar conta, depositar, emitir plano de boletos (expectativas no MockServer), antecipar, consultar extrato paginado, e conferir a soma do extrato contra o saldo.
@@ -313,7 +358,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 
 ---
 
-## 9. Se travar: tarefas flexíveis sem dependência
+## 10. Se travar: tarefas flexíveis sem dependência
 
 Pegue uma destas quando estiver bloqueado esperando outra trilha:
 
@@ -329,7 +374,7 @@ Pegue uma destas quando estiver bloqueado esperando outra trilha:
 
 ---
 
-## 10. Totais e como comprimir
+## 11. Totais e como comprimir
 
 | Item | Horas-pessoa |
 |---|---|
@@ -348,7 +393,7 @@ Pegue uma destas quando estiver bloqueado esperando outra trilha:
 
 ---
 
-## 11. Checklist final de entrega
+## 12. Checklist final de entrega
 
 - [ ] R1: nenhum arquivo de `tests/` importa `src/` (teste guardião verde).
 - [ ] R2: `docker compose up` sobe tudo sem passos manuais, em Linux limpo.

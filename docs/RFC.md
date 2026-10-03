@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Time** | Cairê Belo · \<nome 2\> · \<nome 3\> |
-| **Versão** | 2.1 — checkpoint T3.1 |
+| **Versão** | 2.2 — pós-S7c, evolução planejada |
 
 ## Contextualização
 
@@ -15,7 +15,7 @@ A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge d
 
 Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
 
-Fora do escopo: pagamento e baixa de boletos, estorno, múltiplas moedas, autenticação de usuário final e qualquer rotina agendada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
+Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas, autenticação de usuário final e qualquer rotina agendada. A autenticação de usuário, as métricas e a auditoria criptograficamente verificável passam a ser evolução planejada, não capacidades já entregues. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
 
 ### Estado deste checkpoint
 
@@ -37,6 +37,63 @@ flowchart LR
     BS -.->|"em teste"| MS["MockServer"]
     CB -.->|"em teste"| MS
 ```
+
+### Garantias, mecanismos e evidências
+
+| Risco | Mecanismo entregue | Evidência automatizada |
+|---|---|---|
+| Saldo negativo ou perdido sob disputa | `FOR NO KEY UPDATE`, ordem por `id`, `CHECK (balance >= 0)` e ledger em centavos | Saques simultâneos e transferências cruzadas repetidos cinco vezes. |
+| Retentativa duplicar dinheiro | `Idempotency-Key`, hash do corpo e `UNIQUE(account_id, scope, idempotency_key)` | Dez requisições simultâneas retornam a mesma `transaction_key` e geram um único lançamento. |
+| Um boleto gerar liquidez duas vezes | Trava de boleto e vínculo `credit_advance_id` | Duas antecipações concorrentes devolvem exatamente um `201` e um `409 QIT001016`. |
+| Falha externa deixar escrita parcial | Chamada externa antes da persistência e commit único | MockServer simula timeout, erro HTTP e corpo inválido sem plano ou lote parcial. |
+
+Na transferência, a disputa acontece assim: as duas requisições escolhem a mesma
+ordem de contas, uma confirma e a outra relê o saldo já atualizado antes de
+decidir se ainda cabe.
+
+```mermaid
+sequenceDiagram
+    participant A as Requisição A→B
+    participant DB as PostgreSQL
+    participant B as Requisição B→A
+    A->>DB: trava contas por id crescente
+    B->>DB: pede as mesmas travas por id crescente
+    DB-->>B: espera A confirmar
+    A->>DB: ledger + saldos + commit
+    DB-->>B: libera trava e recarrega saldo
+    B->>DB: valida saldo atualizado, grava ou responde 422
+```
+
+### Evolução de segurança, auditoria e operação
+
+O `INTERNAL-TOKEN` atual protege chamadas internas da API, mas não identifica
+uma pessoa, não representa papéis e não permite revogar uma sessão específica.
+Ele não é um API Gateway. A evolução planejada introduz usuário, vínculo de
+acesso à PME/conta e sessões múltiplas por dispositivo: senha protegida por
+Argon2 ou bcrypt, *access token* JWT curto e *refresh token* rotativo com
+validade máxima de oito horas. Assim uma sessão remota pode ser revogada sem
+derrubar as demais.
+
+Hoje já existem eventos de status de conta e boleto, o ledger imutável e os
+registros de idempotência. A próxima camada será `audit_event`, um log
+append-only que registra ator, ação, recurso, `request_id`, data, origem e
+estado anterior/posterior. Auditoria não será editável: correções criarão
+eventos compensatórios. Para detectar adulteração, cada evento poderá guardar
+`previous_hash` e `event_hash`, com checkpoints assinados/exportados; não é
+necessário introduzir blockchain para obter essa propriedade.
+
+Os logs atuais vão para stdout do container e podem ser consultados por
+`docker compose logs`. A evolução operacional prevê logs JSON com correlação,
+métricas Prometheus de latência, erros QIT, conectores, idempotência e espera
+por locks, além de alertas baseados nessas métricas. CPU e memória serão
+registradas em benchmark reproduzível — máquina, carga, duração e
+`docker stats` —, não como número isolado sem contexto.
+
+Os conectores já possuem timeout de cinco segundos e devolvem `502 QIT001009`
+em falha. A próxima etapa define também timeout de conexão/leitura, prazo de
+requisição, `lock_timeout` e `statement_timeout` no banco. O cliente sempre
+deve repetir uma operação financeira com a mesma `Idempotency-Key`, pois um
+timeout de rede pode ocorrer depois que o servidor confirmou o commit.
 
 Alternativas consideradas e descartadas:
 
