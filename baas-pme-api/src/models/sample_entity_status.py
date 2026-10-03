@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, UniqueConstraint, func
-from models.base import Base
+from src.models.base import Base
 
 
 class SampleEntityStatus(Base):

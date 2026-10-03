@@ -1,8 +1,7 @@
 from sqlalchemy import CHAR, Column, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from models.base import Base
-from models import SampleEntityStatus
+from src.models.base import Base
 
 
 class SampleEntity(Base):
@@ -16,7 +15,7 @@ class SampleEntity(Base):
     document_number = Column(CHAR(14), nullable=False)
     birthdate = Column(Date, nullable=False)
     counter = Column(Integer, nullable=False)
-    status_id = Column(Integer, ForeignKey(SampleEntityStatus.id), nullable=False)
+    status_id = Column(Integer, ForeignKey("sample_entity_status.id"), nullable=False)    
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
     __table_args__ = (
