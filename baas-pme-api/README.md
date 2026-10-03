@@ -621,6 +621,13 @@ vale porque aqui é um projeto de estudo, sem dado de ninguém. Em
 sistema de verdade, segredo não tem padrão — ele falta, e a aplicação
 se recusa a subir sem ele.
 
+Para a regra noturna, o uso normal deixa `NIGHT_TIME_OVERRIDE` vazio e
+usa o relógio real no fuso `TIMEZONE=America/Sao_Paulo`. A variável só
+existe para testes determinísticos: antes de subir a API para executar
+os testes da S7b, use `NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build`.
+Ela não é cabeçalho nem endpoint, portanto um cliente da API não pode
+escolher a própria hora.
+
 ## 6. Autenticação
 
 As rotas de negócio pedem um cabeçalho:

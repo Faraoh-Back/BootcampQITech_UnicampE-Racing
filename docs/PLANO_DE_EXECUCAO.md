@@ -244,6 +244,8 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 - **Integração futura:** S10 reutilizará o mesmo componente na rota de antecipação; concorrência da mesma chave será exercitada na S7c, sem mudar os contratos já validados.
 
 ### S7b Limite noturno (A, 2,5h)
+- **Status:** concluída. `NightLimitExceeded` devolve `422 QIT001007` para saque ou transferência acima de `NIGHT_LIMIT_CENTS` dentro da janela; depósito não é limitado.
+- **Implementação:** regra avaliada antes da trava de saldo, com relógio no `TIMEZONE`. `NIGHT_TIME_OVERRIDE` é exclusivo do ambiente de teste e fixa a hora para testes determinísticos, sem criar endpoint de controle de relógio.
 - **Depende de:** S5.
 - **Vermelho:** com relógio ou configuração controlada dentro da janela 20:00–06:00 e limite de 100000: saque ou transferência de 100000 resulta 201 e de 100001 resulta 422 `QIT001007`; depósito de qualquer valor não é limitado; o saldo e o extrato ficam intactos na falha.
 - **Verde:** regra no controller, **antes** de qualquer trava (falha barata primeiro); janela, fuso (`America/Sao_Paulo`) e limite vindos do ambiente; só saque e transferência.

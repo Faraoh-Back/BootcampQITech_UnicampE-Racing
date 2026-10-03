@@ -98,6 +98,11 @@ pytest
 ```
 Todos os testes existentes da `sample_entity` e do `health_check` devem passar em verde!
 
+> Para tornar a S7b determinística fora do CI, suba a API com
+> `NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build`. A variável
+> fixa somente o relógio do container de teste; em uso normal, deixe-a
+> vazia para usar `TIMEZONE=America/Sao_Paulo`.
+
 ---
 
 ## 5. Testando a Recriação Limpa do Banco (Passo Crítico)

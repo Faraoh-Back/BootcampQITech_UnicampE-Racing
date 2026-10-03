@@ -7,7 +7,7 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D9)
 
-> **Checkpoint T3.1 (RFC 2.1):** D1–D9 continuam sendo o contrato de destino. Neste ponto estão implementadas as decisões necessárias para cliente, conta, ciclo de vida, ledger, transferência, plano de boletos, reajuste e idempotência. A aplicação do limite noturno (D8 / `QIT001007`) é S7b; antecipação (`QIT001015` e `QIT001016`) é S10. Esses códigos e rotas permanecem documentados como planejados, não como comportamento já disponível.
+> **Checkpoint RFC 2.1:** estão implementadas as decisões necessárias para cliente, conta, ciclo de vida, ledger, transferência, plano de boletos, reajuste, idempotência e limite noturno. A antecipação (`QIT001015` e `QIT001016`) permanece planejada para S10; esses códigos e essa rota ainda não são comportamento disponível.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
@@ -18,7 +18,7 @@
 | **D5** | **Formato da Taxa do Banco Central** | Retornada em string percentual, ex: `"4.83"` (significa 4,83%). | O cálculo do novo valor utiliza `Decimal` com arredondamento *half-up* para centavos inteiros:<br>`fator = Decimal("1") + (Decimal(rate_str) / Decimal("100"))`<br>`novo_valor = int((Decimal(base_amount) * fator).quantize(Decimal("1"), rounding=ROUND_HALF_UP))` |
 | **D6** | **Contratos dos Mocks (MockServer)** | Contratos fixos para os conectores externos: | **BankSlip Mock (`POST /bank-slips`):**<br>Entrada: `{ external_reference: str, installments: [{ installment_number: int, amount: int, due_date: "AAAA-MM-DD" }] }`<br>Saída: `200 { bank_slips: [{ installment_number: int, barcode: str }] }`<br><br>**CentralBank Mock (`GET /index/{IPCA\|IGPM}`):**<br>Saída: `200 { index: str, accumulated_rate: "4.83" }` |
 | **D7** | **Histórico de Eventos Visível por HTTP (R4)** | `GET /account/{account_key}` expõe `status_events` da conta; `GET .../billing-plan/{plan_key}` expõe `status_events` dentro de cada boleto. | A regra R4 (imutabilidade e auditabilidade: nada deixa de existir) só é testável em caixa-preta se os eventos históricos de status forem inspecionáveis via resposta HTTP. Formato: `[{ "status": "APPROVED", "event_datetime": "2026-10-02T12:00:00Z" }]`. |
-| **D8** | **Janela e Limite Noturno** | Transferências noturnas têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte. | A regra segue o limite padrão de transferências noturnas (Pix e TED) para pessoa física. A aplicação usa `TIMEZONE=America/Sao_Paulo`; os testes da S7b devem controlar o relógio/configuração para não depender da hora em que a banca executa a suíte. |
+| **D8** | **Janela e Limite Noturno** | Saques e transferências noturnos têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte; depósito não é limitado. | A regra segue o limite padrão de transferências noturnas (Pix e TED) para pessoa física. A aplicação usa `TIMEZONE=America/Sao_Paulo`; somente no ambiente de teste, `NIGHT_TIME_OVERRIDE` fixa a hora sem permitir que o cliente HTTP a escolha. |
 | **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout (5s padrão), log padronizado de ida e volta e interpretação JSON com `Decimal`. O `INTERNAL-TOKEN` **não** é enviado automaticamente a APIs externas; somente um contrato explícito de serviço interno pode exigi-lo. |
 
 ---
@@ -45,7 +45,7 @@ Todas as respostas de erro retornam payload JSON padronizado:
 | **QIT001004** | `409 Conflict` | `DuplicatedEmail` | E-mail já cadastrado para outro cliente (`UNIQUE`). |
 | **QIT001005** | `422 Unprocessable` | `InsufficientBalance` | Saldo da conta de origem é menor que o valor a debitar somado à tarifa. |
 | **QIT001006** | `409 Conflict` | `AccountNotApproved` | Conta de origem ou destino não está com status `APPROVED` (ex: `PENDING` ou `BLOCKED`). |
-| **QIT001007** *(planejado S7b)* | `422 Unprocessable` | `NightLimitExceeded` | Valor do saque ou da transferência ultrapassa o limite permitido para o horário noturno. |
+| **QIT001007** | `422 Unprocessable` | `NightLimitExceeded` | Valor do saque ou da transferência ultrapassa o limite permitido para o horário noturno. |
 | **QIT001008** | `409 Conflict` | `IdempotencyConflict` | Mesma `Idempotency-Key` reenviada com parâmetros ou corpo de requisição diferentes. |
 | **QIT001009** | `502 Bad Gateway` | `ExternalConnectorError` | Conector externo (BankSlip ou Banco Central) retornou erro, timeout ou resposta inválida. |
 | **QIT001010** | `422 Unprocessable` | `InvalidDocumentNumber` | CPF ou CNPJ sintaticamente inválido (dígitos verificadores matematicamente incorretos). |
