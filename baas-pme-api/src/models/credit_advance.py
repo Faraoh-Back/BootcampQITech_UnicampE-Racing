@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, BigInteger, DateTime, CHAR, ForeignKey, text
-from src.models.base import Base
+from models.base import Base
 
 class CreditAdvance(Base):
     __tablename__ = "credit_advance"

@@ -1,7 +1,7 @@
 from sqlalchemy import CHAR, Column, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from src.models.base import Base
+from models.base import Base
 
 
 class SampleEntity(Base):

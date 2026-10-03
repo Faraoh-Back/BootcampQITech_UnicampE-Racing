@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, BigInteger, Numeric, Date, DateTime, CHAR, ForeignKey, UniqueConstraint, text
 from sqlalchemy.orm import relationship
-from src.models.base import Base
+from models.base import Base
 
 class BankSlipStatus(Base):
     __tablename__ = "bank_slip_status"
@@ -16,12 +16,12 @@ class BankSlip(Base):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    slip_key = Column(CHAR(36), nullable=False, unique=True)
+    bank_slip_key = Column("slip_key", CHAR(36), nullable=False, unique=True)
     billing_plan_id = Column(Integer, ForeignKey("billing_plan.id"), nullable=False)
     credit_advance_id = Column(Integer, ForeignKey("credit_advance.id"), nullable=True)
     status_id = Column(Integer, ForeignKey("bank_slip_status.id"), nullable=False)
     installment_number = Column(Integer, nullable=False)
-    batch_number = Column(Integer, nullable=False, default=1)
+    batch_number = Column(Integer, nullable=False, server_default=text("1"))
     adjustment_rate = Column(Numeric(12, 8), nullable=True)
     amount = Column(BigInteger, nullable=False)
     due_date = Column(Date, nullable=False)

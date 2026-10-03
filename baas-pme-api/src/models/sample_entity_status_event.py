@@ -1,5 +1,5 @@
 from sqlalchemy import Column, ForeignKey, Integer, DateTime, func
-from src.models.base import Base
+from models.base import Base
 from sqlalchemy.orm import relationship
 
 

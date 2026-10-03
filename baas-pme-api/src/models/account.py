@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, BigInteger, DateTime, CHAR, ForeignKey, text
 from sqlalchemy.orm import relationship
-from src.models.base import Base
+from models.base import Base
 
 class AccountStatus(Base):
     __tablename__ = "account_status"
@@ -16,7 +16,7 @@ class Account(Base):
     account_key = Column(CHAR(36), nullable=False, unique=True)
     customer_id = Column(Integer, ForeignKey("customer.id"), nullable=False)
     status_id = Column(Integer, ForeignKey("account_status.id"), nullable=False)
-    balance = Column(BigInteger, nullable=False, default=0)
+    balance = Column(BigInteger, nullable=False, server_default=text("0"))
     created_at = Column(DateTime, nullable=False, server_default=text("NOW()"))
 
     customer = relationship("Customer")

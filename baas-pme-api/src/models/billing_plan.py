@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, BigInteger, Date, DateTime, CHAR, ForeignKey, text
-from src.models.base import Base
+from models.base import Base
 
 class BillingPlan(Base):
     __tablename__ = "billing_plan"
