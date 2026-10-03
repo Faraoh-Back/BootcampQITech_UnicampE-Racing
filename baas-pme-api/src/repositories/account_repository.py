@@ -28,17 +28,26 @@ class AccountRepository:
     def get_by_key_for_update(self, account_key: str) -> Account | None:
         return (
             self.session.query(Account)
+            # A conta pode já ter sido lida para reservar a chave de
+            # idempotência. Depois de esperar outra transação liberar o
+            # FOR UPDATE, a identidade em memória estaria obsoleta sem este
+            # refresh e o saldo seria validado com um valor antigo.
+            .populate_existing()
             .filter(Account.account_key == account_key)
-            .with_for_update()
+            # FOR NO KEY UPDATE continua exclusivo para mudanças de saldo e
+            # status, mas não conflita com o KEY SHARE que a FK da reserva de
+            # idempotência acabou de criar na mesma conta.
+            .with_for_update(key_share=True)
             .first()
         )
 
     def get_by_keys_for_update(self, account_keys: list[str]) -> list[Account]:
         return (
             self.session.query(Account)
+            .populate_existing()
             .filter(Account.account_key.in_(account_keys))
             .order_by(Account.id.asc())
-            .with_for_update()
+            .with_for_update(key_share=True)
             .all()
         )
 
