@@ -3,3 +3,4 @@ from repositories.customer_repository import CustomerRepository
 from repositories.account_repository import AccountRepository
 from repositories.billing_plan_repository import BillingPlanRepository
 from repositories.idempotency_repository import IdempotencyRepository
+from repositories.transaction_repository import TransactionRepository

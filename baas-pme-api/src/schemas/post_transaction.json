@@ -1,0 +1,36 @@
+{
+  "title": "PostTransaction",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["DEPOSIT", "WITHDRAWAL", "TRANSFER"]
+    },
+    "amount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "destination_account_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    }
+  },
+  "required": ["type", "amount"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {"type": {"const": "TRANSFER"}},
+        "required": ["type"]
+      },
+      "then": {"required": ["destination_account_key"]}
+    },
+    {
+      "if": {
+        "properties": {"type": {"enum": ["DEPOSIT", "WITHDRAWAL"]}},
+        "required": ["type"]
+      },
+      "then": {"not": {"required": ["destination_account_key"]}}
+    }
+  ]
+}

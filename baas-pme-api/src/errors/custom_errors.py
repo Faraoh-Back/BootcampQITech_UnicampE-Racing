@@ -49,6 +49,19 @@ class AccountNotApproved(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class InsufficientBalance(QIException):
+    """O débito solicitado não cabe no saldo disponível da conta."""
+
+    code = "QIT001005"
+
+    def __init__(self, account_key: str) -> None:
+        title = "Insufficient balance"
+        http_status = 422
+        description = f"Account with key {account_key} does not have enough balance for this operation."
+        translation = "A conta não possui saldo suficiente para esta operação."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class BillingPlanNotFound(QIException):
     code = "QIT001013"
 
