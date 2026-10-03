@@ -62,6 +62,19 @@ class InsufficientBalance(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class SameAccountTransfer(QIException):
+    """A transferência deve sempre envolver duas contas distintas."""
+
+    code = "QIT001012"
+
+    def __init__(self) -> None:
+        title = "Same account transfer"
+        http_status = 422
+        description = "The destination account must be different from the origin account."
+        translation = "A conta de destino deve ser diferente da conta de origem."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class TransactionNotFound(QIException):
     """Não revela se a chave pertence a uma conta diferente (R8)."""
 

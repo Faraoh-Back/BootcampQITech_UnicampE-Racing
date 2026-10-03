@@ -8,7 +8,14 @@ class TransactionRepository:
     def __init__(self, context: Context) -> None:
         self.session = context.db_session
 
-    def create_entry(self, account: Account, transaction_type: str, signed_amount: int) -> Transaction:
+    def create_entry(
+        self,
+        account: Account,
+        transaction_type: str,
+        signed_amount: int,
+        operation_key: str | None = None,
+        counterparty_account_id: int | None = None,
+    ) -> Transaction:
         """Acrescenta uma linha imutável ao ledger e atualiza o cache de saldo.
 
         O controller já travou a conta e confirmou as regras de negócio.
@@ -18,8 +25,9 @@ class TransactionRepository:
         balance_after = account.balance + signed_amount
         transaction = Transaction(
             transaction_key=str(uuid4()),
-            operation_key=str(uuid4()),
+            operation_key=operation_key or str(uuid4()),
             account_id=account.id,
+            counterparty_account_id=counterparty_account_id,
             type=transaction_type,
             amount=signed_amount,
             balance_after=balance_after,
