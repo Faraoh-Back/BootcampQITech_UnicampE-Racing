@@ -24,7 +24,7 @@ class Account(Base):
     status = relationship("AccountStatus")
     status_events = relationship(
         "AccountStatusEvent",
-        order_by="AccountStatusEvent.event_datetime.asc()",
+        order_by="(AccountStatusEvent.event_datetime.asc(), AccountStatusEvent.id.asc())",
         back_populates="account"
     )
 

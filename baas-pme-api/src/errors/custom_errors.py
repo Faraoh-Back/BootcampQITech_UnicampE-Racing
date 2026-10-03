@@ -25,6 +25,17 @@ class CustomerNotFound(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class AccountNotFound(QIException):
+    code = "QIT001002"
+
+    def __init__(self, account_key: str) -> None:
+        title = "Account not Found"
+        http_status = 404
+        description = f"Account with key {account_key} was not found."
+        translation = f"A conta com chave {account_key} não foi encontrada."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class NotFoundSampleEntity(QIException):
     """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
 
