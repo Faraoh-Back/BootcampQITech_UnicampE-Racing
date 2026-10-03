@@ -1,6 +1,19 @@
 from errors import QIException
 
 
+class ExternalConnectorError(QIException):
+    """Falha ao consultar um serviço externo indispensável ao fluxo."""
+
+    code = "QIT001009"
+
+    def __init__(self, service_name: str) -> None:
+        title = "External service unavailable"
+        http_status = 502
+        description = f"The external service {service_name} returned an invalid response or is unavailable."
+        translation = "O serviço externo está indisponível ou retornou uma resposta inválida."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class NotFoundSampleEntity(QIException):
     code = "QIT001001"
 

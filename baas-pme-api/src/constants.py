@@ -20,11 +20,10 @@ INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN")
 # produção, apontaria pro serviço de verdade. O código não sabe a
 # diferença, e esse é o ponto.
 BANKSLIP_API_URL = os.environ.get("BANKSLIP_API_URL", "http://localhost:8080")
-BANKSLIP_API_INTERNAL_TOKEN = os.environ.get("BANKSLIP_API_INTERNAL_TOKEN", "default_token")
+BANKSLIP_API_TIMEOUT = int(os.environ.get("BANKSLIP_API_TIMEOUT", "5"))
 
 # A API do Banco Central (consulta a índices como IPCA e IGPM)
 CENTRAL_BANK_API_URL = os.environ.get("CENTRAL_BANK_API_URL", "http://mock:1080")
-CENTRAL_BANK_API_INTERNAL_TOKEN = os.environ.get("CENTRAL_BANK_API_INTERNAL_TOKEN", "default_token")
 CENTRAL_BANK_API_TIMEOUT = int(os.environ.get("CENTRAL_BANK_API_TIMEOUT", "5"))
 
 # Regras e parâmetros de negócio (D1 e D8)
