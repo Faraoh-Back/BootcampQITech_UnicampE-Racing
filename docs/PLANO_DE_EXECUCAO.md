@@ -40,7 +40,7 @@
 | D5 | Formato da taxa do índice | Percentual em string: `"4.83"` significa 4,83%, fator `1 + 4.83/100`. |
 | D6 | Contratos dos mocks | BankSlip: `POST /bank-slips` com `{external_reference, installments:[{installment_number, amount, due_date}]}` responde `200 {bank_slips:[{installment_number, barcode}]}`. Banco Central: `GET /index/{IPCA\|IGPM}` responde `200 {index, accumulated_rate}`. |
 | D7 | Eventos visíveis por HTTP | O R4 (nada que entrou deixa de existir) só é testável em caixa-preta se os eventos saírem na resposta. `GET /account/{key}` devolve `status_events` da conta; `GET .../billing-plan/{key}` devolve `status_events` de cada boleto (cada item com `status` e `event_datetime`). Atualize a RFC. |
-| D8 | Janela noturna no ambiente de avaliação | O avaliador sobe com `docker compose up` e não edita nada, e o teste não pode depender do relógio. O `.env` versionado deixa a janela cobrindo as 24h (com comentário), e a RFC e o README explicam. |
+| D8 | Janela noturna no ambiente de avaliação | A regra de negócio padrão permanece 20:00–06:00 em `America/Sao_Paulo`, com limite de 100000 centavos. O teste da S7b deve controlar relógio ou subir a API com configuração de ambiente própria; não deve depender da hora da banca. |
 | D9 | `RestConnector` | Confirme no repositório se a classe existe. Se existir, herde dela; se não, use `requests` direto em `src/connectors/`. |
 
 ---
@@ -173,7 +173,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 ### S3 Depósito e saque (A, 4h)
 - **Depende de:** S2.
 - **Vermelho:** `POST /account/{key}/transaction` com `DEPOSIT` e `WITHDRAWAL`: 201 com `transaction_key`, `type`, `amount`, `balance`; saldo conferido por `GET /account`; saque acima do saldo: 422 `QIT001005` e saldo inalterado; `amount` 0, negativo, `10.5`, `10.0`, string: 400; `type` inválido: 400; `destination_account_key` presente em depósito: 400; `TRANSFER` sem destino: 400 (schema com `if/then`); conta 404 `QIT001002`.
-- **Verde:** `post_transaction.json`; `TransactionRepository.create_entry` (valor com sinal, `operation_key`, `balance_after`); controller: trava a conta (`FOR UPDATE`), confere `amount` inteiro (**`jsonschema` aceita `10.0` como inteiro**, então rejeite `float` no controller), confere saldo, lança, atualiza o cache do saldo, `commit` único. Nesta fatia o header `Idempotency-Key` ainda **não** é exigido (S6 cuida disso).
+- **Verde:** `post_transaction.json`; `TransactionRepository.create_entry` (valor com sinal, `operation_key`, `balance_after`); controller: trava a conta (`FOR UPDATE`), confere `amount` inteiro (**`jsonschema` aceita `10.0` como inteiro**, então rejeite `float` no controller), confere saldo, lança, atualiza o cache do saldo, `commit` único. A integração da `Idempotency-Key` foi antecipada depois da S3 e é documentada na S6.
 - **Pronto quando:** testes verdes e `CHECK (balance >= 0)` do banco comprovado por um teste que tenta estourar o saldo.
 
 ### S8 Plano de boletos, lote 1 (B, 5h)
@@ -235,15 +235,14 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 
 ## 7. Rodada 4: Garantias (~6h)
 
-### S6 Idempotência nas rotas (A, 3h)
-- **Depende de:** S3, S5, T2.1.
-- **Vermelho:** sem `Idempotency-Key` 400 `QIT001018`; mesma chave e mesmo corpo duas vezes: mesma resposta, mesma `transaction_key`, header `Idempotent-Replayed: true`, e **um só** conjunto de lançamentos no extrato; mesma chave com corpo diferente 409 `QIT001008`; chaves diferentes com o mesmo corpo criam duas operações; a mesma chave em contas diferentes não colide; **falha não é guardada**: após um 422 por saldo, deposite e repita a mesma chave, e a operação deve executar.
-- **Verde:** integrar o componente da T2.1 ao `TransactionController` (e deixar pronto para a S10). Atualizar `RequestGenerator` para gerar `Idempotency-Key` única por padrão, para não quebrar os testes antigos.
-- **Pronto quando:** toda a suíte anterior continua verde com o header obrigatório.
+### S6 Idempotência nas rotas (A, 3h, parcialmente antecipada)
+- **Status atual:** depósito e saque já exigem `Idempotency-Key`, fazem replay com `Idempotent-Replayed: true`, rejeitam corpo diferente com `QIT001008`, isolam chave por conta e removem a reserva quando a operação falha.
+- **Restante depois da S5:** aplicar a mesma proteção ao caminho de transferência e reutilizar o componente na S10, sem mudar os contratos já validados.
+- **Pronto quando:** transferência e antecipação compartilham o componente, e os cenários de concorrência da S7c continuam verdes.
 
 ### S7b Limite noturno (A, 2,5h)
 - **Depende de:** S5.
-- **Vermelho:** com a janela total do `.env` (D8) e limite de 100000: saque ou transferência de 100000 resulta 201 e de 100001 resulta 422 `QIT001007`; depósito de qualquer valor não é limitado; o saldo e o extrato ficam intactos na falha.
+- **Vermelho:** com relógio ou configuração controlada dentro da janela 20:00–06:00 e limite de 100000: saque ou transferência de 100000 resulta 201 e de 100001 resulta 422 `QIT001007`; depósito de qualquer valor não é limitado; o saldo e o extrato ficam intactos na falha.
 - **Verde:** regra no controller, **antes** de qualquer trava (falha barata primeiro); janela, fuso (`America/Sao_Paulo`) e limite vindos do ambiente; só saque e transferência.
 - **Pronto quando:** testes verdes e a decisão D8 documentada em README e RFC.
 

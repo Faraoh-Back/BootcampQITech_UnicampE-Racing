@@ -3,7 +3,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from controllers import TransactionController
-from errors import MissingIdempotencyKey
+from errors import InvalidSchema, MissingIdempotencyKey
 from utils.schema_handler import SchemaHandler
 
 
@@ -13,6 +13,8 @@ class TransactionResource:
         idempotency_key = request.headers.get("Idempotency-Key")
         if not idempotency_key:
             raise MissingIdempotencyKey()
+        if len(idempotency_key) > 64:
+            raise InvalidSchema("Idempotency-Key must contain at most 64 characters.")
 
         execution = TransactionController().create(account_key, payload, idempotency_key)
         response = JSONResponse(

@@ -9,6 +9,7 @@ from tests.utils.mock_server import (
     expect_bankslip_status,
     expect_bankslip_timeout,
     reset,
+    verify_bankslip_external_reference,
     verify_called,
 )
 from tests.utils.payload_generator import PayloadGenerator
@@ -49,6 +50,7 @@ class TestBillingPlan:
         assert all(slip["status"] == "PENDING" and slip["barcode"].startswith("MOCK-BARCODE-") for slip in created["bank_slips"])
         assert all("id" not in slip for slip in created["bank_slips"])
         verify_called("/bank-slips", 1)
+        verify_bankslip_external_reference(f"{created['plan_key']}:batch:1")
 
         status, found = RequestGenerator.GET_billing_plan(account["response"]["account_key"], created["plan_key"])
         assert status == 200

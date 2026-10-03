@@ -135,6 +135,19 @@ class TestTransaction:
         assert response.response_status == 400
         assert response.response_json["code"] == "QIT001018"
 
+        response = ClientRequisition.send(
+            "POST",
+            f"/account/{account_key}/transaction",
+            payload={"type": "DEPOSIT", "amount": 10},
+            headers={"INTERNAL-TOKEN": INTERNAL_TOKEN, "Idempotency-Key": "x" * 65},
+        )
+        assert response.response_status == 400
+        assert response.response_json["code"] == "QIT000001"
+
+        status, account = RequestGenerator.GET_account(account_key)
+        assert status == 200
+        assert account["balance"] == 0
+
     def test_replays_same_response_once_for_same_key_and_canonical_payload(self, make_account):
         account_key = make_account()["response"]["account_key"]
         idempotency_key = str(uuid4())

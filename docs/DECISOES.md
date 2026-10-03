@@ -195,7 +195,7 @@ INTERNAL-TOKEN: <token_configurado>
 ### 3.3. Transações Financeiras (`/transaction`)
 
 #### `POST /account/{account_key}/transaction`
-- **Cabeçalhos Obrigatórios:** `INTERNAL-TOKEN`, `Idempotency-Key: <uuid-ou-string>`
+- **Cabeçalhos Obrigatórios:** `INTERNAL-TOKEN`, `Idempotency-Key: <string de 1 a 64 caracteres>`
 - **Body de Entrada (Exemplo Depósito / Saque):**
   ```json
   {

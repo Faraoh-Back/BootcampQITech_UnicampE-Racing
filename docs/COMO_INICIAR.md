@@ -134,6 +134,16 @@ pytest
 | **Rodar um arquivo específico de teste** | `pytest tests/integration/test_healthcheck.py` |
 | **Rodar testes mostrando prints/logs** | `pytest -s -v` |
 
+### Integração contínua
+
+O workflow [BaaS PME CI](../.github/workflows/baas-pme-ci.yml) roda em todo `push` e `pull request`: valida o Compose, recria API, banco e MockServer, espera o health check, compila o código e executa `pytest`. A validação local equivalente é:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+pytest -q
+```
+
 ---
 
 ## 7. Dúvidas Frequentes e Problemas Conhecidos

@@ -149,3 +149,30 @@ def verify_called(path: str, times: int) -> None:
             f"Esperava {times} chamada(s) para {path}, mas o MockServer respondeu "
             f"{response.status_code}: {response.text}"
         )
+
+
+def verify_bankslip_external_reference(external_reference: str) -> None:
+    """Confere o contrato da referência enviada ao emissor de boletos."""
+    try:
+        response = requests.put(
+            f"{_base_url()}/mockserver/retrieve?type=REQUESTS",
+            json={"method": "POST", "path": "/bank-slips"},
+            timeout=_ADMIN_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+    except requests.RequestException as error:
+        raise RuntimeError(f"Nao foi possivel recuperar chamadas do MockServer em {_base_url()}.") from error
+
+    requests_made = response.json()
+    if not requests_made:
+        raise AssertionError("O MockServer não registrou uma chamada para /bank-slips.")
+
+    body = requests_made[-1].get("body")
+    if isinstance(body, dict):
+        body = body.get("string", body.get("json", body))
+    if isinstance(body, str):
+        body = json.loads(body)
+    if not isinstance(body, dict) or body.get("external_reference") != external_reference:
+        raise AssertionError(
+            "A external_reference enviada ao MockServer é diferente da referência esperada."
+        )
