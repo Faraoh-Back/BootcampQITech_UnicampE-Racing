@@ -22,3 +22,13 @@ class TransactionResource:
         if execution.replayed:
             response.headers["Idempotent-Replayed"] = "true"
         return response
+
+    def on_get_by_key(self, account_key: str, transaction_key: str) -> JSONResponse:
+        transaction = TransactionController().get_by_key(account_key, transaction_key)
+        return JSONResponse(content=jsonable_encoder(transaction), status_code=http_status.HTTP_200_OK)
+
+    @SchemaHandler.validate_query_params("get_transactions.json")
+    def on_get_list(self, account_key: str, request: Request) -> JSONResponse:
+        query_params = {key: request.query_params[key] for key in request.query_params.keys()}
+        transactions = TransactionController().get_list(account_key, query_params)
+        return JSONResponse(content=jsonable_encoder(transactions), status_code=http_status.HTTP_200_OK)

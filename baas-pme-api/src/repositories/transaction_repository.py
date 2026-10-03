@@ -28,3 +28,31 @@ class TransactionRepository:
         self.session.add(transaction)
         self.session.flush()
         return transaction
+
+    def get_by_key_for_account(self, account_id: int, transaction_key: str) -> Transaction | None:
+        return (
+            self.session.query(Transaction)
+            .filter(
+                Transaction.account_id == account_id,
+                Transaction.transaction_key == transaction_key,
+            )
+            .first()
+        )
+
+    def get_page(
+        self, account_id: int, limit: int, page: int, transaction_type: str | None = None
+    ) -> tuple[list[Transaction], bool]:
+        """Busca uma linha extra para saber se há outra página sem COUNT."""
+        query = self.session.query(Transaction).filter(Transaction.account_id == account_id)
+        if transaction_type is not None:
+            query = query.filter(Transaction.type == transaction_type)
+
+        rows = (
+            query.order_by(Transaction.created_at.desc(), Transaction.id.desc())
+            .offset(page * limit)
+            .limit(limit + 1)
+            .all()
+        )
+        # Sem a linha extra, esta é a última página (inclusive o extrato
+        # vazio). A linha extra existe apenas para responder isso sem COUNT.
+        return rows[:limit], len(rows) <= limit

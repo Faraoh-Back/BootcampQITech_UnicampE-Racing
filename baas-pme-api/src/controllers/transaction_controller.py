@@ -3,7 +3,13 @@ from dataclasses import dataclass
 from controllers.base_controller import BaseController
 from controllers.idempotency_controller import IdempotencyController
 from dtos import TransactionDTO
-from errors import AccountNotApproved, AccountNotFound, InsufficientBalance, InvalidSchema
+from errors import (
+    AccountNotApproved,
+    AccountNotFound,
+    InsufficientBalance,
+    InvalidSchema,
+    TransactionNotFound,
+)
 from repositories import AccountRepository, TransactionRepository
 
 
@@ -72,3 +78,29 @@ class TransactionController(BaseController):
         self.idempotency_controller.store_response(idempotency.record, 201, transaction_dto)
         self.session.commit()
         return TransactionExecution(body=transaction_dto)
+
+    def get_by_key(self, account_key: str, transaction_key: str) -> dict:
+        account = self.account_repository.get_by_key(account_key)
+        if account is None:
+            raise AccountNotFound(account_key)
+        transaction = self.transaction_repository.get_by_key_for_account(account.id, transaction_key)
+        if transaction is None:
+            raise TransactionNotFound()
+        return TransactionDTO.obj_to_dict(transaction)
+
+    def get_list(self, account_key: str, query_params: dict) -> dict:
+        account = self.account_repository.get_by_key(account_key)
+        if account is None:
+            raise AccountNotFound(account_key)
+
+        limit = int(query_params.get("limit", 10))
+        page = int(query_params.get("page", 0))
+        transactions, is_last_page = self.transaction_repository.get_page(
+            account.id, limit, page, query_params.get("type")
+        )
+        return {
+            "data": [TransactionDTO.obj_to_dict(transaction) for transaction in transactions],
+            "page": page,
+            "limit": limit,
+            "is_last_page": is_last_page,
+        }

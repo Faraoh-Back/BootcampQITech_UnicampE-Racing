@@ -1,4 +1,5 @@
 from sqlalchemy import CHAR, BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy.orm import relationship
 from models.base import Base
 
 class Transaction(Base):
@@ -21,3 +22,6 @@ class Transaction(Base):
     amount = Column(BigInteger, nullable=False)
     balance_after = Column(BigInteger, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=text("NOW()"))
+
+    account = relationship("Account", foreign_keys=[account_id])
+    counterparty_account = relationship("Account", foreign_keys=[counterparty_account_id])

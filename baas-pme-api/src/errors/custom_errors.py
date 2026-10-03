@@ -62,6 +62,19 @@ class InsufficientBalance(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class TransactionNotFound(QIException):
+    """Não revela se a chave pertence a uma conta diferente (R8)."""
+
+    code = "QIT001011"
+
+    def __init__(self) -> None:
+        title = "Transaction not found"
+        http_status = 404
+        description = "The transaction was not found for this account."
+        translation = "O lançamento não foi encontrado para esta conta."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class BillingPlanNotFound(QIException):
     code = "QIT001013"
 

@@ -234,6 +234,7 @@ INTERNAL-TOKEN: <token_configurado>
     "type": "TRANSFER_OUT",
     "amount": 20000,
     "balance_after": 30000,
+    "operation_key": "c9d1b5a0-5a1c-4be7-bd19-1e40f9552a79",
     "created_at": "2026-10-02T15:10:00Z"
   }
   ```
@@ -247,16 +248,20 @@ INTERNAL-TOKEN: <token_configurado>
     "data": [
       {
         "transaction_key": "e3b0c442-98fc-1c14-9afb-4c8996fb9242",
+        "account_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
         "type": "TRANSFER_FEE",
         "amount": -100,
         "balance_after": 29900,
+        "operation_key": "c9d1b5a0-5a1c-4be7-bd19-1e40f9552a79",
         "created_at": "2026-10-02T15:10:00Z"
       },
       {
         "transaction_key": "d2a0b331-87eb-1b13-8aea-3b7885ea8131",
+        "account_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
         "type": "TRANSFER_OUT",
         "amount": -20000,
         "balance_after": 30000,
+        "operation_key": "c9d1b5a0-5a1c-4be7-bd19-1e40f9552a79",
         "created_at": "2026-10-02T15:10:00Z"
       }
     ],
