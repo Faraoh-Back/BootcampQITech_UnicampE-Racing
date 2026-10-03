@@ -71,6 +71,19 @@ class InvalidFirstDueDate(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class IdempotencyConflict(QIException):
+    """A chave foi reutilizada dentro do mesmo escopo, mas para outro pedido."""
+
+    code = "QIT001008"
+
+    def __init__(self) -> None:
+        title = "Idempotency key conflict"
+        http_status = 409
+        description = "The Idempotency-Key was already used with a different request."
+        translation = "A Idempotency-Key já foi usada com uma requisição diferente."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class NotFoundSampleEntity(QIException):
     """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
 
