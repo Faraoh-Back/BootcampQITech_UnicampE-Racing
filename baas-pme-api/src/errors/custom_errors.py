@@ -14,10 +14,23 @@ class ExternalConnectorError(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
-class NotFoundSampleEntity(QIException):
+class CustomerNotFound(QIException):
     code = "QIT001001"
 
-    def __init__(self, sample_entity_key) -> None:
+    def __init__(self, customer_key: str) -> None:
+        title = "Customer not Found"
+        http_status = 404
+        description = f"Customer with key {customer_key} was not found."
+        translation = f"O cliente com chave {customer_key} não foi encontrado."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class NotFoundSampleEntity(QIException):
+    """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
+
+    code = "QIT002001"
+
+    def __init__(self, sample_entity_key: str) -> None:
         title = "Entity not Found"
         http_status = 404
         description = f"Entity with key {sample_entity_key} was not found."
@@ -26,7 +39,7 @@ class NotFoundSampleEntity(QIException):
 
 
 class SampleEntityFinalStatus(QIException):
-    code = "QIT001002"
+    code = "QIT002002"
 
     def __init__(self, old_status, new_status) -> None:
         title = "Entity cannot change status"
@@ -45,13 +58,13 @@ class InvalidDocumentNumber(QIException):
     explicada em src/utils/document_number.py.
     """
 
-    code = "QIT001003"
+    code = "QIT001010"
 
     def __init__(self, document_number) -> None:
         title = "Invalid Document Number"
         http_status = 422
-        description = f"The document number {document_number} is not a valid CPF."
-        translation = "O CPF informado não é válido."
+        description = f"The document number {document_number} is not a valid CPF or CNPJ."
+        translation = "O CPF ou CNPJ informado não é válido."
         super().__init__(title, self.code, http_status, description, translation)
 
 
@@ -63,7 +76,7 @@ class DuplicatedDocumentNumber(QIException):
     cima — conflito com o que já existe, não erro de quem pediu.
     """
 
-    code = "QIT001004"
+    code = "QIT001003"
 
     def __init__(self, document_number) -> None:
         title = "Document Number already registered"
@@ -74,7 +87,7 @@ class DuplicatedDocumentNumber(QIException):
 
 
 class DuplicatedEmail(QIException):
-    code = "QIT001005"
+    code = "QIT001004"
 
     def __init__(self, email) -> None:
         title = "Email already registered"
@@ -85,7 +98,7 @@ class DuplicatedEmail(QIException):
 
 
 class UnderageSampleEntity(QIException):
-    code = "QIT001006"
+    code = "QIT002003"
 
     def __init__(self, age, minimum_age) -> None:
         title = "Entity is underage"
@@ -104,7 +117,7 @@ class InvalidBirthdate(QIException):
     a API culpando a si mesma por um erro de quem chamou.
     """
 
-    code = "QIT001007"
+    code = "QIT002004"
 
     def __init__(self, birthdate) -> None:
         title = "Invalid Birthdate"

@@ -1,4 +1,5 @@
 CPF_LENGTH = 11
+CNPJ_LENGTH = 14
 
 CHECK_DIGIT_POSITIONS = [9, 10]
 
@@ -62,3 +63,29 @@ def is_valid_cpf(document_number: str) -> bool:
             return False
 
     return True
+
+
+def is_valid_cnpj(document_number: str) -> bool:
+    """Valida os dois dígitos verificadores de um CNPJ."""
+    digits = [int(character) for character in document_number if character.isdigit()]
+    if len(digits) != CNPJ_LENGTH or len(set(digits)) == 1:
+        return False
+
+    for weights, position in (([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], 12), ([6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], 13)):
+        total = sum(digit * weight for digit, weight in zip(digits[:position], weights))
+        remainder = total % 11
+        expected_digit = 0 if remainder < 2 else 11 - remainder
+        if digits[position] != expected_digit:
+            return False
+
+    return True
+
+
+def is_valid_document_number(document_number: str) -> bool:
+    """Aceita apenas CPF ou CNPJ mascarados com dígitos verificadores válidos."""
+    digits_count = sum(character.isdigit() for character in document_number)
+    if digits_count == CPF_LENGTH:
+        return is_valid_cpf(document_number)
+    if digits_count == CNPJ_LENGTH:
+        return is_valid_cnpj(document_number)
+    return False

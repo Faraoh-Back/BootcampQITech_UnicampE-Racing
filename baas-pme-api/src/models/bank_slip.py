@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, BigInteger, Numeric, Date, DateTime, CHAR, ForeignKey, UniqueConstraint, text
+from sqlalchemy import CHAR, BigInteger, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 from models.base import Base
 
@@ -13,6 +13,7 @@ class BankSlip(Base):
     __tablename__ = "bank_slip"
     __table_args__ = (
         UniqueConstraint("billing_plan_id", "installment_number", name="unq_bank_slip_plan_installment"),
+        CheckConstraint("amount <> 0", name="chk_bank_slip_amount_not_zero"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime, CHAR, ForeignKey, text
+from sqlalchemy import CHAR, BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Integer, String, text
 from sqlalchemy.orm import relationship
 from models.base import Base
 
@@ -11,6 +11,7 @@ class AccountStatus(Base):
 
 class Account(Base):
     __tablename__ = "account"
+    __table_args__ = (CheckConstraint("balance >= 0", name="chk_account_balance_non_negative"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     account_key = Column(CHAR(36), nullable=False, unique=True)

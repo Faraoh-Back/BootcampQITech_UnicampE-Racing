@@ -659,13 +659,25 @@ Todo erro da API responde no mesmo formato, com um código próprio:
 | `QIT000404` | essa rota não existe                             |
 | `QIT000405` | a rota existe, mas não aceita esse método        |
 | `QIT000500` | erro inesperado (o time é avisado)               |
-| `QIT001001` | a entidade procurada não existe                  |
-| `QIT001002` | a entidade já está num status final              |
-| `QIT001003` | o CPF tem o formato certo, mas não é um CPF      |
-| `QIT001004` | já existe um cadastro com esse CPF               |
-| `QIT001005` | já existe um cadastro com esse e-mail            |
-| `QIT001006` | a pessoa é menor de idade                        |
-| `QIT001007` | a data de nascimento não existe no calendário    |
+| `QIT001001` | cliente não encontrado                           |
+| `QIT001002` | conta não encontrada                             |
+| `QIT001003` | documento já cadastrado                          |
+| `QIT001004` | e-mail já cadastrado                             |
+| `QIT001005` | saldo insuficiente                               |
+| `QIT001006` | conta não está `APPROVED`                        |
+| `QIT001007` | limite noturno excedido                          |
+| `QIT001008` | conflito de idempotência                         |
+| `QIT001009` | falha de serviço externo                         |
+| `QIT001010` | CPF ou CNPJ inválido                             |
+| `QIT001011` | lançamento não encontrado                        |
+| `QIT001012` | transferência para a mesma conta                 |
+| `QIT001013` | plano de cobrança não encontrado                 |
+| `QIT001014` | reajuste já aplicado                             |
+| `QIT001015` | boleto não encontrado                            |
+| `QIT001016` | boleto inelegível para antecipação               |
+| `QIT001017` | vencimento inválido                              |
+| `QIT001018` | `Idempotency-Key` ausente                        |
+| `QIT001019` | transição de status da conta inválida            |
 
 Um código estável vale mais que uma mensagem bonita: quem integra com a
 API programa em cima do código, não do texto.
@@ -675,9 +687,9 @@ Os números não são sorteados. Eles vêm em duas faixas:
 - **`QIT000…`** — os erros que **toda** API tem: JSON errado, sem token,
   rota inexistente. Estão em `src/errors/base_error.py` e você não
   precisa mexer neles.
-- **`QIT001…`** — os erros das **regras deste projeto**. Estão em
-  `src/errors/custom_errors.py`, e é aí que os seus entram: o próximo
-  livre é o `QIT001008`.
+- **`QIT001…`** — os erros das **regras do BaaS PME**, catalogados em
+  `../docs/DECISOES.md`. A faixa `QIT002…` permanece reservada ao recurso
+  de exemplo `sample_entity`.
 
 Não repita um número. Se repetir, a API **não sobe** — tem uma checagem
 no start (`error_verification`, em `src/errors/base_error.py`) que
