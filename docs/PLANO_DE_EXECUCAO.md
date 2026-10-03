@@ -212,7 +212,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 ### S5 Transferência com tarifa (A, 5h)
 - **Depende de:** S3, S4 (para conferir pelo extrato).
 - **Vermelho:** `TRANSFER` 201; origem perde valor mais tarifa, destino ganha o valor; o extrato da origem tem `TRANSFER_OUT` e `TRANSFER_FEE`, o do destino `TRANSFER_IN`, as três com o mesmo `operation_key`; casos de borda: saldo igual ao valor (sem a tarifa) responde 422, saldo igual a valor mais tarifa responde 201 e deixa saldo 0; destino igual à origem 422 `QIT001012`; destino inexistente 404; destino ou origem bloqueados 409 `QIT001006`; **nenhuma escrita parcial** quando falha (saldos e extratos intactos).
-- **Verde:** uma única consulta trava as duas contas com `ORDER BY id`; tarifa de `TRANSFER_FEE_CENTS`; três linhas no ledger com `balance_after`; atualiza os dois saldos; `commit` único.
+- **Verde:** uma única consulta trava as duas contas com `FOR NO KEY UPDATE ORDER BY id` (compatível com a FK da reserva de idempotência); tarifa de `TRANSFER_FEE_CENTS`; três linhas no ledger com `balance_after`; atualiza os dois saldos; `commit` único.
 - **Pronto quando:** testes verdes e a invariante "soma do extrato igual ao saldo" vale para as duas contas.
 
 ### S9 Reajuste e lote 2 (B, 5h)
@@ -222,6 +222,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 - **Pronto quando:** testes verdes.
 
 ### S7a Concorrência: saque na última vaga (C, 3h)
+- **Implementação:** `tests/utils/concurrency.py` cria uma sessão HTTP por thread e sincroniza a partida com `threading.Barrier`; os testes de integração repetem cada cenário cinco vezes.
 - **Depende de:** S3. **Paralelo com:** S5, S9.
 - **Fazer:** `tests/utils/concurrency.py` com `run_parallel(n, fn)` usando `ThreadPoolExecutor`, `threading.Barrier` (todas as requisições largam juntas) e uma `requests.Session` por thread. Testes: saldo 100 e dois saques de 80 simultâneos: **exatamente** um 201 e um 422, saldo final 20; saldo 100 e dez saques de 30: exatamente três 201, saldo final 10. Cada teste repetido 5 vezes (`parametrize`) para pegar instabilidade.
 - **Cuidado:** confira em `src/database.py` o `pool_size` e o `max_overflow`; com mais threads do que conexões, o teste pode falhar por esgotar o pool e não por bug de lock.
