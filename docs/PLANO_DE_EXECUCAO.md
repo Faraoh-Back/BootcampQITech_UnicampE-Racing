@@ -252,6 +252,8 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 - **Pronto quando:** testes verdes e a decisão D8 documentada em README e RFC.
 
 ### S10 Antecipação lastreada em boletos (B, 6h)
+- **Status:** concluída. A rota exige `Idempotency-Key`, trava conta e boletos em ordem, calcula taxa somente com inteiros, cria a antecipação, vincula os boletos e registra o crédito/taxa no ledger em um único commit.
+- **Visibilidade:** `GET /billing-plan/{plan_key}` expõe `credit_advance_key` no boleto antecipado; o status permanece `PENDING`, pois antecipar não equivale a pagamento ou baixa.
 - **Depende de:** S8, S6 (comece o vermelho e o verde sem idempotência e integre no fim).
 - **Vermelho:** `POST .../credit-advance` 201 com `credit_advance_key`, `gross_amount`, `fee_amount`, `net_amount`, `balance`; taxa por inteiros *half-up* (boletos somando 10000 geram taxa 300; somando 1050 geram taxa 32); saldo sobe `net`; extrato tem `ADVANCE_CREDIT` e `ADVANCE_FEE`; `GET` do plano mostra o boleto antecipado; segundo pedido do mesmo boleto 409 `QIT001016`; boleto de outra conta ou inexistente 404 `QIT001015` com o mesmo corpo; lista com uma chave inválida **não aplica nada** nas demais (atomicidade); lista vazia, duplicada ou com mais de 50 chaves 400; sem header 400; conta bloqueada 409; repetição idempotente devolve a resposta original.
 - **Verde:** trava a conta e depois os boletos (`ORDER BY id`); `fee = (gross * 3 + 50) // 100`; cria `credit_advance`, preenche `credit_advance_id`, lança as duas linhas do ledger e soma `net` ao saldo; `commit` único.

@@ -7,7 +7,7 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D9)
 
-> **Checkpoint RFC 2.1:** estão implementadas as decisões necessárias para cliente, conta, ciclo de vida, ledger, transferência, plano de boletos, reajuste, idempotência e limite noturno. A antecipação (`QIT001015` e `QIT001016`) permanece planejada para S10; esses códigos e essa rota ainda não são comportamento disponível.
+> **Checkpoint RFC 2.1:** estão implementadas as decisões necessárias para cliente, conta, ciclo de vida, ledger, transferência, plano de boletos, reajuste, idempotência, limite noturno e antecipação lastreada em boletos.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
@@ -53,8 +53,8 @@ Todas as respostas de erro retornam payload JSON padronizado:
 | **QIT001012** | `422 Unprocessable` | `SameAccountTransfer` | Conta de destino informada é idêntica à conta de origem em uma transferência. |
 | **QIT001013** | `404 Not Found` | `BillingPlanNotFound` | `plan_key` inexistente ou pertencente a outra conta. |
 | **QIT001014** | `409 Conflict` | `AdjustmentAlreadyApplied` | Lote 2 de parcelas reajustadas já foi emitido previamente para este plano de cobrança. |
-| **QIT001015** *(planejado S10)* | `404 Not Found` | `BankSlipNotFound` | Alguma das chaves informadas em `bank_slip_keys` não existe ou não pertence a esta conta. |
-| **QIT001016** *(planejado S10)* | `409 Conflict` | `BankSlipNotEligible` | Algum dos boletos solicitados para antecipação não está `PENDING` ou já foi antecipado. |
+| **QIT001015** | `404 Not Found` | `BankSlipNotFound` | Alguma das chaves informadas em `bank_slip_keys` não existe ou não pertence a esta conta. |
+| **QIT001016** | `409 Conflict` | `BankSlipNotEligible` | Algum dos boletos solicitados para antecipação não está `PENDING` ou já foi antecipado. |
 | **QIT001017** | `422 Unprocessable` | `InvalidFirstDueDate` | Data de primeiro vencimento informada no plano de cobrança está no passado. |
 | **QIT001018** | `400 Bad Request` | `MissingIdempotencyKey` | Cabeçalho obrigatório `Idempotency-Key` não foi informado na requisição. |
 | **QIT001019** | `409 Conflict` | `InvalidAccountStatusTransition` | Transição de status da conta não permitida, inclusive tentativa de alterar uma conta `CANCELLED`. |
@@ -327,6 +327,7 @@ INTERNAL-TOKEN: <token_configurado>
         "due_date": "2026-11-10",
         "barcode": "34191.09008 00000.123456 7 8901234567890",
         "status": "PENDING",
+        "credit_advance_key": "9a8b7c6d-5e4f-3a2b-1c0d-e9f8a7b6c5d4",
         "status_events": [
           {
             "status": "PENDING",

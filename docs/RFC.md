@@ -19,7 +19,7 @@ Fora do escopo: pagamento e baixa de boletos, estorno, múltiplas moedas, autent
 
 ### Estado deste checkpoint
 
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S8 e S9. A antecipação de recebíveis (S10) e os testes avançados de concorrência (S7c) continuam planejados e **não estão expostos pela API nesta versão**. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S8, S9 e S10. Apenas os testes avançados de concorrência (S7c) continuam planejados. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
 
 ### Explicando a solução de forma macro
 
@@ -67,7 +67,7 @@ Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho)
 | `POST` | `/account/{account_key}/billing-plan` | Cria o plano e emite o lote 1 (12 boletos mensais de `base_amount`). Não é idempotente: cada chamada cria outro plano | `base_amount` (inteiro, mínimo 1), `first_due_date` (`AAAA-MM-DD`) | `201` com `plan_key` e os boletos; `400 QIT000001`; `404 QIT001002`; `409 QIT001006` conta fora de `APPROVED`; `422 QIT001017` vencimento no passado; `502 QIT001009` conector de boletos sem resposta ou com resposta inválida |
 | `GET` | `/account/{account_key}/billing-plan/{plan_key}` | Devolve o plano com todos os boletos, seu lote (`batch_number`), taxa aplicada (`adjustment_rate`), status atual e histórico `status_events` | `account_key` e `plan_key` no caminho | `200`; `404 QIT001002`; `404 QIT001013` plano inexistente ou de outra conta |
 | `POST` | `/account/{account_key}/billing-plan/{plan_key}/adjustment` | Reajusta o valor pelo índice e emite o lote 2 (parcelas 13 a 24). Idempotente por `UNIQUE(billing_plan_id, installment_number)`: repetir não emite de novo e responde `409` | `index_code` (`IPCA` ou `IGPM`) | `201` com os boletos do lote 2; `400 QIT000001`; `404 QIT001002`, `404 QIT001013`; `409 QIT001014` lote 2 já emitido; `502 QIT001009` Banco Central ou conector de boletos falhou |
-| `POST` *(planejado, S10)* | `/account/{account_key}/credit-advance` | Antecipa boletos pendentes: credita o valor menos 3% de taxa. Ainda não exposta nesta versão | Header `Idempotency-Key`; `bank_slip_keys` (de 1 a 50 chaves distintas) | Contrato reservado para S10: `201` com `credit_advance_key`, `gross_amount`, `fee_amount`, `net_amount`, `balance`; erros `QIT001015` e `QIT001016` serão materializados junto com a rota |
+| `POST` | `/account/{account_key}/credit-advance` | Antecipa boletos pendentes: credita o valor menos 3% de taxa. Idempotente por `Idempotency-Key`, e cada boleto só antecipa uma vez (`bank_slip.credit_advance_id`) | Header `Idempotency-Key`; `bank_slip_keys` (de 1 a 50 chaves distintas) | `201` com `credit_advance_key`, `gross_amount`, `fee_amount`, `net_amount`, `balance`; `400 QIT000001`; `400 QIT001018`; `404 QIT001002`; `404 QIT001015` algum boleto inexistente ou de outra conta; `409 QIT001006` conta fora de `APPROVED`; `409 QIT001008`; `409 QIT001016` algum boleto não está `PENDING` ou já foi antecipado |
 
 ### Banco de Dados (Somente diagrama)
 
@@ -212,13 +212,13 @@ erDiagram
 2. Se a primeira requisição já confirmou, o `INSERT` em `idempotency_key` conflita. O controller lê a linha existente: mesmo `request_hash` devolve `201` com o corpo guardado (mesma `transaction_key`) e o cabeçalho `Idempotent-Replayed: true`, sem novo lançamento; `request_hash` diferente devolve `409 QIT001008`.
 3. Se a primeira ainda está em andamento, o `INSERT` da segunda espera no próprio índice `UNIQUE` até a primeira confirmar ou desfazer. Confirmou: cai no caso anterior. Desfez: a segunda executa normalmente.
 
-**Antecipação de recebíveis: caminho feliz (planejado para S10; não exposto neste checkpoint)**
+**Antecipação de recebíveis: caminho feliz**
 
 1. O resource valida cabeçalho e corpo (`bank_slip_keys` com 1 a 50 chaves distintas). O controller registra a idempotência como no fluxo anterior.
-2. Trava a conta (`FOR UPDATE`): `404 QIT001002` se não existe; `409 QIT001006` se não está `APPROVED`.
+2. Trava a conta (`FOR NO KEY UPDATE`): `404 QIT001002` se não existe; `409 QIT001006` se não está `APPROVED`.
 3. Trava os boletos pedidos (`FOR UPDATE ORDER BY id`), restritos aos planos da conta. Falta algum (inexistente ou de outra conta): `404 QIT001015`, sem dizer qual. Algum que não está `PENDING` ou já tem `credit_advance_id`: `409 QIT001016`.
 4. Calcula em inteiros: `gross` é a soma dos boletos, `fee = (gross * 3 + 50) // 100` (3% com arredondamento *half-up*), `net = gross - fee`. Não há `float` em nenhum passo.
-5. Grava `credit_advance`, preenche `credit_advance_id` nos boletos, lança `ADVANCE_CREDIT` (+gross) e `ADVANCE_FEE` (−fee) com o mesmo `operation_key` e soma `net` ao saldo.
+5. Grava `credit_advance`, preenche `credit_advance_id` nos boletos, lança `ADVANCE_CREDIT` (+gross) e, quando a taxa é maior que zero, `ADVANCE_FEE` (−fee), com o mesmo `operation_key`, e soma `net` ao saldo.
 6. Guarda a resposta na linha de idempotência, executa `session.commit()` e responde `201`.
 
 **Antecipação: falha, o mesmo boleto antecipado duas vezes**
