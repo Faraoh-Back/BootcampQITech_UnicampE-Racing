@@ -10,14 +10,16 @@ import requests
 Result = TypeVar("Result")
 
 
-def run_parallel(workers: int, fn: Callable[[requests.Session], Result]) -> list[Result]:
+def run_parallel(
+    workers: int, fn: Callable[[requests.Session], Result], timeout_seconds: int = 15
+) -> list[Result]:
     """Dispara ``workers`` chamadas ao mesmo tempo, cada uma com sua sessão.
 
     A barreira é alcançada antes de a função receber a sessão. Assim nenhuma
     chamada HTTP começa antes de todas as threads estarem prontas; os testes
     exercitam a disputa pela mesma trava no PostgreSQL de verdade.
     """
-    barrier = Barrier(workers, timeout=10)
+    barrier = Barrier(workers, timeout=timeout_seconds)
 
     def execute() -> Result:
         with requests.Session() as session:
@@ -26,4 +28,4 @@ def run_parallel(workers: int, fn: Callable[[requests.Session], Result]) -> list
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(execute) for _ in range(workers)]
-        return [future.result(timeout=15) for future in futures]
+        return [future.result(timeout=timeout_seconds) for future in futures]

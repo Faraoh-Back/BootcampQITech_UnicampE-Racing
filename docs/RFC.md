@@ -19,7 +19,7 @@ Fora do escopo: pagamento e baixa de boletos, estorno, múltiplas moedas, autent
 
 ### Estado deste checkpoint
 
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S8, S9 e S10. Apenas os testes avançados de concorrência (S7c) continuam planejados. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9 e S10. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
 
 ### Explicando a solução de forma macro
 

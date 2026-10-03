@@ -241,7 +241,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 ### S6 Idempotência nas rotas (A, 3h, parcialmente antecipada)
 - **Status atual:** concluída para a rota de transações. Depósito, saque e transferência exigem `Idempotency-Key`, fazem replay com `Idempotent-Replayed: true`, rejeitam corpo diferente com `QIT001008`, isolam chave por conta e removem a reserva quando a operação falha.
 - **Evidência adicional:** transferência cobre replay sem segundo débito, conflito de payload e reutilização da mesma chave depois de falha de saldo insuficiente.
-- **Integração futura:** S10 reutilizará o mesmo componente na rota de antecipação; concorrência da mesma chave será exercitada na S7c, sem mudar os contratos já validados.
+- **Integração concluída:** S10 reutiliza o mesmo componente na antecipação; S7c prova em dez requisições simultâneas que uma única chave gera um só lançamento e dez respostas idênticas.
 
 ### S7b Limite noturno (A, 2,5h)
 - **Status:** concluída. `NightLimitExceeded` devolve `422 QIT001007` para saque ou transferência acima de `NIGHT_LIMIT_CENTS` dentro da janela; depósito não é limitado.
@@ -260,13 +260,16 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 - **Pronto quando:** testes verdes.
 
 ### S7c Concorrência avançada (C, 4h)
+- **Status:** concluída. Os cenários rodam por HTTP contra PostgreSQL real, com barreira para iniciar as threads juntas e timeout de 30 segundos; cada um é repetido cinco vezes.
+- **Evidência:** 20 transferências A→B e 20 B→A concluem sem impasse, preservando a soma dos saldos menos 40 tarifas. Dez pedidos com a mesma chave retornam `201` e a mesma `transaction_key`, com uma única linha de saque. Duas antecipações do mesmo boleto retornam exatamente `201` e `409 QIT001016`; duas transferências que disputam 600 centavos para enviar 500 mais tarifa retornam `201` e `422 QIT001005`.
+- **Infraestrutura de teste:** o pool SQLAlchemy comporta o pico de 40 requisições (10 conexões persistentes e até 40 temporárias), para que a prova meça as travas de domínio, e não a fila do pool.
 - **Depende de:** S5, S6, S10 (escreva os testes antes de S10 acabar).
 - **Fazer:**
   - Transferências cruzadas: 20 pares A→B e B→A ao mesmo tempo, com timeout de 30s no teste. Nenhuma pode travar, e a soma dos saldos finais é igual à soma inicial menos as tarifas.
   - Mesma `Idempotency-Key` em 10 threads: exatamente **um** conjunto de lançamentos e todas as respostas `201` com a mesma `transaction_key`.
   - Duas antecipações simultâneas do mesmo boleto (chaves diferentes): um 201 e um 409.
   - Duas transferências disputando o último saldo: um 201 e um 422.
-- **Pronto quando:** 5 repetições seguidas verdes.
+- **Pronto quando:** 5 repetições seguidas verdes. **Atingido:** 20 testes verdes em 10,52s.
 
 **Gate 2.**
 

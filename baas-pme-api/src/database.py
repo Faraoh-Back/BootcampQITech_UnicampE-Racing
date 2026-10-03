@@ -100,7 +100,18 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from constants import DATABASE_URL
 
-engine = create_engine(DATABASE_URL, pool_size=5, pool_recycle=600, pool_pre_ping=True)
+# A S7c abre até 40 requisições HTTP simultâneas de propósito. O pool precisa
+# acomodar essa carga de teste sem transformar espera por conexão em um falso
+# positivo de concorrência. O PostgreSQL do compose aceita esse teto com folga;
+# conexões ociosas continuam sendo reaproveitadas normalmente.
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,
+    max_overflow=40,
+    pool_timeout=30,
+    pool_recycle=600,
+    pool_pre_ping=True,
+)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
 
