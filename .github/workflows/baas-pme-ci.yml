@@ -7,6 +7,9 @@ on:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
+    env:
+      # Fixa o cenário noturno para que a S7b não dependa da hora do runner.
+      NIGHT_TIME_OVERRIDE: "21:00"
     defaults:
       run:
         working-directory: baas-pme-api

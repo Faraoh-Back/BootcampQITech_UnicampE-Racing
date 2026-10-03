@@ -62,6 +62,19 @@ class InsufficientBalance(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class NightLimitExceeded(QIException):
+    """O valor excede o teto por operação dentro da janela noturna."""
+
+    code = "QIT001007"
+
+    def __init__(self) -> None:
+        title = "Night limit exceeded"
+        http_status = 422
+        description = "The requested amount exceeds the limit for the night transfer window."
+        translation = "O valor solicitado excede o limite permitido para o horário noturno."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class SameAccountTransfer(QIException):
     """A transferência deve sempre envolver duas contas distintas."""
 

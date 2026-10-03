@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from uuid import uuid4
 
-from constants import TRANSFER_FEE_CENTS
+from constants import NIGHT_LIMIT_CENTS, TRANSFER_FEE_CENTS
 from controllers.base_controller import BaseController
 from controllers.idempotency_controller import IdempotencyController
 from dtos import TransactionDTO
@@ -10,10 +10,12 @@ from errors import (
     AccountNotFound,
     InsufficientBalance,
     InvalidSchema,
+    NightLimitExceeded,
     SameAccountTransfer,
     TransactionNotFound,
 )
 from repositories import AccountRepository, TransactionRepository
+from utils.night_limit import is_night_window
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,15 @@ class TransactionController(BaseController):
 
         if transaction_type == "TRANSFER" and destination_account_key == account_key:
             raise SameAccountTransfer()
+
+        # A regra é avaliada antes de disputar a trava da conta. Um replay já
+        # confirmado retorna acima, independente da hora em que foi reenviado.
+        if (
+            transaction_type in {"WITHDRAWAL", "TRANSFER"}
+            and payload["amount"] > NIGHT_LIMIT_CENTS
+            and is_night_window()
+        ):
+            raise NightLimitExceeded()
 
         if transaction_type == "TRANSFER":
             transaction_dto = self._create_transfer(

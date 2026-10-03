@@ -33,6 +33,9 @@ NIGHT_START = os.environ.get("NIGHT_START", "20:00")
 NIGHT_END = os.environ.get("NIGHT_END", "06:00")
 NIGHT_LIMIT_CENTS = int(os.environ.get("NIGHT_LIMIT_CENTS", "100000"))
 TIMEZONE = os.environ.get("TIMEZONE", "America/Sao_Paulo")
+# Configuração exclusiva do ambiente de teste: quando preenchida, substitui
+# apenas a hora do relógio para tornar testes de janela noturna determinísticos.
+NIGHT_TIME_OVERRIDE = os.environ.get("NIGHT_TIME_OVERRIDE") or None
 
 # Rotas públicas: não exigem o header INTERNAL-TOKEN. São as duas que
 # precisam responder pra quem ainda não tem token nenhum: a raiz, que
@@ -58,3 +61,11 @@ def check_variables():
             "Rodando com 'docker compose up' elas já vêm preenchidas. "
             "Fora do Docker, copie o .env.example para .env."
         )
+
+    if NIGHT_LIMIT_CENTS < 1:
+        raise EnvironmentError("NIGHT_LIMIT_CENTS must be a positive integer amount in cents.")
+
+    # Import tardio evita ciclo durante a leitura das constantes acima.
+    from utils.night_limit import validate_night_configuration
+
+    validate_night_configuration()

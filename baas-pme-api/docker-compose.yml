@@ -49,6 +49,7 @@ services:
       NIGHT_END: ${NIGHT_END:-06:00}
       NIGHT_LIMIT_CENTS: ${NIGHT_LIMIT_CENTS:-100000}
       TIMEZONE: ${TIMEZONE:-America/Sao_Paulo}
+      NIGHT_TIME_OVERRIDE: ${NIGHT_TIME_OVERRIDE:-}
     volumes:
       # Monta o codigo pra dentro do container: salvou o arquivo,
       # a API recarrega sozinha (o --reload ali embaixo).
@@ -92,4 +93,3 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-
