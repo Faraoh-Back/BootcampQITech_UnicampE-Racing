@@ -125,6 +125,32 @@ class AdjustmentAlreadyApplied(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class BankSlipNotFound(QIException):
+    """Não revela qual boleto é inexistente ou pertence a outra conta."""
+
+    code = "QIT001015"
+
+    def __init__(self) -> None:
+        title = "Bank slip not found"
+        http_status = 404
+        description = "One or more bank slips were not found for this account."
+        translation = "Um ou mais boletos não foram encontrados para esta conta."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
+class BankSlipNotEligible(QIException):
+    """Um recebível já antecipado não pode gerar saldo novamente."""
+
+    code = "QIT001016"
+
+    def __init__(self) -> None:
+        title = "Bank slip not eligible"
+        http_status = 409
+        description = "One or more bank slips are not eligible for credit advance."
+        translation = "Um ou mais boletos não são elegíveis para antecipação."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class InvalidFirstDueDate(QIException):
     code = "QIT001017"
 

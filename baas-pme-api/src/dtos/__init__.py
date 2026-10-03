@@ -3,3 +3,4 @@ from dtos.customer_dto import CustomerDTO
 from dtos.account_dto import AccountDTO
 from dtos.billing_plan_dto import BillingPlanDTO
 from dtos.transaction_dto import TransactionDTO
+from dtos.credit_advance_dto import CreditAdvanceDTO

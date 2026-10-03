@@ -1,4 +1,5 @@
 from sqlalchemy import CHAR, BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Integer, text
+from sqlalchemy.orm import relationship
 from models.base import Base
 
 class CreditAdvance(Base):
@@ -14,3 +15,6 @@ class CreditAdvance(Base):
     fee_amount = Column(BigInteger, nullable=False)
     net_amount = Column(BigInteger, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=text("NOW()"))
+
+    account = relationship("Account")
+    bank_slips = relationship("BankSlip", back_populates="credit_advance")

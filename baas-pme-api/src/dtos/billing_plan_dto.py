@@ -51,4 +51,6 @@ class BillingPlanDTO:
                 }
                 for event in bank_slip.status_events
             ]
+        if bank_slip.credit_advance is not None:
+            result["credit_advance_key"] = bank_slip.credit_advance.credit_advance_key
         return result

@@ -12,6 +12,7 @@ from middlewares import (
 from resources import (
     AccountResource,
     BillingPlanResource,
+    CreditAdvanceResource,
     CustomerResource,
     HealthCheckResource,
     SampleEntityResource,
@@ -134,6 +135,7 @@ def create_app() -> FastAPI:
     customer_resource = CustomerResource()
     account_resource = AccountResource()
     billing_plan_resource = BillingPlanResource()
+    credit_advance_resource = CreditAdvanceResource()
     transaction_resource = TransactionResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
@@ -195,6 +197,11 @@ def create_app() -> FastAPI:
     application.add_api_route(
         "/account/{account_key}/billing-plan/{plan_key}/adjustment",
         billing_plan_resource.on_post_adjustment,
+        methods=["POST"],
+    )
+    application.add_api_route(
+        "/account/{account_key}/credit-advance",
+        credit_advance_resource.on_post,
         methods=["POST"],
     )
     application.add_api_route(

@@ -31,6 +31,7 @@ class BankSlip(Base):
 
     status = relationship("BankSlipStatus")
     billing_plan = relationship("BillingPlan", back_populates="bank_slips")
+    credit_advance = relationship("CreditAdvance", back_populates="bank_slips")
     status_events = relationship(
         "BankSlipStatusEvent",
         order_by="(BankSlipStatusEvent.event_datetime.asc(), BankSlipStatusEvent.id.asc())",

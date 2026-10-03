@@ -4,3 +4,4 @@ from controllers.account_controller import AccountController
 from controllers.billing_plan_controller import BillingPlanController
 from controllers.idempotency_controller import IdempotencyController, IdempotencyResult
 from controllers.transaction_controller import TransactionController
+from controllers.credit_advance_controller import CreditAdvanceController
