@@ -92,16 +92,17 @@ pip install -r requirements-dev.txt
 ```
 
 ### Passo 7: Execute os testes automatizados
-Com os containers rodando e saudáveis:
+Com os containers rodando e saudáveis, fixe a hora de teste para que os casos
+de limite noturno não dependam do horário em que a suíte foi iniciada:
 ```bash
-pytest
+NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
+./.venv/bin/python -m pytest -q
 ```
-Todos os testes existentes da `sample_entity` e do `health_check` devem passar em verde!
+Todos os testes do BaaS PME, incluindo transações, boletos, antecipação e concorrência, devem passar em verde.
 
-> Para tornar a S7b determinística fora do CI, suba a API com
-> `NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build`. A variável
-> fixa somente o relógio do container de teste; em uso normal, deixe-a
-> vazia para usar `TIMEZONE=America/Sao_Paulo`.
+> A variável fixa somente o relógio do container de teste; em uso normal,
+> deixe-a vazia para usar `TIMEZONE=America/Sao_Paulo`. Após os testes, rode
+> `docker compose up -d` para restaurar o comportamento normal.
 
 ---
 
@@ -112,8 +113,8 @@ Para garantir que o banco e o schema SQL são aplicados do zero corretamente:
 # 1. Derruba os containers e apaga os volumes do banco
 docker compose down -v
 
-# 2. Sobe novamente
-docker compose up -d
+# 2. Reconstrói a imagem que contém o SQL e sobe novamente
+docker compose up -d --build
 
 # 3. Confere a saúde
 docker compose ps
@@ -121,7 +122,7 @@ docker compose ps
 # 4. Roda os testes de novo
 pytest
 ```
-> **Por que isso é importante?** O PostgreSQL do Docker só roda os scripts de inicialização (em `database/database.sql`) se o volume estiver 100% vazio. Toda vez que alguém alterar a estrutura de tabelas, precisará usar `docker compose down -v` para recriar o banco.
+> **Por que isso é importante?** O PostgreSQL só executa o script de inicialização com o volume vazio, e o Docker só copia uma alteração de `database/database.sql` para a imagem em um novo build. Toda mudança no SQL exige `docker compose down -v && docker compose up -d --build`.
 
 ---
 

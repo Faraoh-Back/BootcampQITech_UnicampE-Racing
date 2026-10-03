@@ -37,10 +37,8 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
       # A API de boletos e a do Banco Central (MockServer).
       BANKSLIP_API_URL: ${BANKSLIP_API_URL:-http://mock:1080}
-      BANKSLIP_API_INTERNAL_TOKEN: ${BANKSLIP_API_INTERNAL_TOKEN:-default_token}
       BANKSLIP_API_TIMEOUT: ${BANKSLIP_API_TIMEOUT:-5}
       CENTRAL_BANK_API_URL: ${CENTRAL_BANK_API_URL:-http://mock:1080}
-      CENTRAL_BANK_API_INTERNAL_TOKEN: ${CENTRAL_BANK_API_INTERNAL_TOKEN:-default_token}
       CENTRAL_BANK_API_TIMEOUT: ${CENTRAL_BANK_API_TIMEOUT:-5}
       # Regras financeiras e parâmetros da D1/D8
       TRANSFER_FEE_CENTS: ${TRANSFER_FEE_CENTS:-100}

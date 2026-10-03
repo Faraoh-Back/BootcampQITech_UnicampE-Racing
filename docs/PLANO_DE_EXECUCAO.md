@@ -11,7 +11,7 @@
 
 ### Regras de trabalho do time (valem para todas as tarefas)
 
-1. `main` sempre verde: `docker compose down -v && docker compose up --build` e `pytest` passando antes de qualquer merge.
+1. `main` sempre verde: `docker compose down -v && NIGHT_TIME_OVERRIDE=21:00 docker compose up --build` e `pytest` passando antes de qualquer merge. O override reproduz o perfil determinístico do CI para a regra noturna.
 2. Branch curta por fatia (`feat/s3-deposito-saque`). Pull request pequeno, revisado por outra pessoa.
 3. Commits separados por cor do TDD: `test(S3): vermelho ...`, depois `feat(S3): verde ...`, depois `refactor(S3): ...`. O histórico do git é a prova do TDD.
 4. Arquivos compartilhados são onde nascem os conflitos. Evite assim: um arquivo de erros por domínio (`errors/account_errors.py`, `errors/billing_errors.py`), rotas novas só no fim de `src/app.py`, e `database.sql` e `models` escritos uma vez só (T1.1 e T1.2).
@@ -230,7 +230,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 
 ### T3.1 Checkpoint da RFC (C, 1,5h)
 - **Status:** concluído no checkpoint RFC 2.1.
-- **Feito:** releitura de `docs/RFC.md` contra código, `DECISOES.md`, DDL, schemas e testes; revisão de rotas, códigos de erro, DER e fluxos; versão da RFC elevada para 2.1. A divergência encontrada — S7b e S10 documentadas como se estivessem ativas — foi corrigida: agora estão marcadas como planejadas.
+- **Feito:** releitura de `docs/RFC.md` contra código, `DECISOES.md`, DDL, schemas e testes; revisão de rotas, códigos de erro, DER e fluxos; versão da RFC elevada para 2.1. O checkpoint registrou explicitamente o que ainda era futuro naquele momento. As entregas posteriores S7b, S10 e S7c estão documentadas como concluídas nas respectivas seções abaixo.
 - **PDF:** adiado de propósito para T5.3, como já determina T0.3; ainda não existe template oficial nem gerador de PDF no repositório. Assim não há um PDF provisório a regenerar ou páginas a contar neste checkpoint.
 - **Pronto quando:** nenhuma divergência conhecida entre RFC e código no escopo entregue; itens futuros explicitamente marcados como planejados.
 

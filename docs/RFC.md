@@ -61,7 +61,7 @@ Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho)
 | `GET` | `/account/{account_key}` | Devolve a conta e o saldo | `account_key` no caminho | `200`; `404 QIT001002` |
 | `PUT` | `/account/{account_key}/block` | Bloqueia uma conta `APPROVED`, registra evento e impede operações financeiras | `account_key` no caminho | `200`; `404 QIT001002`; `409 QIT001019` se a transição não for permitida |
 | `PUT` | `/account/{account_key}/cancel` | Cancela uma conta `APPROVED` ou `BLOCKED`, registra evento e torna o status irreversível | `account_key` no caminho | `200`; `404 QIT001002`; `409 QIT001019` se a transição não for permitida |
-| `POST` | `/account/{account_key}/transaction` | Depósito, saque ou transferência (com tarifa). Idempotente por (`account_key`, rota, `Idempotency-Key`): repetir devolve a resposta original e não lança de novo | Header `Idempotency-Key` (1 a 64 caracteres); `type` (`DEPOSIT`, `WITHDRAWAL`, `TRANSFER`); `amount` (inteiro, mínimo 1); `destination_account_key` (obrigatório só em `TRANSFER`) | `201` (a repetição também devolve `201`, com o mesmo corpo); `400 QIT000001` corpo ou chave fora do formato; `400 QIT001018` header ausente; `404 QIT001002` origem ou destino inexistente; `409 QIT001006` origem ou destino fora de `APPROVED`; `409 QIT001008` mesma chave com corpo diferente; `422 QIT001005` saldo menor que valor mais tarifa; `422 QIT001007` acima do limite noturno; `422 QIT001012` destino igual à origem |
+| `POST` | `/account/{account_key}/transaction` | Depósito, saque ou transferência (com tarifa). Idempotente por (`account_key`, rota, `Idempotency-Key`): repetir devolve a resposta original e não lança de novo | Header `Idempotency-Key` (1 a 64 caracteres); `type` (`DEPOSIT`, `WITHDRAWAL`, `TRANSFER`); `amount` (inteiro, mínimo 1); `destination_account_key` (obrigatório só em `TRANSFER`) | `201` (a repetição também devolve `201`, com o mesmo corpo); `400 QIT000001` corpo ou chave fora do formato; `400 QIT001018` header ausente; `404 QIT001002` origem ou destino inexistente; `409 QIT001006` origem ou destino fora de `APPROVED`; `409 QIT001008` mesma chave com corpo diferente; `422 QIT001005` saldo insuficiente para o saque ou, na transferência, para valor mais tarifa; `422 QIT001007` acima do limite noturno; `422 QIT001012` destino igual à origem |
 | `GET` | `/account/{account_key}/transaction/{transaction_key}` | Devolve um lançamento. Lançamento de outra conta responde exatamente como inexistente | `account_key` e `transaction_key` no caminho | `200`; `404 QIT001002` conta inexistente; `404 QIT001011` lançamento inexistente ou de outra conta |
 | `GET` | `/account/{account_key}/transactions` | Extrato paginado, mais recente primeiro (`created_at` e `id` decrescentes) | `limit` (padrão 10, teto 100), `page` (padrão 0), `type` (opcional) | `200` com `data`, `limit`, `page`, `is_last_page`; `400 QIT000001` parâmetro inválido ou desconhecido; `404 QIT001002` |
 | `POST` | `/account/{account_key}/billing-plan` | Cria o plano e emite o lote 1 (12 boletos mensais de `base_amount`). Não é idempotente: cada chamada cria outro plano | `base_amount` (inteiro, mínimo 1), `first_due_date` (`AAAA-MM-DD`) | `201` com `plan_key` e os boletos; `400 QIT000001`; `404 QIT001002`; `409 QIT001006` conta fora de `APPROVED`; `422 QIT001017` vencimento no passado; `502 QIT001009` conector de boletos sem resposta ou com resposta inválida |
@@ -167,7 +167,7 @@ erDiagram
 
     BANK_SLIP {
         serial id PK
-        char(36) slip_key UK "sai na resposta"
+        char(36) slip_key UK "coluna física; API expõe bank_slip_key"
         int billing_plan_id FK
         int credit_advance_id FK "null = não antecipado"
         int status_id FK "status atual"
@@ -204,7 +204,7 @@ erDiagram
 
 1. A origem tem 500 centavos e a transferência pede 1.000 mais 100 de tarifa. As travas já foram obtidas no passo 4.
 2. O controller levanta `QIT001005`. O middleware de sessão faz `rollback()` e fecha a sessão.
-3. O rollback desfaz também a linha de idempotência: nenhum saldo muda, nenhum lançamento nasce, e repetir a mesma chave reexecuta a operação do zero (o saldo pode ter mudado). O cliente recebe `422` com `balance` atual e valor exigido.
+3. O rollback desfaz também a linha de idempotência: nenhum saldo muda, nenhum lançamento nasce, e repetir a mesma chave reexecuta a operação do zero (o saldo pode ter mudado). O cliente recebe o corpo padronizado de `422 QIT001005`.
 
 **Transferência: falha, retentativa depois de timeout**
 
