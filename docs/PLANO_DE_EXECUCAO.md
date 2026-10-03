@@ -239,9 +239,9 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 ## 7. Rodada 4: Garantias (~6h)
 
 ### S6 Idempotência nas rotas (A, 3h, parcialmente antecipada)
-- **Status atual:** depósito e saque já exigem `Idempotency-Key`, fazem replay com `Idempotent-Replayed: true`, rejeitam corpo diferente com `QIT001008`, isolam chave por conta e removem a reserva quando a operação falha.
-- **Restante depois da S5:** aplicar a mesma proteção ao caminho de transferência e reutilizar o componente na S10, sem mudar os contratos já validados.
-- **Pronto quando:** transferência e antecipação compartilham o componente, e os cenários de concorrência da S7c continuam verdes.
+- **Status atual:** concluída para a rota de transações. Depósito, saque e transferência exigem `Idempotency-Key`, fazem replay com `Idempotent-Replayed: true`, rejeitam corpo diferente com `QIT001008`, isolam chave por conta e removem a reserva quando a operação falha.
+- **Evidência adicional:** transferência cobre replay sem segundo débito, conflito de payload e reutilização da mesma chave depois de falha de saldo insuficiente.
+- **Integração futura:** S10 reutilizará o mesmo componente na rota de antecipação; concorrência da mesma chave será exercitada na S7c, sem mudar os contratos já validados.
 
 ### S7b Limite noturno (A, 2,5h)
 - **Depende de:** S5.

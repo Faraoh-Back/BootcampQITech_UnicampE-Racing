@@ -194,3 +194,55 @@ class TestTransfer:
         status, entries = RequestGenerator.GET_transactions(origin_key, {"type": "TRANSFER_OUT"})
         assert status == 200
         assert len(entries["data"]) == 1
+
+    def test_transfer_rejects_changed_payload_for_an_already_used_key(self, make_account):
+        origin_key = make_account()["response"]["account_key"]
+        destination_key = make_account()["response"]["account_key"]
+        RequestGenerator.POST_transaction(origin_key, {"type": "DEPOSIT", "amount": 1000})
+        idempotency_key = str(uuid4())
+
+        status, _ = RequestGenerator.POST_transaction(
+            origin_key,
+            {"type": "TRANSFER", "amount": 500, "destination_account_key": destination_key},
+            idempotency_key=idempotency_key,
+        )
+        assert status == 201
+        status, error = RequestGenerator.POST_transaction(
+            origin_key,
+            {"type": "TRANSFER", "amount": 400, "destination_account_key": destination_key},
+            idempotency_key=idempotency_key,
+        )
+        assert status == 409
+        assert error["code"] == "QIT001008"
+        status, origin = RequestGenerator.GET_account(origin_key)
+        assert status == 200
+        assert origin["balance"] == 400
+        status, destination = RequestGenerator.GET_account(destination_key)
+        assert status == 200
+        assert destination["balance"] == 500
+
+    def test_transfer_failure_releases_idempotency_key_for_a_later_retry(self, make_account):
+        origin_key = make_account()["response"]["account_key"]
+        destination_key = make_account()["response"]["account_key"]
+        RequestGenerator.POST_transaction(origin_key, {"type": "DEPOSIT", "amount": 500})
+        idempotency_key = str(uuid4())
+        payload = {"type": "TRANSFER", "amount": 500, "destination_account_key": destination_key}
+
+        status, error = RequestGenerator.POST_transaction(
+            origin_key, payload, idempotency_key=idempotency_key
+        )
+        assert status == 422
+        assert error["code"] == "QIT001005"
+
+        status, _ = RequestGenerator.POST_transaction(
+            origin_key, {"type": "DEPOSIT", "amount": 100}
+        )
+        assert status == 201
+        status, transfer = RequestGenerator.POST_transaction(
+            origin_key, payload, idempotency_key=idempotency_key
+        )
+        assert status == 201
+        assert transfer["balance"] == 0
+        status, destination = RequestGenerator.GET_account(destination_key)
+        assert status == 200
+        assert destination["balance"] == 500
