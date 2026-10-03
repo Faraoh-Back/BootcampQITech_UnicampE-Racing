@@ -15,3 +15,11 @@ class AccountResource:
     def on_get_by_key(self, account_key: str) -> JSONResponse:
         account = AccountController().get_by_key(account_key)
         return JSONResponse(content=jsonable_encoder(account), status_code=http_status.HTTP_200_OK)
+
+    def on_put_block(self, account_key: str) -> JSONResponse:
+        account = AccountController().block(account_key)
+        return JSONResponse(content=jsonable_encoder(account), status_code=http_status.HTTP_200_OK)
+
+    def on_put_cancel(self, account_key: str) -> JSONResponse:
+        account = AccountController().cancel(account_key)
+        return JSONResponse(content=jsonable_encoder(account), status_code=http_status.HTTP_200_OK)

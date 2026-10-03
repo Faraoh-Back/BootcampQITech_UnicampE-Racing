@@ -84,6 +84,21 @@ class IdempotencyConflict(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class InvalidAccountStatusTransition(QIException):
+    """A máquina de estados não permite a transição solicitada."""
+
+    code = "QIT001019"
+
+    def __init__(self, current_status: str, requested_status: str) -> None:
+        title = "Invalid account status transition"
+        http_status = 409
+        description = (
+            f"Account status cannot transition from {current_status} to {requested_status}."
+        )
+        translation = "A transição de status solicitada para a conta não é permitida."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class NotFoundSampleEntity(QIException):
     """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
 

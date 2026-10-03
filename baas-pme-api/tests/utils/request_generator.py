@@ -54,6 +54,12 @@ class RequestGenerator:
         res = ClientRequisition.send("PUT", f"/account/{account_key}/block", headers=h)
         return res.response_status, res.response_json
 
+    @staticmethod
+    def PUT_account_cancel(account_key: str, headers: Optional[dict] = None) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("PUT", f"/account/{account_key}/cancel", headers=h)
+        return res.response_status, res.response_json
+
     # ── TRANSAÇÕES (/transaction) ──────────────────────────────────
     @staticmethod
     def POST_transaction(

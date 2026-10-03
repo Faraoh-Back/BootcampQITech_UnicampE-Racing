@@ -165,6 +165,16 @@ def create_app() -> FastAPI:
     application.add_api_route("/account", account_resource.on_post, methods=["POST"])
     application.add_api_route("/account/{account_key}", account_resource.on_get_by_key, methods=["GET"])
     application.add_api_route(
+        "/account/{account_key}/block",
+        account_resource.on_put_block,
+        methods=["PUT"],
+    )
+    application.add_api_route(
+        "/account/{account_key}/cancel",
+        account_resource.on_put_cancel,
+        methods=["PUT"],
+    )
+    application.add_api_route(
         "/account/{account_key}/billing-plan",
         billing_plan_resource.on_post,
         methods=["POST"],
