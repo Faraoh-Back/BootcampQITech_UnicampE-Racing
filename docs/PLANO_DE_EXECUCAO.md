@@ -229,8 +229,10 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 - **Pronto quando:** 5 repetições seguidas verdes; se instável, a causa foi achada, não escondida com `sleep`.
 
 ### T3.1 Checkpoint da RFC (C, 1,5h)
-- **Fazer:** reler `docs/RFC.md` contra o código e contra `DECISOES.md`: rotas, códigos de erro, DER, fluxos. Subir a versão. Regerar o PDF de teste e contar as páginas.
-- **Pronto quando:** nenhuma divergência conhecida entre RFC e código.
+- **Status:** concluído no checkpoint RFC 2.1.
+- **Feito:** releitura de `docs/RFC.md` contra código, `DECISOES.md`, DDL, schemas e testes; revisão de rotas, códigos de erro, DER e fluxos; versão da RFC elevada para 2.1. A divergência encontrada — S7b e S10 documentadas como se estivessem ativas — foi corrigida: agora estão marcadas como planejadas.
+- **PDF:** adiado de propósito para T5.3, como já determina T0.3; ainda não existe template oficial nem gerador de PDF no repositório. Assim não há um PDF provisório a regenerar ou páginas a contar neste checkpoint.
+- **Pronto quando:** nenhuma divergência conhecida entre RFC e código no escopo entregue; itens futuros explicitamente marcados como planejados.
 
 ---
 

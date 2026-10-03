@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Time** | Cairê Belo · \<nome 2\> · \<nome 3\> |
-| **Versão** | 2.0 |
+| **Versão** | 2.1 — checkpoint T3.1 |
 
 ## Contextualização
 
@@ -16,6 +16,10 @@ A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge d
 Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
 
 Fora do escopo: pagamento e baixa de boletos, estorno, múltiplas moedas, autenticação de usuário final e qualquer rotina agendada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
+
+### Estado deste checkpoint
+
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S7a, S8 e S9, além do componente de idempotência. O limite noturno (S7b), a antecipação de recebíveis (S10) e os testes avançados de concorrência (S7c) continuam planejados e **não estão expostos pela API nesta versão**. A regra noturna permanece decidida e configurada para orientar a próxima entrega, mas ainda não é aplicada pelo controller.
 
 ### Explicando a solução de forma macro
 
@@ -57,13 +61,13 @@ Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho)
 | `GET` | `/account/{account_key}` | Devolve a conta e o saldo | `account_key` no caminho | `200`; `404 QIT001002` |
 | `PUT` | `/account/{account_key}/block` | Bloqueia uma conta `APPROVED`, registra evento e impede operações financeiras | `account_key` no caminho | `200`; `404 QIT001002`; `409 QIT001019` se a transição não for permitida |
 | `PUT` | `/account/{account_key}/cancel` | Cancela uma conta `APPROVED` ou `BLOCKED`, registra evento e torna o status irreversível | `account_key` no caminho | `200`; `404 QIT001002`; `409 QIT001019` se a transição não for permitida |
-| `POST` | `/account/{account_key}/transaction` | Depósito, saque ou transferência (com tarifa). Idempotente por (`account_key`, rota, `Idempotency-Key`): repetir devolve a resposta original e não lança de novo | Header `Idempotency-Key` (1 a 64 caracteres); `type` (`DEPOSIT`, `WITHDRAWAL`, `TRANSFER`); `amount` (inteiro, mínimo 1); `destination_account_key` (obrigatório só em `TRANSFER`) | `201` (a repetição também devolve `201`, com o mesmo corpo); `400 QIT000001` corpo ou chave fora do formato; `400 QIT001018` header ausente; `404 QIT001002` origem ou destino inexistente; `409 QIT001006` origem ou destino fora de `APPROVED`; `409 QIT001008` mesma chave com corpo diferente; `422 QIT001005` saldo menor que valor mais tarifa; `422 QIT001007` acima do limite noturno (só saque e transferência); `422 QIT001012` destino igual à origem |
+| `POST` | `/account/{account_key}/transaction` | Depósito, saque ou transferência (com tarifa). Idempotente por (`account_key`, rota, `Idempotency-Key`): repetir devolve a resposta original e não lança de novo | Header `Idempotency-Key` (1 a 64 caracteres); `type` (`DEPOSIT`, `WITHDRAWAL`, `TRANSFER`); `amount` (inteiro, mínimo 1); `destination_account_key` (obrigatório só em `TRANSFER`) | `201` (a repetição também devolve `201`, com o mesmo corpo); `400 QIT000001` corpo ou chave fora do formato; `400 QIT001018` header ausente; `404 QIT001002` origem ou destino inexistente; `409 QIT001006` origem ou destino fora de `APPROVED`; `409 QIT001008` mesma chave com corpo diferente; `422 QIT001005` saldo menor que valor mais tarifa; `422 QIT001012` destino igual à origem. `422 QIT001007` será acrescentado na S7b |
 | `GET` | `/account/{account_key}/transaction/{transaction_key}` | Devolve um lançamento. Lançamento de outra conta responde exatamente como inexistente | `account_key` e `transaction_key` no caminho | `200`; `404 QIT001002` conta inexistente; `404 QIT001011` lançamento inexistente ou de outra conta |
 | `GET` | `/account/{account_key}/transactions` | Extrato paginado, mais recente primeiro (`created_at` e `id` decrescentes) | `limit` (padrão 10, teto 100), `page` (padrão 0), `type` (opcional) | `200` com `data`, `limit`, `page`, `is_last_page`; `400 QIT000001` parâmetro inválido ou desconhecido; `404 QIT001002` |
 | `POST` | `/account/{account_key}/billing-plan` | Cria o plano e emite o lote 1 (12 boletos mensais de `base_amount`). Não é idempotente: cada chamada cria outro plano | `base_amount` (inteiro, mínimo 1), `first_due_date` (`AAAA-MM-DD`) | `201` com `plan_key` e os boletos; `400 QIT000001`; `404 QIT001002`; `409 QIT001006` conta fora de `APPROVED`; `422 QIT001017` vencimento no passado; `502 QIT001009` conector de boletos sem resposta ou com resposta inválida |
 | `GET` | `/account/{account_key}/billing-plan/{plan_key}` | Devolve o plano com todos os boletos, seu lote (`batch_number`), taxa aplicada (`adjustment_rate`), status atual e histórico `status_events` | `account_key` e `plan_key` no caminho | `200`; `404 QIT001002`; `404 QIT001013` plano inexistente ou de outra conta |
 | `POST` | `/account/{account_key}/billing-plan/{plan_key}/adjustment` | Reajusta o valor pelo índice e emite o lote 2 (parcelas 13 a 24). Idempotente por `UNIQUE(billing_plan_id, installment_number)`: repetir não emite de novo e responde `409` | `index_code` (`IPCA` ou `IGPM`) | `201` com os boletos do lote 2; `400 QIT000001`; `404 QIT001002`, `404 QIT001013`; `409 QIT001014` lote 2 já emitido; `502 QIT001009` Banco Central ou conector de boletos falhou |
-| `POST` | `/account/{account_key}/credit-advance` | Antecipa boletos pendentes: credita o valor menos 3% de taxa. Idempotente por `Idempotency-Key`, e cada boleto só antecipa uma vez (`bank_slip.credit_advance_id`) | Header `Idempotency-Key`; `bank_slip_keys` (de 1 a 50 chaves distintas) | `201` com `credit_advance_key`, `gross_amount`, `fee_amount`, `net_amount`, `balance`; `400 QIT000001`; `400 QIT001018`; `404 QIT001002`; `404 QIT001015` algum boleto inexistente ou de outra conta; `409 QIT001006` conta fora de `APPROVED`; `409 QIT001008`; `409 QIT001016` algum boleto não está `PENDING` ou já foi antecipado |
+| `POST` *(planejado, S10)* | `/account/{account_key}/credit-advance` | Antecipa boletos pendentes: credita o valor menos 3% de taxa. Ainda não exposta nesta versão | Header `Idempotency-Key`; `bank_slip_keys` (de 1 a 50 chaves distintas) | Contrato reservado para S10: `201` com `credit_advance_key`, `gross_amount`, `fee_amount`, `net_amount`, `balance`; erros `QIT001015` e `QIT001016` serão materializados junto com a rota |
 
 ### Banco de Dados (Somente diagrama)
 
@@ -190,7 +194,7 @@ erDiagram
 
 1. O resource valida o cabeçalho `Idempotency-Key` e o corpo contra o schema antes de qualquer consulta. Fora do formato: `400 QIT001018` ou `400 QIT000001`.
 2. O controller calcula o `request_hash` e insere a chave em `idempotency_key` (`ON CONFLICT DO NOTHING`). Inserção nova: segue. Conflito: ver o fluxo de retentativa.
-3. Falhas baratas antes de qualquer trava: destino igual à origem (`422 QIT001012`) e limite noturno (`422 QIT001007`). A janela, o fuso e o limite vêm de variáveis de ambiente (padrão: 20h às 6h, `America/Sao_Paulo`, R$ 1.000,00 por operação), para que o teste de caixa-preta exercite a regra sem depender do relógio de quem roda.
+3. Falha barata antes de qualquer trava: destino igual à origem (`422 QIT001012`). O limite noturno (`422 QIT001007`) é a próxima entrega, S7b; a janela, o fuso e o limite já estão definidos em variáveis de ambiente (padrão: 20h às 6h, `America/Sao_Paulo`, R$ 1.000,00 por operação).
 4. O repository trava as duas contas em uma única consulta, `SELECT ... FOR NO KEY UPDATE ORDER BY id`. Esse lock impede atualizações concorrentes de saldo/status, mas é compatível com a referência de chave estrangeira criada pela reserva de idempotência. A ordem fixa por `id` impede o impasse (*deadlock*) quando A→B e B→A chegam juntas. Conta ausente: `404 QIT001002`. Conta fora de `APPROVED`: `409 QIT001006`.
 5. O controller soma valor e tarifa (tarifa fixa de 100 centavos, constante do sistema, debitada da origem). Se o saldo da origem for menor que o total: `422 QIT001005`.
 6. Atualiza os dois saldos e grava três linhas no ledger com o mesmo `operation_key`: `TRANSFER_OUT` (−valor) e `TRANSFER_FEE` (−tarifa) na origem, `TRANSFER_IN` (+valor) no destino, cada uma com seu `balance_after`.
@@ -208,7 +212,7 @@ erDiagram
 2. Se a primeira requisição já confirmou, o `INSERT` em `idempotency_key` conflita. O controller lê a linha existente: mesmo `request_hash` devolve `201` com o corpo guardado (mesma `transaction_key`) e o cabeçalho `Idempotent-Replayed: true`, sem novo lançamento; `request_hash` diferente devolve `409 QIT001008`.
 3. Se a primeira ainda está em andamento, o `INSERT` da segunda espera no próprio índice `UNIQUE` até a primeira confirmar ou desfazer. Confirmou: cai no caso anterior. Desfez: a segunda executa normalmente.
 
-**Antecipação de recebíveis: caminho feliz**
+**Antecipação de recebíveis: caminho feliz (planejado para S10; não exposto neste checkpoint)**
 
 1. O resource valida cabeçalho e corpo (`bank_slip_keys` com 1 a 50 chaves distintas). O controller registra a idempotência como no fluxo anterior.
 2. Trava a conta (`FOR UPDATE`): `404 QIT001002` se não existe; `409 QIT001006` se não está `APPROVED`.

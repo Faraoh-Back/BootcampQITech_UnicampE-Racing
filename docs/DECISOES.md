@@ -7,6 +7,8 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D9)
 
+> **Checkpoint T3.1 (RFC 2.1):** D1–D9 continuam sendo o contrato de destino. Neste ponto estão implementadas as decisões necessárias para cliente, conta, ciclo de vida, ledger, transferência, plano de boletos, reajuste e idempotência. A aplicação do limite noturno (D8 / `QIT001007`) é S7b; antecipação (`QIT001015` e `QIT001016`) é S10. Esses códigos e rotas permanecem documentados como planejados, não como comportamento já disponível.
+
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
 | **D1** | **Valores Fixos e Variáveis de Ambiente** | • Tarifa de transferência: `100` centavos (R$ 1,00)<br>• Taxa de antecipação: `3%`<br>• Limite noturno: `100000` centavos (R$ 1.000,00)<br>• Janela noturna padrão: 20:00 às 06:00 | Todos os valores monetários são inteiros em centavos. As variáveis de ambiente são:<br>`TRANSFER_FEE_CENTS=100`<br>`ADVANCE_FEE_PERCENT=3`<br>`NIGHT_LIMIT_CENTS=100000`<br>`NIGHT_START="20:00"`<br>`NIGHT_END="06:00"`<br>`TIMEZONE="America/Sao_Paulo"` |
@@ -35,27 +37,27 @@ Todas as respostas de erro retornam payload JSON padronizado:
 
 | Código | HTTP Status | Nome do Erro / Exception | Descrição / Quando ocorre |
 |---|---|---|---|
-| **QIT000001** | `400 Bad Request` | `InvalidPayloadError` | Corpo da requisição fora do schema JSON esperado, campos ausentes ou tipos incompatíveis. |
-| **QIT000002** | `403 Forbidden` | `ForbiddenError` | Cabeçalho `INTERNAL-TOKEN` ausente ou com token inválido. |
-| **QIT001001** | `404 Not Found` | `CustomerNotFoundError` | `customer_key` não existe na base de dados. |
-| **QIT001002** | `404 Not Found` | `AccountNotFoundError` | `account_key` de origem ou de destino não encontrada no banco de dados. |
-| **QIT001003** | `409 Conflict` | `DocumentAlreadyExistsError` | Documento (CPF ou CNPJ) já cadastrado para outro cliente (`UNIQUE`). |
-| **QIT001004** | `409 Conflict` | `EmailAlreadyExistsError` | E-mail já cadastrado para outro cliente (`UNIQUE`). |
-| **QIT001005** | `422 Unprocessable` | `InsufficientBalanceError` | Saldo da conta de origem é menor que o valor a debitar somado à tarifa. |
-| **QIT001006** | `409 Conflict` | `AccountNotApprovedError` | Conta de origem ou destino não está com status `APPROVED` (ex: `PENDING` ou `BLOCKED`). |
-| **QIT001007** | `422 Unprocessable` | `NightLimitExceededError` | Valor do saque ou da transferência ultrapassa o limite permitido para o horário noturno. |
-| **QIT001008** | `409 Conflict` | `IdempotencyConflictError` | Mesma `Idempotency-Key` reenviada com parâmetros ou corpo de requisição diferentes. |
-| **QIT001009** | `502 Bad Gateway` | `ExternalServiceError` | Conector externo (BankSlip ou Banco Central) retornou erro, timeout ou resposta inválida. |
-| **QIT001010** | `422 Unprocessable` | `InvalidDocumentError` | CPF ou CNPJ sintaticamente inválido (dígitos verificadores matematicamente incorretos). |
-| **QIT001011** | `404 Not Found` | `TransactionNotFoundError` | `transaction_key` inexistente ou pertencente a outra conta (não vazar existência). |
-| **QIT001012** | `422 Unprocessable` | `SameAccountTransferError` | Conta de destino informada é idêntica à conta de origem em uma transferência. |
-| **QIT001013** | `404 Not Found` | `BillingPlanNotFoundError` | `plan_key` inexistente ou pertencente a outra conta. |
-| **QIT001014** | `409 Conflict` | `AdjustmentAlreadyAppliedError` | Lote 2 de parcelas reajustadas já foi emitido previamente para este plano de cobrança. |
-| **QIT001015** | `404 Not Found` | `BankSlipNotFoundError` | Alguma das chaves informadas em `bank_slip_keys` não existe ou não pertence a esta conta. |
-| **QIT001016** | `409 Conflict` | `BankSlipNotEligibleError` | Algum dos boletos solicitados para antecipação não está `PENDING` ou já foi antecipado. |
-| **QIT001017** | `422 Unprocessable` | `InvalidDueDateError` | Data de primeiro vencimento informada no plano de cobrança está no passado. |
-| **QIT001018** | `400 Bad Request` | `MissingIdempotencyKeyError` | Cabeçalho obrigatório `Idempotency-Key` não foi informado na requisição. |
-| **QIT001019** | `409 Conflict` | `InvalidAccountStatusTransitionError` | Transição de status da conta não permitida, inclusive tentativa de alterar uma conta `CANCELLED`. |
+| **QIT000001** | `400 Bad Request` | `InvalidSchema` | Corpo da requisição fora do schema JSON esperado, campos ausentes ou tipos incompatíveis. |
+| **QIT000002** | `403 Forbidden` | `ForbiddenNotInternal` | Cabeçalho `INTERNAL-TOKEN` ausente ou com token inválido. |
+| **QIT001001** | `404 Not Found` | `CustomerNotFound` | `customer_key` não existe na base de dados. |
+| **QIT001002** | `404 Not Found` | `AccountNotFound` | `account_key` de origem ou de destino não encontrada no banco de dados. |
+| **QIT001003** | `409 Conflict` | `DuplicatedDocumentNumber` | Documento (CPF ou CNPJ) já cadastrado para outro cliente (`UNIQUE`). |
+| **QIT001004** | `409 Conflict` | `DuplicatedEmail` | E-mail já cadastrado para outro cliente (`UNIQUE`). |
+| **QIT001005** | `422 Unprocessable` | `InsufficientBalance` | Saldo da conta de origem é menor que o valor a debitar somado à tarifa. |
+| **QIT001006** | `409 Conflict` | `AccountNotApproved` | Conta de origem ou destino não está com status `APPROVED` (ex: `PENDING` ou `BLOCKED`). |
+| **QIT001007** *(planejado S7b)* | `422 Unprocessable` | `NightLimitExceeded` | Valor do saque ou da transferência ultrapassa o limite permitido para o horário noturno. |
+| **QIT001008** | `409 Conflict` | `IdempotencyConflict` | Mesma `Idempotency-Key` reenviada com parâmetros ou corpo de requisição diferentes. |
+| **QIT001009** | `502 Bad Gateway` | `ExternalConnectorError` | Conector externo (BankSlip ou Banco Central) retornou erro, timeout ou resposta inválida. |
+| **QIT001010** | `422 Unprocessable` | `InvalidDocumentNumber` | CPF ou CNPJ sintaticamente inválido (dígitos verificadores matematicamente incorretos). |
+| **QIT001011** | `404 Not Found` | `TransactionNotFound` | `transaction_key` inexistente ou pertencente a outra conta (não vazar existência). |
+| **QIT001012** | `422 Unprocessable` | `SameAccountTransfer` | Conta de destino informada é idêntica à conta de origem em uma transferência. |
+| **QIT001013** | `404 Not Found` | `BillingPlanNotFound` | `plan_key` inexistente ou pertencente a outra conta. |
+| **QIT001014** | `409 Conflict` | `AdjustmentAlreadyApplied` | Lote 2 de parcelas reajustadas já foi emitido previamente para este plano de cobrança. |
+| **QIT001015** *(planejado S10)* | `404 Not Found` | `BankSlipNotFound` | Alguma das chaves informadas em `bank_slip_keys` não existe ou não pertence a esta conta. |
+| **QIT001016** *(planejado S10)* | `409 Conflict` | `BankSlipNotEligible` | Algum dos boletos solicitados para antecipação não está `PENDING` ou já foi antecipado. |
+| **QIT001017** | `422 Unprocessable` | `InvalidFirstDueDate` | Data de primeiro vencimento informada no plano de cobrança está no passado. |
+| **QIT001018** | `400 Bad Request` | `MissingIdempotencyKey` | Cabeçalho obrigatório `Idempotency-Key` não foi informado na requisição. |
+| **QIT001019** | `409 Conflict` | `InvalidAccountStatusTransition` | Transição de status da conta não permitida, inclusive tentativa de alterar uma conta `CANCELLED`. |
 
 ### Erros de infraestrutura HTTP
 
