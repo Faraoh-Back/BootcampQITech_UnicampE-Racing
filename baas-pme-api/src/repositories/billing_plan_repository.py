@@ -19,6 +19,27 @@ class BillingPlanRepository:
             .first()
         )
 
+    def get_by_key_for_account_for_update(
+        self, plan_key: str, account_id: int
+    ) -> BillingPlan | None:
+        return (
+            self.session.query(BillingPlan)
+            .filter(BillingPlan.plan_key == plan_key, BillingPlan.account_id == account_id)
+            .with_for_update()
+            .first()
+        )
+
+    def has_batch(self, billing_plan_id: int, batch_number: int) -> bool:
+        return (
+            self.session.query(BankSlip.id)
+            .filter(
+                BankSlip.billing_plan_id == billing_plan_id,
+                BankSlip.batch_number == batch_number,
+            )
+            .first()
+            is not None
+        )
+
     def create(
         self,
         account: Account,
@@ -56,6 +77,34 @@ class BillingPlanRepository:
 
         self.session.flush()
         return plan
+
+    def create_adjustment_batch(
+        self, plan: BillingPlan, adjustment_rate, issued_slips: list[dict]
+    ) -> list[BankSlip]:
+        """Persiste o lote 2 e seus eventos depois da emissão externa."""
+        pending_status = self.get_bank_slip_status("PENDING")
+        bank_slips = []
+        for issued_slip in issued_slips:
+            bank_slip = BankSlip(
+                bank_slip_key=str(uuid4()),
+                billing_plan=plan,
+                status=pending_status,
+                installment_number=issued_slip["installment_number"],
+                batch_number=2,
+                adjustment_rate=adjustment_rate,
+                amount=issued_slip["amount"],
+                due_date=issued_slip["due_date"],
+                barcode=issued_slip["barcode"],
+            )
+            self.session.add(bank_slip)
+            self.session.flush()
+            bank_slip.status_events.append(
+                BankSlipStatusEvent(status=pending_status, event_datetime=datetime.utcnow())
+            )
+            bank_slips.append(bank_slip)
+
+        self.session.flush()
+        return bank_slips
 
     def get_bank_slip_status(self, enumerator: str) -> BankSlipStatus:
         return (

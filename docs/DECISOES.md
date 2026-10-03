@@ -295,6 +295,8 @@ INTERNAL-TOKEN: <token_configurado>
       {
         "bank_slip_key": "11111111-2222-3333-4444-555555555555",
         "installment_number": 1,
+        "batch_number": 1,
+        "adjustment_rate": null,
         "amount": 15000,
         "due_date": "2026-11-10",
         "barcode": "34191.09008 00000.123456 7 8901234567890",

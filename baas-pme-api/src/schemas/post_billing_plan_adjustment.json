@@ -1,0 +1,12 @@
+{
+  "title": "PostBillingPlanAdjustment",
+  "type": "object",
+  "properties": {
+    "index_code": {
+      "type": "string",
+      "enum": ["IPCA", "IGPM"]
+    }
+  },
+  "required": ["index_code"],
+  "additionalProperties": false
+}

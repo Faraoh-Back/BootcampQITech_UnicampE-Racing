@@ -167,12 +167,13 @@ def verify_bankslip_external_reference(external_reference: str) -> None:
     if not requests_made:
         raise AssertionError("O MockServer não registrou uma chamada para /bank-slips.")
 
-    body = requests_made[-1].get("body")
-    if isinstance(body, dict):
-        body = body.get("string", body.get("json", body))
-    if isinstance(body, str):
-        body = json.loads(body)
-    if not isinstance(body, dict) or body.get("external_reference") != external_reference:
-        raise AssertionError(
-            "A external_reference enviada ao MockServer é diferente da referência esperada."
-        )
+    for request_made in requests_made:
+        body = request_made.get("body")
+        if isinstance(body, dict):
+            body = body.get("string", body.get("json", body))
+        if isinstance(body, str):
+            body = json.loads(body)
+        if not isinstance(body, dict) or body.get("external_reference") != external_reference:
+            raise AssertionError(
+                "A external_reference enviada ao MockServer é diferente da referência esperada."
+            )

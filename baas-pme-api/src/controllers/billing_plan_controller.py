@@ -1,12 +1,14 @@
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 
-from connectors import BankSlipConnector
+from connectors import BankSlipConnector, CentralBankConnector
 from controllers.base_controller import BaseController
 from dtos import BillingPlanDTO
 from errors import (
     AccountNotApproved,
     AccountNotFound,
+    AdjustmentAlreadyApplied,
     BillingPlanNotFound,
     ExternalConnectorError,
     InvalidFirstDueDate,
@@ -37,7 +39,7 @@ class BillingPlanController(BaseController):
 
         plan_key = str(uuid4())
         installments = self._build_installments(payload["base_amount"], first_due_date)
-        issued_by_installment = self._issue_batch(plan_key, installments)
+        issued_by_installment = self._issue_batch(plan_key, 1, installments)
         issued_slips = [
             {**installment, "barcode": issued_by_installment[installment["installment_number"]]}
             for installment in installments
@@ -59,21 +61,65 @@ class BillingPlanController(BaseController):
             raise BillingPlanNotFound(plan_key)
         return BillingPlanDTO.obj_to_dict(plan)
 
+    def create_adjustment(self, account_key: str, plan_key: str, payload: dict) -> dict:
+        account = self.billing_plan_repository.get_account_by_key(account_key)
+        if account is None:
+            raise AccountNotFound(account_key)
+        plan = self.billing_plan_repository.get_by_key_for_account(plan_key, account.id)
+        if plan is None:
+            raise BillingPlanNotFound(plan_key)
+
+        # A consulta externa acontece antes da trava: planos distintos e até
+        # leituras repetidas do mesmo plano não devem prender uma transação.
+        rate = CentralBankConnector().get_accumulated_rate(payload["index_code"])
+
+        plan = self.billing_plan_repository.get_by_key_for_account_for_update(plan_key, account.id)
+        if plan is None:
+            raise BillingPlanNotFound(plan_key)
+        if self.billing_plan_repository.has_batch(plan.id, 2):
+            raise AdjustmentAlreadyApplied()
+
+        adjusted_amount = self._adjust_amount(plan.base_amount, rate)
+        installments = self._build_installments(
+            adjusted_amount, plan.first_due_date, first_installment_number=13
+        )
+        issued_by_installment = self._issue_batch(plan.plan_key, 2, installments)
+        issued_slips = [
+            {**installment, "barcode": issued_by_installment[installment["installment_number"]]}
+            for installment in installments
+        ]
+        bank_slips = self.billing_plan_repository.create_adjustment_batch(plan, rate, issued_slips)
+        self.session.commit()
+        return {
+            "plan_key": plan.plan_key,
+            "index_code": payload["index_code"],
+            "accumulated_rate": str(rate),
+            "adjusted_amount": adjusted_amount,
+            "bank_slips": [BillingPlanDTO._bank_slip_to_dict(slip) for slip in bank_slips],
+        }
+
     @staticmethod
-    def _build_installments(base_amount: int, first_due_date: date) -> list[dict]:
+    def _build_installments(
+        base_amount: int, first_due_date: date, first_installment_number: int = 1
+    ) -> list[dict]:
         return [
             {
                 "installment_number": installment_number,
                 "amount": base_amount,
                 "due_date": add_months(first_due_date, installment_number - 1),
             }
-            for installment_number in range(1, 13)
+            for installment_number in range(first_installment_number, first_installment_number + 12)
         ]
 
     @staticmethod
-    def _issue_batch(plan_key: str, installments: list[dict]) -> dict[int, str]:
+    def _adjust_amount(base_amount: int, rate: Decimal) -> int:
+        factor = Decimal("1") + (rate / Decimal("100"))
+        return int((Decimal(base_amount) * factor).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    @staticmethod
+    def _issue_batch(plan_key: str, batch_number: int, installments: list[dict]) -> dict[int, str]:
         response = BankSlipConnector().issue_batch(
-            external_reference=f"{plan_key}:batch:1",
+            external_reference=f"{plan_key}:batch:{batch_number}",
             installments=[
                 {**installment, "due_date": installment["due_date"].isoformat()}
                 for installment in installments

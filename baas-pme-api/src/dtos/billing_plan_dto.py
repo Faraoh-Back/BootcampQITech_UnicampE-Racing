@@ -38,6 +38,12 @@ class BillingPlanDTO:
             "status": bank_slip.status.enumerator,
         }
         if include_events:
+            result["batch_number"] = bank_slip.batch_number
+            result["adjustment_rate"] = (
+                format(bank_slip.adjustment_rate.normalize(), "f")
+                if bank_slip.adjustment_rate is not None
+                else None
+            )
             result["status_events"] = [
                 {
                     "status": event.status.enumerator,

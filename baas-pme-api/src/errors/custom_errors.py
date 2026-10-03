@@ -99,6 +99,19 @@ class BillingPlanNotFound(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class AdjustmentAlreadyApplied(QIException):
+    """Cada plano pode ter apenas um lote reajustado de boletos."""
+
+    code = "QIT001014"
+
+    def __init__(self) -> None:
+        title = "Adjustment already applied"
+        http_status = 409
+        description = "The adjusted second batch was already issued for this billing plan."
+        translation = "O lote reajustado de boletos já foi emitido para este plano de cobrança."
+        super().__init__(title, self.code, http_status, description, translation)
+
+
 class InvalidFirstDueDate(QIException):
     code = "QIT001017"
 

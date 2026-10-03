@@ -193,6 +193,11 @@ def create_app() -> FastAPI:
         methods=["GET"],
     )
     application.add_api_route(
+        "/account/{account_key}/billing-plan/{plan_key}/adjustment",
+        billing_plan_resource.on_post_adjustment,
+        methods=["POST"],
+    )
+    application.add_api_route(
         "/account/{account_key}/transaction",
         transaction_resource.on_post,
         methods=["POST"],
