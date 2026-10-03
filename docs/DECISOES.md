@@ -11,13 +11,13 @@
 |---|---|---|---|
 | **D1** | **Valores Fixos e Variáveis de Ambiente** | • Tarifa de transferência: `100` centavos (R$ 1,00)<br>• Taxa de antecipação: `3%`<br>• Limite noturno: `100000` centavos (R$ 1.000,00)<br>• Janela noturna padrão: 20:00 às 06:00 | Todos os valores monetários são inteiros em centavos. As variáveis de ambiente são:<br>`TRANSFER_FEE_CENTS=100`<br>`ADVANCE_FEE_PERCENT=3`<br>`NIGHT_LIMIT_CENTS=100000`<br>`NIGHT_START="20:00"`<br>`NIGHT_END="06:00"`<br>`TIMEZONE="America/Sao_Paulo"` |
 | **D2** | **Índices de Reajuste** | Aceitar exclusivamente **`IPCA`** e **`IGPM`**. | A Selic foi descartada porque é taxa básica de juros de política monetária, e não índice de inflação contratual para reajuste de cobrança/mensalidade. |
-| **D3** | **Bloqueio de Conta (Testabilidade do QIT001006)** | Adição da rota **`PUT /account/{account_key}/block`** (S2b). | Sem rota para mudar o status da conta de `APPROVED` para `BLOCKED`, a máquina de estados seria decorativa e o erro `409 QIT001006` não poderia ser testado em caixa-preta via HTTP. |
+| **D3** | **Ciclo de Vida da Conta** | Rotas `PUT /account/{account_key}/block` e `PUT /account/{account_key}/cancel` (S2b). Transições permitidas: `APPROVED → BLOCKED`, `APPROVED → CANCELLED` e `BLOCKED → CANCELLED`. `CANCELLED` é final e irreversível. | Cada transição gera evento auditável. Operações financeiras só aceitam conta `APPROVED`; transição não permitida devolve `409 QIT001019`. |
 | **D4** | **Modelo de Antecipação de Recebíveis** | Antecipação lastreada em **`bank_slip_keys`** (1 a 50 chaves por chamada). | Antecipação por valor arbitrário abre brecha para criar dinheiro sem lastro. Vincular às chaves dos boletos garante que cada boleto seja antecipado no máximo uma vez através do vínculo `bank_slip.credit_advance_id`. |
 | **D5** | **Formato da Taxa do Banco Central** | Retornada em string percentual, ex: `"4.83"` (significa 4,83%). | O cálculo do novo valor utiliza `Decimal` com arredondamento *half-up* para centavos inteiros:<br>`fator = Decimal("1") + (Decimal(rate_str) / Decimal("100"))`<br>`novo_valor = int((Decimal(base_amount) * fator).quantize(Decimal("1"), rounding=ROUND_HALF_UP))` |
 | **D6** | **Contratos dos Mocks (MockServer)** | Contratos fixos para os conectores externos: | **BankSlip Mock (`POST /bank-slips`):**<br>Entrada: `{ external_reference: str, installments: [{ installment_number: int, amount: int, due_date: "AAAA-MM-DD" }] }`<br>Saída: `200 { bank_slips: [{ installment_number: int, barcode: str }] }`<br><br>**CentralBank Mock (`GET /index/{IPCA\|IGPM}`):**<br>Saída: `200 { index: str, accumulated_rate: "4.83" }` |
 | **D7** | **Histórico de Eventos Visível por HTTP (R4)** | `GET /account/{account_key}` e `GET .../billing-plan/{plan_key}` expõem o campo `status_events`. | A regra R4 (imutabilidade e auditabilidade: nada deixa de existir) só é testável em caixa-preta se os eventos históricos de status forem inspecionáveis via resposta HTTP. Formato: `[{ "status": "APPROVED", "event_datetime": "2026-10-02T12:00:00Z" }]`. |
-| **D8** | **Janela Noturna no Ambiente de Avaliação** | O `.env` versionado define a janela noturna de modo determinístico para testes. | Como os testes automatizados da banca avaliadora rodam a qualquer hora do dia com `docker compose up`, o `.env` de teste cobre 24h ou utiliza mocks/configurações que permitem testar operações diurnas e noturnas sem depender do relógio local da máquina. |
-| **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout (5s padrão), log padronizado de ida e volta e injeção automática do cabeçalho `INTERNAL-TOKEN`. |
+| **D8** | **Janela e Limite Noturno** | Transferências noturnas têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte. | A regra segue o limite padrão de transferências noturnas (Pix e TED) para pessoa física. A aplicação usa `TIMEZONE=America/Sao_Paulo`; os testes da S7b devem controlar o relógio/configuração para não depender da hora em que a banca executa a suíte. |
+| **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout (5s padrão), log padronizado de ida e volta e interpretação JSON com `Decimal`. O `INTERNAL-TOKEN` **não** é enviado automaticamente a APIs externas; somente um contrato explícito de serviço interno pode exigi-lo. |
 
 ---
 
@@ -26,8 +26,10 @@
 Todas as respostas de erro retornam payload JSON padronizado:
 ```json
 {
-  "code": "QITxxxxxx",
-  "message": "Descrição amigável e explicativa do erro ocorrido."
+  "title": "Bad Request",
+  "description": "Descrição técnica do erro.",
+  "translation": "Descrição amigável em português.",
+  "code": "QITxxxxxx"
 }
 ```
 
@@ -53,6 +55,27 @@ Todas as respostas de erro retornam payload JSON padronizado:
 | **QIT001016** | `409 Conflict` | `BankSlipNotEligibleError` | Algum dos boletos solicitados para antecipação não está `PENDING` ou já foi antecipado. |
 | **QIT001017** | `422 Unprocessable` | `InvalidDueDateError` | Data de primeiro vencimento informada no plano de cobrança está no passado. |
 | **QIT001018** | `400 Bad Request` | `MissingIdempotencyKeyError` | Cabeçalho obrigatório `Idempotency-Key` não foi informado na requisição. |
+| **QIT001019** | `409 Conflict` | `InvalidAccountStatusTransitionError` | Transição de status da conta não permitida, inclusive tentativa de alterar uma conta `CANCELLED`. |
+
+### Erros de infraestrutura HTTP
+
+| Código | HTTP Status | Quando ocorre |
+|---|---|---|
+| **QIT000010** | `400 Bad Request` | Parâmetro de consulta semanticamente inválido, como intervalo de datas invertido. |
+| **QIT000404** | `404 Not Found` | Caminho HTTP inexistente. |
+| **QIT000405** | `405 Method Not Allowed` | Método HTTP não permitido para o caminho. |
+| **QIT000500** | `500 Internal Server Error` | Falha inesperada não mapeada para um erro de domínio. |
+
+### Erros legados do recurso de exemplo `sample_entity`
+
+Esses códigos não pertencem ao domínio BaaS PME. Eles permanecem para que o recurso de exemplo e seus testes continuem funcionais, sem disputar os códigos reservados ao produto.
+
+| Código | HTTP Status | Quando ocorre |
+|---|---|---|
+| **QIT002001** | `404 Not Found` | `sample_entity_key` inexistente. |
+| **QIT002002** | `409 Conflict` | Tentativa de alterar uma Sample Entity em status final. |
+| **QIT002003** | `422 Unprocessable` | Idade abaixo do mínimo no recurso de exemplo. |
+| **QIT002004** | `422 Unprocessable` | Data de nascimento impossível no recurso de exemplo. |
 
 ---
 
@@ -80,11 +103,7 @@ INTERNAL-TOKEN: <token_configurado>
 - **Resposta Sucesso (`201 Created`):**
   ```json
   {
-    "customer_key": "c9bf9e57-1685-4c89-bafb-ff5af830be8a",
-    "name": "Academia Boa Forma Ltda",
-    "email": "contato@boaforma.com.br",
-    "document_number": "12.345.678/0001-90",
-    "created_at": "2026-10-02T15:00:00Z"
+    "customer_key": "c9bf9e57-1685-4c89-bafb-ff5af830be8a"
   }
   ```
 - **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `409 QIT001003`, `409 QIT001004`, `422 QIT001010`.
@@ -157,7 +176,19 @@ INTERNAL-TOKEN: <token_configurado>
     "updated_at": "2026-10-02T15:30:00Z"
   }
   ```
-- **Erros Possíveis:** `403 QIT000002`, `404 QIT001002`.
+- **Erros Possíveis:** `403 QIT000002`, `404 QIT001002`, `409 QIT001019`.
+
+#### `PUT /account/{account_key}/cancel` (Decisão D3)
+- **Regra:** aceita contas em `APPROVED` ou `BLOCKED`, muda o status para `CANCELLED` e registra o evento. `CANCELLED` não pode voltar a nenhum outro status.
+- **Resposta Sucesso (`200 OK`):**
+  ```json
+  {
+    "account_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
+    "status": "CANCELLED",
+    "updated_at": "2026-10-02T15:30:00Z"
+  }
+  ```
+- **Erros Possíveis:** `403 QIT000002`, `404 QIT001002`, `409 QIT001019`.
 
 ---
 

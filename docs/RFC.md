@@ -13,7 +13,9 @@ Uma PME urbana (academia, escola, consultoria) vive de um ciclo curto: cobra men
 
 A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge da soma do extrato; uma operação repetida por falha de rede não é executada duas vezes; nenhum lançamento some. Se falhar, o saldo diverge (a PME paga o que não tem), a transação duplica (o fornecedor recebe duas vezes), o extrato não reconstrói o saldo (a auditoria não consegue explicar o que aconteceu) ou um boleto é antecipado duas vezes (dinheiro criado do nada).
 
-Fora do escopo: pagamento e baixa de boletos, bloqueio e cancelamento de conta, estorno, múltiplas moedas, autenticação de usuário final e qualquer rotina agendada.
+Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
+
+Fora do escopo: pagamento e baixa de boletos, estorno, múltiplas moedas, autenticação de usuário final e qualquer rotina agendada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
 
 ### Explicando a solução de forma macro
 
@@ -53,6 +55,8 @@ Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho)
 | `GET` | `/customer/{customer_key}` | Devolve um cliente | `customer_key` no caminho | `200`; `404 QIT001001` |
 | `POST` | `/account` | Abre conta com saldo 0 e grava os eventos `PENDING` e `APPROVED` na mesma transação. Não é idempotente: cada chamada abre outra conta (um cliente pode ter várias) | `customer_key` | `201` com `account_key`, `status`, `balance`; `400 QIT000001`; `404 QIT001001` cliente inexistente |
 | `GET` | `/account/{account_key}` | Devolve a conta e o saldo | `account_key` no caminho | `200`; `404 QIT001002` |
+| `PUT` | `/account/{account_key}/block` | Bloqueia uma conta `APPROVED`, registra evento e impede operações financeiras | `account_key` no caminho | `200`; `404 QIT001002`; `409 QIT001019` se a transição não for permitida |
+| `PUT` | `/account/{account_key}/cancel` | Cancela uma conta `APPROVED` ou `BLOCKED`, registra evento e torna o status irreversível | `account_key` no caminho | `200`; `404 QIT001002`; `409 QIT001019` se a transição não for permitida |
 | `POST` | `/account/{account_key}/transaction` | Depósito, saque ou transferência (com tarifa). Idempotente por (`account_key`, rota, `Idempotency-Key`): repetir devolve a resposta original e não lança de novo | Header `Idempotency-Key`; `type` (`DEPOSIT`, `WITHDRAWAL`, `TRANSFER`); `amount` (inteiro, mínimo 1); `destination_account_key` (obrigatório só em `TRANSFER`) | `201` (a repetição também devolve `201`, com o mesmo corpo); `400 QIT000001` corpo fora do formato; `400 QIT001018` header ausente; `404 QIT001002` origem ou destino inexistente; `409 QIT001006` origem ou destino fora de `APPROVED`; `409 QIT001008` mesma chave com corpo diferente; `422 QIT001005` saldo menor que valor mais tarifa; `422 QIT001007` acima do limite noturno (só saque e transferência); `422 QIT001012` destino igual à origem |
 | `GET` | `/account/{account_key}/transaction/{transaction_key}` | Devolve um lançamento. Lançamento de outra conta responde exatamente como inexistente | `account_key` e `transaction_key` no caminho | `200`; `404 QIT001002` conta inexistente; `404 QIT001011` lançamento inexistente ou de outra conta |
 | `GET` | `/account/{account_key}/transactions` | Extrato paginado, mais recente primeiro (`created_at` e `id` decrescentes) | `limit` (padrão 10, teto 100), `page` (padrão 0), `type` (opcional) | `200` com `data`, `limit`, `page`, `is_last_page`; `400 QIT000001` parâmetro inválido ou desconhecido; `404 QIT001002` |
@@ -91,7 +95,7 @@ erDiagram
 
     ACCOUNT_STATUS {
         serial id PK
-        varchar(50) enumerator UK "PENDING, APPROVED, BLOCKED, CANCELLED"
+        varchar(50) enumerator UK "PENDING, APPROVED, BLOCKED, CANCELLED; CANCELLED é final"
     }
 
     ACCOUNT {

@@ -35,7 +35,7 @@
 |---|---|---|
 | D1 | Valores fixos | Tarifa de transferência 100 centavos; taxa de antecipação 3% com *half-up* em inteiros; limite noturno 100000 centavos por saque ou transferência. Tudo em variável de ambiente. |
 | D2 | Índices do reajuste | O plano antigo diz IPCA/Selic, a RFC diz IPCA/IGPM. Selic não é índice de inflação: fique com **IPCA e IGPM**. |
-| D3 | Bloqueio de conta | Sem nenhuma rota que tire a conta de `APPROVED`, o erro `409 QIT001006` é **impossível de testar** em caixa-preta e a máquina de estados fica de enfeite. Recomendo adicionar `PUT /account/{account_key}/block` (S2b, 2h) e atualizar o "fora do escopo" da RFC. A alternativa é remover `QIT001006` da RFC. |
+| D3 | Ciclo de vida de conta | Adicionar `PUT /account/{account_key}/block` e `PUT /account/{account_key}/cancel` na S2b. Transições: `APPROVED → BLOCKED`, `APPROVED → CANCELLED` e `BLOCKED → CANCELLED`; `CANCELLED` é final. A API registra evento em toda transição e devolve `409 QIT001019` se ela não for permitida. |
 | D4 | Antecipação | Lastreada em `bank_slip_keys` (como na RFC v2), não em valor livre. |
 | D5 | Formato da taxa do índice | Percentual em string: `"4.83"` significa 4,83%, fator `1 + 4.83/100`. |
 | D6 | Contratos dos mocks | BankSlip: `POST /bank-slips` com `{external_reference, installments:[{installment_number, amount, due_date}]}` responde `200 {bank_slips:[{installment_number, barcode}]}`. Banco Central: `GET /index/{IPCA\|IGPM}` responde `200 {index, accumulated_rate}`. |
@@ -187,11 +187,11 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R5 36h. Total
 - **Fazer:** `IdempotencyRepository.insert_or_get(account_id, scope, key, request_hash)` com `INSERT ... ON CONFLICT DO NOTHING RETURNING` seguido de `SELECT` se vier vazio (se outra transação ainda não confirmou, o `INSERT` espera no índice `UNIQUE`; se ela confirmar, cai no `SELECT`). Hash SHA-256 de JSON canônico (`sort_keys=True`, separadores fixos). Helper de controller que devolve "executar", "repetir resposta guardada" ou "conflito" (`QIT001008`), e método `store_response(status, body)`.
 - **Pronto quando:** revisado por A (que vai usá-lo na S6). Os testes de verdade são os da S6 e S7c.
 
-### S2b Bloqueio de conta (C, 2h)
-- **Depende de:** S2. Só se D3 for "adicionar a rota".
-- **Vermelho:** `PUT /account/{key}/block` 200 (status `BLOCKED`, evento novo em `status_events`); repetir: 409 `QIT001006`; 404 conta; depois de bloqueada, depósito e saque respondem 409 `QIT001006` (acrescente esses casos aos testes da S3).
-- **Verde:** transição `APPROVED` para `BLOCKED` no controller (a regra mora aqui, não no repository).
-- **Pronto quando:** `QIT001006` tem teste que o provoca.
+### S2b Bloqueio e cancelamento de conta (C, 2,5h)
+- **Depende de:** S2.
+- **Vermelho:** `PUT /account/{key}/block` 200 (status `BLOCKED`, evento novo em `status_events`); repetir ou bloquear conta fora de `APPROVED`: 409 `QIT001019`; `PUT .../cancel` 200 tanto de `APPROVED` quanto de `BLOCKED`, com evento `CANCELLED`; cancelar conta já cancelada: 409 `QIT001019`; 404 conta. Depois de bloqueada ou cancelada, depósito e saque respondem 409 `QIT001006` (acrescente esses casos aos testes da S3).
+- **Verde:** máquina de estados no controller: `APPROVED → BLOCKED`, `APPROVED → CANCELLED`, `BLOCKED → CANCELLED`; `CANCELLED` não tem saída. O repository apenas grava o status e o evento.
+- **Pronto quando:** `QIT001006` prova que conta não aprovada não movimenta valores e `QIT001019` prova as transições inválidas.
 
 ### S4 Extrato, consulta de lançamento e R8 (C, 4,5h)
 - **Depende de:** S3 (escreva os testes antes, com dados criados por depósitos).
