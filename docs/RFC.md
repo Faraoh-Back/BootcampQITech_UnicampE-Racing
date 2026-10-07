@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Time** | Cairê Belo · \<nome 2\> · \<nome 3\> |
+| **Time** | Cairê Belo · Pedro Campanha · \<nome 3\> |
 | **Versão** | 2.2 — pós-S7c, evolução planejada |
 
 ## Contextualização
