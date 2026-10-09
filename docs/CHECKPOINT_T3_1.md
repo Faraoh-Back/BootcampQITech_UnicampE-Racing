@@ -25,4 +25,7 @@ Data da revisão original: 2026-10-03. Atualizações de S11, S12, S13, S14, S15
 - **T5.3:** PDF oficial da RFC. O plano já o posterga para a entrega final; não há template ou gerador no repositório neste momento.
 - **R4.5 remanescente:** nenhum item. O Gate 3 opcional está evidenciado; S11, S12, S13, S14, S15 e T4.5 foram concluídas.
 
-Com esses itens marcados como planejados na RFC e nas decisões, não há divergência conhecida entre a documentação e o código entregue.
+O checkpoint confirma o escopo entregue na data indicada. As evoluções P0/P1
+posteriormente registradas na seção 9.5 do plano não são bugs escondidos deste
+checkpoint: são limites explicitados para não confundir garantia aplicada no
+fluxo com garantia imposta diretamente pelo banco ou pelo ambiente produtivo.

@@ -1,417 +1,132 @@
-# RFC: BaaS PME, conta, cobrança e liquidez para pequenas empresas
+# RFC — BaaS PME: conta, cobrança e liquidez
 
 | | |
 |---|---|
-| **Time** | Cairê Belo · \Pedro Campanha · \<nome 3\> |
-| **Versão** | 2.8 — pós-T4.5, evidência de concorrência reproduzível entregue |
+| **Time** | Cairê Belo · Pedro Campanha |
+| **Data** | 09/10/2026 |
+| **Versão** | 2.8 — consolidação das entregas até T4.5 |
 
 ## Contextualização
 
 ### Entendendo o problema
 
-Uma PME urbana (academia, escola, consultoria) vive de um ciclo curto: cobra mensalidades, recebe, paga fornecedores e, quando o caixa aperta antes de o boleto vencer, precisa de dinheiro na hora. O BaaS PME é o serviço que sustenta esse ciclo para outros sistemas, que o chamam com um token interno. Ele cadastra o cliente e abre a conta, move dinheiro (depósito, saque e transferência com tarifa), emite um plano de boletos reajustado pela inflação, antecipa boletos a receber e entrega um extrato paginado.
+Uma PME cobra mensalidades, recebe boletos, paga fornecedores e pode antecipar recebíveis para preservar caixa. O BaaS cadastra a PME e conta, movimenta dinheiro, emite boletos reajustados, antecipa recebíveis e entrega extrato. Sistemas internos usam credencial de serviço; usuários remotos operam conforme o papel na própria PME.
 
-A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge da soma do extrato; uma operação repetida por falha de rede não é executada duas vezes; nenhum lançamento some. Se falhar, o saldo diverge (a PME paga o que não tem), a transação duplica (o fornecedor recebe duas vezes), o extrato não reconstrói o saldo (a auditoria não consegue explicar o que aconteceu) ou um boleto é antecipado duas vezes (dinheiro criado do nada).
+Dinheiro exige saldo não negativo, retentativa sem duplicação, boleto antecipado uma única vez e extrato que explique a projeção de saldo. Falhas violariam o caixa, duplicariam pagamento/crédito ou destruiriam rastreabilidade. Estão fora do escopo: baixa de boleto, estorno, múltiplas moedas, reajuste agendado, SLO/capacidade produtiva e instalação de Alertmanager/cAdvisor. Bloqueio/cancelamento, identidade, auditoria verificável, métricas, timeout e notificação pós-commit foram entregues.
 
-Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
-
-Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. Autenticação de usuário, auditoria verificável, observabilidade, timeouts e notificações transacionais estão entregues. A integração de Alertmanager e a coleta de CPU/memória do runtime permanecem responsabilidade do ambiente operacional, com regras reproduzíveis documentadas. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
-
-### Estado deste checkpoint
-
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11, S12, S13, S14, S15 e T4.5. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A T4.5 torna a primeira dessas cargas repetível com coleta de ambiente e `docker stats`; o resultado de referência é contextual e não um SLO. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A S13 torna o atendimento observável por logs JSON e métricas Prometheus de baixa cardinalidade. A S14 limita conexão/leitura externa, trava/consulta PostgreSQL e o orçamento dos pontos bloqueantes da requisição, sem trocar operações incertas por repetição insegura. A S15 grava notificações de bloqueio/cancelamento em outbox na mesma transação, e um worker as entrega depois do commit com chave idempotente e retentativa. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Saques e transferências entre 20h e 6h, em `America/Sao_Paulo`, limitam cada operação a 100000 centavos; depósito não limita. Valores financeiros são centavos inteiros. O fluxo transacional e os testes concorrentes protegem saldo/ledger; a imutabilidade protegida diretamente pelo banco existe para `audit_event`. Expandir essa proteção a todo o ledger e reconciliar saldo independentemente é evolução P0 no plano.
 
 ### Explicando a solução de forma macro
 
-O dinheiro entra por duas portas (depósito e antecipação) e sai por duas (saque e transferência). Cada movimento vira uma linha imutável em um livro-razão (*ledger*) em centavos inteiros, inspirado no registro *append-only* e nas unidades indivisíveis do Bitcoin (o satoshi). O saldo da conta é um cache dessa soma, atualizado somente dentro da mesma transação que grava a linha, com a conta travada. O boleto é o recebível: o plano de cobrança emite os boletos, e a antecipação troca boletos pendentes por saldo, descontando 3%, marcando cada boleto como antecipado para que ele não valha duas vezes. Quatro forças moldam o desenho: (1) a correção do saldo vale mais que a latência, por isso a trava é pessimista; (2) retentativa é normal, por isso a `Idempotency-Key` é garantida por um `UNIQUE` no banco; (3) tudo precisa ser reconstruível, por isso nada é apagado e todo status tem evento; (4) serviço externo cai, por isso nenhuma chamada externa acontece com a conta travada e toda falha externa vira `502` sem gravar nada. O código segue as camadas do repositório-base: o *resource* fala HTTP, o *controller* decide e confirma, o *repository* só consulta. Tudo sobe com `docker compose up` (API, PostgreSQL e MockServer dos conectores) e a suíte `pytest` conversa apenas por HTTP.
+FastAPI valida HTTP; controllers decidem e confirmam uma única transação PostgreSQL; repositories concentram consulta e lock. Saldo é projeção materializada: contas são travadas em ordem estável, saldo é validado já travado, lançamentos em centavos e saldo são gravados no mesmo commit. `Idempotency-Key`, hash do corpo e unicidade tornam retentativas seguras. MockServer isola conectores nos testes; outbox grava a intenção de notificar junto do fato e worker entrega após o commit. Contratos completos, erros e payloads estão em `DECISOES.md`; cobertura, benchmark e operação estão nos documentos referenciados pelo README.
 
 ```mermaid
 flowchart LR
-    C["Serviço interno"] -->|"HTTP + INTERNAL-TOKEN"| API
-    U["Usuário remoto"] -->|"Bearer JWT + INTERNAL-TOKEN"| API
-    subgraph API["API FastAPI"]
-        M["middlewares"] --> R["resource"] --> K["controller"] --> P["repository"]
-    end
-    P --> DB[("PostgreSQL")]
-    K -->|"emite boletos"| BS["BankSlipConnector"]
-    K -->|"taxa do índice"| CB["CentralBankConnector"]
-    BS -.->|"em teste"| MS["MockServer"]
-    CB -.->|"em teste"| MS
+ I[Serviço interno] -->|INTERNAL-TOKEN| API
+ U[Usuário remoto] -->|INTERNAL-TOKEN + JWT opcional| API
+ subgraph API[FastAPI]
+ M[Middlewares] --> R[Resources] --> C[Controllers] --> P[Repositories]
+ end
+ P --> DB[(PostgreSQL)]
+ C --> BS[BankSlipConnector]
+ C --> CB[CentralBankConnector]
+ BS -. testes .-> MS[MockServer]
+ CB -. testes .-> MS
+ DB --> OW[Outbox worker] --> WH[Webhook]
 ```
 
-### Garantias, mecanismos e evidências
-
-| Risco | Mecanismo entregue | Evidência automatizada |
-|---|---|---|
-| Saldo negativo ou perdido sob disputa | `FOR NO KEY UPDATE`, ordem por `id`, `CHECK (balance >= 0)` e ledger em centavos | Saques simultâneos e transferências cruzadas repetidos cinco vezes. |
-| Retentativa duplicar dinheiro | `Idempotency-Key`, hash do corpo e `UNIQUE(account_id, scope, idempotency_key)` | Dez requisições simultâneas retornam a mesma `transaction_key` e geram um único lançamento. |
-| Um boleto gerar liquidez duas vezes | Trava de boleto e vínculo `credit_advance_id` | Duas antecipações concorrentes devolvem exatamente um `201` e um `409 QIT001016`. |
-| Falha externa deixar escrita parcial | Chamada externa antes da persistência e commit único | MockServer simula timeout, erro HTTP e corpo inválido sem plano ou lote parcial. |
-| Espera de banco esgotar workers ou resposta ambígua | `lock_timeout`/`statement_timeout` locais à transação, orçamento de requisição e idempotência persistida | Uma trava longa responde `503 QIT001024` com `X-Request-ID` sem impedir consulta não relacionada; cliente que interrompe a espera repete a mesma chave e obtém um único lançamento. |
-| Notificar antes de confirmar ou perder notificação | `outbox_event` na mesma transação, worker separado, lease, backoff e `event_key` idempotente | Bloqueio/cancelamento cria evento junto ao status; sucesso não é republicado; falha fica pendente e a repetição conserva a mesma chave de entrega. |
-| Regressão de concorrência confundida com limite da máquina | Carga S7c canônica, metadados do host/imagens e `docker stats` ocioso/sob carga | Script reproduz 5×40 transferências cruzadas e documenta duração contextual, CPU/RAM observadas e critérios de comparação. |
-| Histórico alterado silenciosamente | `audit_event` append-only, gatilho que recusa escrita destrutiva e cadeia SHA-256 | Exportação HTTP recalculada nos testes; `UPDATE` e `DELETE` diretos são recusados pelo PostgreSQL. |
-
-Na transferência, a disputa acontece assim: as duas requisições escolhem a mesma
-ordem de contas, uma confirma e a outra relê o saldo já atualizado antes de
-decidir se ainda cabe.
-
-```mermaid
-sequenceDiagram
-    participant A as Requisição A→B
-    participant DB as PostgreSQL
-    participant B as Requisição B→A
-    A->>DB: trava contas por id crescente
-    B->>DB: pede as mesmas travas por id crescente
-    DB-->>B: espera A confirmar
-    A->>DB: ledger + saldos + commit
-    DB-->>B: libera trava e recarrega saldo
-    B->>DB: valida saldo atualizado, grava ou responde 422
-```
-
-### Evolução de segurança, auditoria e operação
-
-O `INTERNAL-TOKEN` protege chamadas serviço-a-serviço, mas não identifica uma
-pessoa e não é um API Gateway. A S11 adiciona `app_user`, vínculo à PME e
-sessões múltiplas por dispositivo: a senha é protegida por bcrypt, o *access
-token* é JWT de 15 minutos por padrão e o *refresh token* opaco é rotativo com
-validade máxima de oito horas. JWT e sessão persistida permitem revogar um
-dispositivo sem derrubar os demais. Para não quebrar a fronteira existente,
-uma chamada somente com `INTERNAL-TOKEN` continua sendo o ator técnico
-confiável; quando também há `Authorization: Bearer`, a API exige sessão ativa e
-papel na conta: `OWNER` administra, `OWNER`/`OPERATOR` operam e `VIEWER` lê.
-
-Hoje já existem eventos de status de conta e boleto, o ledger imutável, os
-registros de idempotência e a camada `audit_event`. Cada mudança relevante
-cria, na mesma transação, um evento com ator, ação, recurso, `request_id`, IP
-de origem, estado anterior/posterior e os hashes `previous_hash`/`event_hash`.
-Uma trava transacional serializa a ponta da cadeia; o banco recusa `UPDATE` e
-`DELETE`, portanto correções exigem evento compensatório. A cadeia pode ser
-exportada em `/audit-events` e comparada com `/audit-events/checkpoint` sem
-confiar na aplicação para o cálculo. Isto detecta adulteração do histórico
-exportado, mas não é blockchain nem promete resistir a um administrador que
-controle o banco e seus backups.
-
-Os logs vão para stdout do container, um JSON por requisição, e podem ser
-consultados por `docker compose logs`. Cada conclusão traz `request_id`, rota
-normalizada, status, duração, chave de conta mascarada e usuário mascarado
-quando há JWT válido. `GET /metrics` expõe métricas Prometheus de latência,
-requisições, QIT, conectores, idempotência, aquisição de locks e sessões
-ativas. Para não transformar telemetria em vazamento ou problema de memória,
-os rótulos nunca carregam e-mail, documento, token, UUID, IP, hash nem query
-string. Alertas baseados nessas métricas, e CPU/memória em benchmark
-reproduzível, permanecem etapas posteriores.
-
-Os conectores usam timeout de conexão de 1 segundo e de leitura de 5 segundos,
-ambos reduzidos caso reste menos tempo no orçamento de 15 segundos da
-requisição; falha externa devolve `502 QIT001009`. Ao iniciar uma transação, a
-API aplica `lock_timeout` de 2 segundos e `statement_timeout` de 10 segundos
-somente àquela transação, também limitados pelo orçamento restante. O banco
-esgotado devolve `503 QIT001024` e preserva `X-Request-ID`. Não há cancelamento
-cego de thread: os pontos conhecidos que podem bloquear são limitados, evitando
-deixar uma transação ou chamada externa prender recursos indefinidamente. O
-cliente sempre deve repetir uma operação financeira com a mesma
-`Idempotency-Key`, pois um timeout de rede pode ocorrer depois que o servidor
-confirmou o commit.
-
-Bloquear ou cancelar não chama webhook dentro do controller. A mesma transação
-grava o status, seu evento de auditoria e um `outbox_event` com o tópico
-`account.status_changed`. O processo `outbox-worker` (perfil Compose
-`workers`) reclama eventos pendentes com `FOR UPDATE SKIP LOCKED` e *lease* de
-30 segundos, publica o payload após o commit e registra o resultado. Sucesso é
-final; erro HTTP ou de rede incrementa tentativas e agenda nova tentativa com
-backoff exponencial. A entrega é pelo menos uma vez: caso o processo morra
-entre o aceite remoto e a atualização local, o webhook poderá receber de novo
-o mesmo `Idempotency-Key`, igual ao `event_key`; por isso o consumidor precisa
-deduplicar. Não se promete a impossível entrega exatamente uma vez entre bancos
-independentes.
-
-A evidência de desempenho não é expressa como SLO sem contexto. A T4.5 executa
-o mesmo teste S7c de transferências cruzadas cinco vezes, captura commit,
-versões, CPUs, memória, imagens e `docker stats` em repouso e durante a carga.
-Na máquina de referência (16 CPUs lógicas, 15 GiB, Docker 29.5.3), a carga
-passou em 6,753 s de parede; esse número só pode ser comparado com ambiente
-equivalente. O método, os artefatos e a interpretação estão em
-`docs/BENCHMARK.md`.
-
-Alternativas consideradas e descartadas:
-
-- **Lock otimista** (coluna `version` e retentativa): descartado porque, sob disputa na mesma conta, devolve erro ao cliente ou repete a operação inteira, e uma transferência mexe em duas contas e três lançamentos, o que torna repetir caro. Ganharia se a disputa por conta fosse rara e repetir fosse barato.
-- **`NUMERIC(14,2)` em vez de centavos inteiros**: seria correto também, mas deixa o arredondamento implícito no banco e o JSON voltaria a carregar decimais, com risco de virarem `float` no cliente. Ganharia se precisássemos de frações de centavo (câmbio, juros proporcionais).
-- **Soft delete** (`is_deleted`): descartado porque esconde a linha em vez de preservar a história, quebra `UNIQUE` e não registra quando e por que mudou. Ganharia se existisse obrigação de apagar dado pessoal (LGPD), caso em que o certo seria anonimizar, o que está fora do escopo.
-- **Reajuste por rotina agendada** (cron ou worker): descartado porque roda fora do ciclo da requisição, e a suíte de caixa-preta só enxerga o que o HTTP mostra: não há como forçar nem esperar a rotina. Ganharia se o volume de planos exigisse processar milhares deles em lote na madrugada.
+- **Lock otimista** — descartado porque conflito na mesma conta repetiria operação financeira; duas contas tornam o conflito caro. Ganharia se disputa fosse rara.
+- **`NUMERIC(14,2)`** — descartado porque o contrato aceitaria decimais e elevaria risco de `float`. Ganharia com fração de centavo.
+- **Soft delete** — descartado porque esconde a história. Ganharia sob obrigação de apagar PII; então seria necessária anonimização.
+- **Reajuste agendado** — descartado porque foge do ciclo HTTP determinístico. Ganharia para processamento massivo com worker próprio.
 
 ## Implementação
 
 ### Rotas
 
-Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho); `401` credencial de usuário inválida; `403` token interno ausente/errado ou papel de usuário insuficiente; `404` recurso inexistente; `409` conflito com o estado atual (duplicado, status, chave reutilizada); `422` pedido bem formado que viola regra de negócio; `502` falha em serviço externo; `503` espera/execução PostgreSQL esgotada. Todas as rotas, menos `/` e `/health_check`, exigem `INTERNAL-TOKEN`; sem ele, ou com valor errado, a resposta é `403 QIT000002`. Nas rotas de conta, `Authorization: Bearer <JWT>` é opcional para o ator técnico, porém, se informado, exige sessão ativa e autorização na PME da conta. Valores monetários são sempre inteiros em centavos.
+Exceto `/` e `/health_check`, as rotas exigem `INTERNAL-TOKEN`. Em rotas de conta, JWT é opcional para ator técnico; quando existe, sessão ativa e papel na PME são obrigatórios. Erros usam contrato próprio QIT `{title, description, translation, code}`, detalhado em `DECISOES.md`.
 
-| Método | Caminho | O que faz | Entrada (campos que importam) | Saídas (status e quando) |
+| Método | Caminho | O que faz | Entrada relevante | Saídas |
 |---|---|---|---|---|
-| `GET` | `/` | Identifica o serviço. Aberta, sem token | n/a | `200` |
-| `GET` | `/health_check` | Diz se está de pé (usada pelo healthcheck do compose). Aberta | n/a | `204` |
-| `POST` | `/user` | Cria usuário e seu primeiro vínculo com a PME. A senha é armazenada apenas como hash bcrypt | `customer_key`, `name`, `email`, `password` (8–72), `role` opcional | `201` com `user_key`, `customer_key`, `role`; `404 QIT001001`; `409 QIT001023` |
-| `POST` | `/auth/login` | Valida credenciais e abre uma sessão por dispositivo | `email`, `password`, `device_name` opcional | `201` com JWT curto, refresh opaco, `session_key`; `401 QIT001021` |
-| `POST` | `/auth/refresh` | Rotaciona refresh token de uma sessão ainda ativa | `refresh_token` | `201` com novo par de tokens; `401 QIT001020` se expirado, revogado ou já usado |
-| `POST` | `/auth/logout` | Revoga somente a sessão do JWT informado | `Authorization: Bearer <JWT>` | `204`; `401 QIT001020` |
-| `GET` | `/audit-events` | Exporta a cadeia de auditoria e sua ponta; é somente leitura | n/a | `200` com eventos e checkpoint |
-| `GET` | `/audit-events/checkpoint` | Retorna somente a ponta atual da cadeia | n/a | `200` |
-| `GET` | `/metrics` | Expõe métricas Prometheus para coleta interna | n/a | `200` texto Prometheus; `403 QIT000002` sem token interno |
-| `POST` | `/customer` | Cadastra a PME. Repetir não cria outra: `UNIQUE(document_number)` e `UNIQUE(email)` | `name`, `email`, `document_number` (CPF ou CNPJ com máscara) | `201` com `customer_key`; `400 QIT000001` corpo fora do formato; `409 QIT001003` documento já cadastrado; `409 QIT001004` e-mail já cadastrado; `422 QIT001010` dígitos verificadores não batem |
-| `GET` | `/customer/{customer_key}` | Devolve um cliente | `customer_key` no caminho | `200`; `404 QIT001001` |
-| `POST` | `/account` | Abre conta com saldo 0 e grava os eventos `PENDING` e `APPROVED` na mesma transação. Não é idempotente: cada chamada abre outra conta (um cliente pode ter várias) | `customer_key` | `201` com `account_key`, `status`, `balance`; `400 QIT000001`; `404 QIT001001` cliente inexistente |
-| `GET` | `/account/{account_key}` | Devolve a conta e o saldo | `account_key` no caminho | `200`; `404 QIT001002` |
-| `PUT` | `/account/{account_key}/block` | Bloqueia uma conta `APPROVED`, registra evento e impede operações financeiras | `account_key` no caminho | `200`; `404 QIT001002`; `409 QIT001019` se a transição não for permitida |
-| `PUT` | `/account/{account_key}/cancel` | Cancela uma conta `APPROVED` ou `BLOCKED`, registra evento e torna o status irreversível | `account_key` no caminho | `200`; `404 QIT001002`; `409 QIT001019` se a transição não for permitida |
-| `POST` | `/account/{account_key}/transaction` | Depósito, saque ou transferência (com tarifa). Idempotente por (`account_key`, rota, `Idempotency-Key`): repetir devolve a resposta original e não lança de novo | Header `Idempotency-Key` (1 a 64 caracteres); `type` (`DEPOSIT`, `WITHDRAWAL`, `TRANSFER`); `amount` (inteiro, mínimo 1); `destination_account_key` (obrigatório só em `TRANSFER`) | `201` (a repetição também devolve `201`, com o mesmo corpo); `400 QIT000001` corpo ou chave fora do formato; `400 QIT001018` header ausente; `404 QIT001002` origem ou destino inexistente; `409 QIT001006` origem ou destino fora de `APPROVED`; `409 QIT001008` mesma chave com corpo diferente; `422 QIT001005` saldo insuficiente para o saque ou, na transferência, para valor mais tarifa; `422 QIT001007` acima do limite noturno; `422 QIT001012` destino igual à origem |
-| `GET` | `/account/{account_key}/transaction/{transaction_key}` | Devolve um lançamento. Lançamento de outra conta responde exatamente como inexistente | `account_key` e `transaction_key` no caminho | `200`; `404 QIT001002` conta inexistente; `404 QIT001011` lançamento inexistente ou de outra conta |
-| `GET` | `/account/{account_key}/transactions` | Extrato paginado, mais recente primeiro (`created_at` e `id` decrescentes) | `limit` (padrão 10, teto 100), `page` (padrão 0), `type` (opcional) | `200` com `data`, `limit`, `page`, `is_last_page`; `400 QIT000001` parâmetro inválido ou desconhecido; `404 QIT001002` |
-| `POST` | `/account/{account_key}/billing-plan` | Cria o plano e emite o lote 1 (12 boletos mensais de `base_amount`). Não é idempotente: cada chamada cria outro plano | `base_amount` (inteiro, mínimo 1), `first_due_date` (`AAAA-MM-DD`) | `201` com `plan_key` e os boletos; `400 QIT000001`; `404 QIT001002`; `409 QIT001006` conta fora de `APPROVED`; `422 QIT001017` vencimento no passado; `502 QIT001009` conector de boletos sem resposta ou com resposta inválida |
-| `GET` | `/account/{account_key}/billing-plan/{plan_key}` | Devolve o plano com todos os boletos, seu lote (`batch_number`), taxa aplicada (`adjustment_rate`), status atual e histórico `status_events` | `account_key` e `plan_key` no caminho | `200`; `404 QIT001002`; `404 QIT001013` plano inexistente ou de outra conta |
-| `POST` | `/account/{account_key}/billing-plan/{plan_key}/adjustment` | Reajusta o valor pelo índice e emite o lote 2 (parcelas 13 a 24). Idempotente por `UNIQUE(billing_plan_id, installment_number)`: repetir não emite de novo e responde `409` | `index_code` (`IPCA` ou `IGPM`) | `201` com os boletos do lote 2; `400 QIT000001`; `404 QIT001002`, `404 QIT001013`; `409 QIT001014` lote 2 já emitido; `502 QIT001009` Banco Central ou conector de boletos falhou |
-| `POST` | `/account/{account_key}/credit-advance` | Antecipa boletos pendentes: credita o valor menos 3% de taxa. Idempotente por `Idempotency-Key`, e cada boleto só antecipa uma vez (`bank_slip.credit_advance_id`) | Header `Idempotency-Key`; `bank_slip_keys` (de 1 a 50 chaves distintas) | `201` com `credit_advance_key`, `gross_amount`, `fee_amount`, `net_amount`, `balance`; `400 QIT000001`; `400 QIT001018`; `404 QIT001002`; `404 QIT001015` algum boleto inexistente ou de outra conta; `409 QIT001006` conta fora de `APPROVED`; `409 QIT001008`; `409 QIT001016` algum boleto não está `PENDING` ou já foi antecipado |
-
-Quando um JWT é enviado nas rotas de conta, leitura aceita `OWNER`, `OPERATOR`
-ou `VIEWER`; transação, plano, reajuste e antecipação aceitam `OWNER` ou
-`OPERATOR`; bloquear/cancelar aceita somente `OWNER`. Sessão inválida responde
-`401 QIT001020`; papel insuficiente ou vínculo ausente responde `403 QIT001022`.
+| `POST/GET` | `/customer`, `/customer/{key}` | Cria/consulta PME | nome, e-mail, CPF/CNPJ | `201/200`; `400` schema; `404`; `409` duplicidade; `422` documento |
+| `POST/GET` | `/account`, `/account/{key}` | Abre/consulta conta e eventos | `customer_key` | `201/200`; `400`; `404` |
+| `PUT` | `/account/{key}/block`, `/cancel` | Transição auditável | chave | `200`; `404`; `409` transição |
+| `POST` | `/account/{key}/transaction` | Depósito, saque, transferência | tipo, centavos, destino, chave idempotente | Idempotente: `201`/replay; `400`, `404`, `409`, `422` |
+| `GET` | `/account/{key}/transaction/{transaction_key}`, `/transactions` | Lançamento e extrato | chaves, página, limite, tipo | `200`; `400`; `404` sem IDOR |
+| `POST/GET` | `/account/{key}/billing-plan`, `/billing-plan/{plan_key}` | Emite/consulta lote 1 | centavos, vencimento | `201/200`; `400`, `404`, `409`, `422`, `502` |
+| `POST` | `.../billing-plan/{plan_key}/adjustment` | Emite lote 2 IPCA/IGPM | índice | `201`; `400`, `404`, `409`, `502` |
+| `POST` | `/account/{key}/credit-advance` | Antecipa 1–50 boletos | chaves, chave idempotente | Idempotente: `201`; `400`, `404`, `409` |
+| `POST` | `/user`, `/auth/login|refresh|logout` | Usuário e sessões | PME, credenciais, refresh/JWT | `201/204`; `400`, `401`, `403`, `409` |
+| `GET` | `/audit-events[/checkpoint]`, `/metrics` | Auditoria e métricas internas | n/a | `200`; `403` sem token |
 
 ### Banco de Dados (Somente diagrama)
 
 ```mermaid
 erDiagram
-    CUSTOMER ||--o{ ACCOUNT : "possui"
-    CUSTOMER ||--o{ USER_CUSTOMER_ACCESS : "autoriza"
-    APP_USER ||--o{ USER_CUSTOMER_ACCESS : "possui papel"
-    APP_USER ||--o{ USER_SESSION : "abre"
-    ACCOUNT_STATUS ||--o{ ACCOUNT : "status atual"
-    ACCOUNT ||--o{ ACCOUNT_STATUS_EVENT : "historiza"
-    ACCOUNT_STATUS ||--o{ ACCOUNT_STATUS_EVENT : "status do evento"
-    ACCOUNT ||--o{ TRANSACTION : "lança"
-    ACCOUNT |o--o{ TRANSACTION : "contraparte"
-    ACCOUNT ||--o{ IDEMPOTENCY_KEY : "registra"
-    ACCOUNT ||--o{ BILLING_PLAN : "contrata"
-    ACCOUNT ||--o{ CREDIT_ADVANCE : "solicita"
-    ACCOUNT ||--o{ OUTBOX_EVENT : "notifica status"
-    BILLING_PLAN ||--o{ BANK_SLIP : "gera"
-    CREDIT_ADVANCE |o--o{ BANK_SLIP : "antecipa"
-    BANK_SLIP_STATUS ||--o{ BANK_SLIP : "status atual"
-    BANK_SLIP ||--o{ BANK_SLIP_STATUS_EVENT : "historiza"
-    BANK_SLIP_STATUS ||--o{ BANK_SLIP_STATUS_EVENT : "status do evento"
-
-    CUSTOMER {
-        serial id PK
-        char(36) customer_key UK "sai na resposta"
-        varchar(18) document_number UK "CPF ou CNPJ com máscara"
-        varchar(255) name
-        varchar(255) email UK
-        timestamp created_at "default NOW()"
-    }
-
-    APP_USER {
-        serial id PK
-        char(36) user_key UK "identificador público"
-        varchar(255) name
-        varchar(255) email UK
-        varchar(100) password_hash "bcrypt, nunca exposto"
-        timestamp created_at "default NOW()"
-    }
-
-    USER_CUSTOMER_ACCESS {
-        serial id PK
-        int user_id FK
-        int customer_id FK
-        varchar(20) role "OWNER, OPERATOR ou VIEWER"
-        timestamp created_at "default NOW()"
-    }
-
-    USER_SESSION {
-        serial id PK
-        char(36) session_key UK
-        int user_id FK
-        char(64) refresh_token_hash UK "SHA-256; token bruto não persiste"
-        varchar(100) device_name
-        timestamp expires_at "máximo login + 8h"
-        timestamp revoked_at
-        timestamp created_at "default NOW()"
-    }
-
-    AUDIT_EVENT {
-        serial id PK
-        varchar(20) actor_type "SERVICE ou USER"
-        varchar(64) actor_key
-        varchar(64) action
-        varchar(64) resource_type
-        char(36) resource_key
-        varchar(64) request_id
-        varchar(255) origin "IP observado pela API"
-        jsonb previous_summary
-        jsonb current_summary
-        char(64) previous_hash "64 zeros no genesis"
-        char(64) event_hash UK "SHA-256 do evento canônico"
-        timestamp event_datetime
-    }
-
-    OUTBOX_EVENT {
-        serial id PK
-        char(36) event_key UK "Idempotency-Key do webhook"
-        varchar(64) topic "account.status_changed"
-        varchar(64) aggregate_type
-        char(36) aggregate_key
-        jsonb payload "sem PII do destinatário"
-        int delivery_attempts
-        timestamp next_attempt_at
-        timestamp locked_until
-        timestamp published_at
-        varchar(500) last_error
-    }
-
-    ACCOUNT_STATUS {
-        serial id PK
-        varchar(50) enumerator UK "PENDING, APPROVED, BLOCKED, CANCELLED; CANCELLED é final"
-    }
-
-    ACCOUNT {
-        serial id PK
-        char(36) account_key UK "sai na resposta"
-        int customer_id FK
-        int status_id FK "status atual"
-        bigint balance "centavos, cache do ledger, CHECK balance >= 0"
-        timestamp created_at "default NOW()"
-    }
-
-    ACCOUNT_STATUS_EVENT {
-        serial id PK
-        int account_id FK
-        int status_id FK
-        timestamp event_datetime "quando mudou"
-    }
-
-    IDEMPOTENCY_KEY {
-        serial id PK
-        int account_id FK
-        varchar(64) idempotency_key UK "UNIQUE com account_id e scope"
-        varchar(40) scope "rota que usou a chave"
-        char(64) request_hash "SHA-256 do corpo"
-        int response_status
-        jsonb response_body "devolvido na repetição"
-        timestamp created_at "default NOW()"
-    }
-
-    TRANSACTION {
-        serial id PK
-        char(36) transaction_key UK "sai na resposta"
-        char(36) operation_key "agrupa as linhas da mesma operação"
-        int account_id FK
-        int counterparty_account_id FK "só em transferência"
-        varchar(20) type "CHECK: DEPOSIT, WITHDRAWAL, TRANSFER_OUT, TRANSFER_IN, TRANSFER_FEE, ADVANCE_CREDIT, ADVANCE_FEE"
-        bigint amount "centavos com sinal, crédito +, débito -, CHECK amount <> 0"
-        bigint balance_after "saldo da conta depois da linha"
-        timestamp created_at "default NOW(), nunca alterada"
-    }
-
-    CREDIT_ADVANCE {
-        serial id PK
-        char(36) credit_advance_key UK "sai na resposta"
-        int account_id FK
-        bigint gross_amount "soma dos boletos"
-        bigint fee_amount "3% half-up"
-        bigint net_amount "CHECK net = gross - fee"
-        timestamp created_at "default NOW()"
-    }
-
-    BILLING_PLAN {
-        serial id PK
-        char(36) plan_key UK "sai na resposta"
-        int account_id FK
-        bigint base_amount "parcela do lote 1, em centavos"
-        date first_due_date
-        timestamp created_at "default NOW()"
-    }
-
-    BANK_SLIP_STATUS {
-        serial id PK
-        varchar(50) enumerator UK "PENDING, PAID, CANCELLED"
-    }
-
-    BANK_SLIP {
-        serial id PK
-        char(36) slip_key UK "coluna física; API expõe bank_slip_key"
-        int billing_plan_id FK
-        int credit_advance_id FK "null = não antecipado"
-        int status_id FK "status atual"
-        int installment_number "UNIQUE com billing_plan_id, de 1 a 24"
-        int batch_number "1 = inicial, 2 = reajustado"
-        numeric(12,8) adjustment_rate "null no lote 1, taxa aplicada no lote 2"
-        bigint amount "centavos"
-        date due_date
-        varchar(60) barcode "vem do BankSlipConnector"
-        timestamp created_at "default NOW()"
-    }
-
-    BANK_SLIP_STATUS_EVENT {
-        serial id PK
-        int bank_slip_id FK
-        int status_id FK
-        timestamp event_datetime "quando mudou"
-    }
+ CUSTOMER ||--o{ ACCOUNT : possui
+ CUSTOMER ||--o{ USER_CUSTOMER_ACCESS : autoriza
+ APP_USER ||--o{ USER_CUSTOMER_ACCESS : possui_papel
+ APP_USER ||--o{ USER_SESSION : abre
+ ACCOUNT ||--o{ ACCOUNT_STATUS_EVENT : historiza
+ ACCOUNT ||--o{ TRANSACTION : lanca
+ ACCOUNT ||--o{ IDEMPOTENCY_KEY : registra
+ ACCOUNT ||--o{ BILLING_PLAN : contrata
+ ACCOUNT ||--o{ CREDIT_ADVANCE : solicita
+ ACCOUNT ||--o{ OUTBOX_EVENT : notifica
+ BILLING_PLAN ||--o{ BANK_SLIP : gera
+ CREDIT_ADVANCE |o--o{ BANK_SLIP : antecipa
+ BANK_SLIP ||--o{ BANK_SLIP_STATUS_EVENT : historiza
+ CUSTOMER { char36 customer_key UK }
+ ACCOUNT { char36 account_key UK bigint balance "centavos; CHECK >= 0" }
+ TRANSACTION { char36 transaction_key UK char36 operation_key bigint amount "com sinal" bigint balance_after }
+ IDEMPOTENCY_KEY { int account_id FK varchar scope varchar idempotency_key "UNIQUE composto" char64 request_hash jsonb response_body }
+ BILLING_PLAN { char36 plan_key UK bigint base_amount date first_due_date }
+ BANK_SLIP { char36 slip_key UK "API: bank_slip_key" int installment_number "UNIQUE plano" int batch_number numeric adjustment_rate bigint amount }
+ CREDIT_ADVANCE { char36 credit_advance_key UK bigint gross_amount bigint fee_amount bigint net_amount }
+ APP_USER { char36 user_key UK varchar email UK varchar password_hash }
+ USER_SESSION { char36 session_key UK char64 refresh_token_hash UK timestamp expires_at timestamp revoked_at }
+ USER_CUSTOMER_ACCESS { int user_id FK int customer_id FK varchar role }
+ AUDIT_EVENT { varchar actor_type char64 previous_hash char64 event_hash UK timestamp event_datetime }
+ OUTBOX_EVENT { char36 event_key UK varchar topic int delivery_attempts timestamp next_attempt_at timestamp published_at }
+ ACCOUNT_STATUS_EVENT { int account_id FK timestamp event_datetime }
+ BANK_SLIP_STATUS_EVENT { int bank_slip_id FK timestamp event_datetime }
 ```
 
 ### Fluxos
 
-**Transferência: caminho feliz** (depósito e saque seguem o mesmo fluxo, com uma só conta e sem tarifa)
+**Transferência — caminho feliz**
 
-1. O resource valida o cabeçalho `Idempotency-Key` e o corpo contra o schema antes de qualquer consulta. Fora do formato: `400 QIT001018` ou `400 QIT000001`.
-2. O controller calcula o `request_hash` e insere a chave em `idempotency_key` (`ON CONFLICT DO NOTHING`). Inserção nova: segue. Conflito: ver o fluxo de retentativa.
-3. Falhas baratas antes de qualquer trava: destino igual à origem (`422 QIT001012`) e valor acima do limite noturno (`422 QIT001007`). A janela, o fuso e o limite vêm de variáveis de ambiente (padrão: 20h às 6h, `America/Sao_Paulo`, R$ 1.000,00 por operação); nos testes, `NIGHT_TIME_OVERRIDE` fixa a hora sem expor controle de relógio por HTTP.
-4. O repository trava as duas contas em uma única consulta, `SELECT ... FOR NO KEY UPDATE ORDER BY id`. Esse lock impede atualizações concorrentes de saldo/status, mas é compatível com a referência de chave estrangeira criada pela reserva de idempotência. A ordem fixa por `id` impede o impasse (*deadlock*) quando A→B e B→A chegam juntas. Conta ausente: `404 QIT001002`. Conta fora de `APPROVED`: `409 QIT001006`.
-5. O controller soma valor e tarifa (tarifa fixa de 100 centavos, constante do sistema, debitada da origem). Se o saldo da origem for menor que o total: `422 QIT001005`.
-6. Atualiza os dois saldos e grava três linhas no ledger com o mesmo `operation_key`: `TRANSFER_OUT` (−valor) e `TRANSFER_FEE` (−tarifa) na origem, `TRANSFER_IN` (+valor) no destino, cada uma com seu `balance_after`.
-7. Grava `response_status` e `response_body` na linha de idempotência, executa `session.commit()` (que libera as travas) e responde `201` com `transaction_key`, `type`, `amount`, `fee_amount` e `balance` da origem.
+1. Resource valida corpo e `Idempotency-Key`; formato inválido devolve `400`.
+2. Controller reserva chave por `UNIQUE(account_id, scope, idempotency_key)` e hash SHA-256; destino igual e limite noturno falham antes de lock.
+3. Repository trava origem e destino em uma consulta `FOR NO KEY UPDATE ORDER BY id`; inexistente é `404`, status não aprovado é `409`.
+4. Controller valida saldo para valor+tarifa fixa de 100 centavos, grava `TRANSFER_OUT`, `TRANSFER_FEE`, `TRANSFER_IN` com mesmo `operation_key`, atualiza saldos e salva a resposta.
+5. Um commit confirma tudo. Mesmo hash retorna corpo original com `Idempotent-Replayed: true`; hash diverso devolve `409`.
 
-**Transferência: falha, saldo insuficiente**
+**Transferência — falha por saldo ou timeout**
 
-1. A origem tem 500 centavos e a transferência pede 1.000 mais 100 de tarifa. As travas já foram obtidas no passo 4.
-2. O controller levanta `QIT001005`. O middleware de sessão faz `rollback()` e fecha a sessão.
-3. O rollback desfaz também a linha de idempotência: nenhum saldo muda, nenhum lançamento nasce, e repetir a mesma chave reexecuta a operação do zero (o saldo pode ter mudado). O cliente recebe o corpo padronizado de `422 QIT001005`.
+1. Saldo insuficiente após lock devolve `422`; rollback inclui reserva idempotente, saldo e ledger não mudam.
+2. Se cliente perde a resposta após commit, repete mesma chave e corpo. A unicidade espera a primeira transação e devolve a resposta persistida, sem segundo débito.
 
-**Transferência: falha, retentativa depois de timeout**
+**Antecipação — caminho feliz e disputa**
 
-1. O cliente não recebeu resposta e reenvia a mesma `Idempotency-Key`.
-2. Se a primeira requisição já confirmou, o `INSERT` em `idempotency_key` conflita. O controller lê a linha existente: mesmo `request_hash` devolve `201` com o corpo guardado (mesma `transaction_key`) e o cabeçalho `Idempotent-Replayed: true`, sem novo lançamento; `request_hash` diferente devolve `409 QIT001008`.
-3. Se a primeira ainda está em andamento, o `INSERT` da segunda espera no próprio índice `UNIQUE` até a primeira confirmar ou desfazer. Confirmou: cai no caso anterior. Desfez: a segunda executa normalmente.
+1. A rota idempotente trava conta e boletos por `id`; exige conta aprovada, boletos pertencentes, `PENDING` e sem antecipação.
+2. Calcula somente em inteiros: `gross = soma`, `fee = (gross * 3 + 50) // 100`, `net = gross - fee`; grava vínculo, crédito, tarifa, saldo e resposta no mesmo commit.
+3. Duas solicitações concorrentes do mesmo boleto: a segunda vê o vínculo depois de esperar a trava e recebe `409 QIT001016`.
 
-**Antecipação de recebíveis: caminho feliz**
+**Cobrança, reajuste e falha externa**
 
-1. O resource valida cabeçalho e corpo (`bank_slip_keys` com 1 a 50 chaves distintas). O controller registra a idempotência como no fluxo anterior.
-2. Trava a conta (`FOR NO KEY UPDATE`): `404 QIT001002` se não existe; `409 QIT001006` se não está `APPROVED`.
-3. Trava os boletos pedidos (`FOR UPDATE ORDER BY id`), restritos aos planos da conta. Falta algum (inexistente ou de outra conta): `404 QIT001015`, sem dizer qual. Algum que não está `PENDING` ou já tem `credit_advance_id`: `409 QIT001016`.
-4. Calcula em inteiros: `gross` é a soma dos boletos, `fee = (gross * 3 + 50) // 100` (3% com arredondamento *half-up*), `net = gross - fee`. Não há `float` em nenhum passo.
-5. Grava `credit_advance`, preenche `credit_advance_id` nos boletos, lança `ADVANCE_CREDIT` (+gross) e, quando a taxa é maior que zero, `ADVANCE_FEE` (−fee), com o mesmo `operation_key`, e soma `net` ao saldo.
-6. Guarda a resposta na linha de idempotência, executa `session.commit()` e responde `201`.
+1. Lote 1 valida conta/vencimento/centavos, chama emissão externa e grava plano, 12 boletos e eventos em um commit.
+2. Reajuste lê IPCA/IGPM como `Decimal` sem lock, trava plano, impede lote 2 e calcula parcelas 13–24 com half-up; referência externa é plano+lote.
+3. Falha de conector devolve `502 QIT001009` sem escrita local. Aceite externo seguido de falha de commit é reconciliável pela referência determinística, mas é a janela inevitável entre sistemas. O reajuste mantém lock somente do plano durante emissão; reserva persistida é evolução P1.
 
-**Antecipação: falha, o mesmo boleto antecipado duas vezes**
+**Bloqueio, auditoria e notificação**
 
-1. Duas requisições com chaves de idempotência diferentes pedem o mesmo boleto ao mesmo tempo.
-2. A primeira trava a linha do boleto, antecipa e confirma. A segunda espera a trava, lê `credit_advance_id` preenchido e responde `409 QIT001016`. O rollback não deixa nenhum lançamento.
-
-**Reajuste e emissão do lote 2: caminho feliz** (o lote 1, em `POST .../billing-plan`, repete os passos 5 a 7 sem a taxa)
-
-1. O resource valida `index_code` (`IPCA` ou `IGPM`). O controller busca o plano pelo par `account_key` e `plan_key`: `404 QIT001013` se não existe ou é de outra conta.
-2. Lê a taxa acumulada no `CentralBankConnector` (conexão de 1 s e leitura de 5 s, limitadas pelo orçamento restante), sem nenhuma trava. A resposta é interpretada como `Decimal`, nunca como `float`. Falha ou resposta inválida: `502 QIT001009`.
-3. Trava a linha do plano (`FOR UPDATE`) e confere se o lote 2 já existe: `409 QIT001014`. Essa é a única trava mantida durante uma chamada externa, e só disputa com o mesmo plano.
-4. Calcula cada parcela: `new_amount = base * (1 + taxa)`, em `Decimal`, arredondada *half-up* para centavo inteiro. Parcelas 13 a 24, vencimentos mensais.
-5. Chama o `BankSlipConnector` com uma referência determinística (`plan_key` e número do lote), para que repetir a chamada não gere boletos duplicados do outro lado. Falha: `502 QIT001009`, nada gravado.
-6. Insere os 12 boletos com status `PENDING`, a taxa aplicada e os eventos de status, executa `session.commit()` e responde `201`.
-
-**Reajuste: falha, o conector de boletos cai ou o commit falha depois da emissão**
-
-1. O conector não responde em 5 s: o controller levanta `QIT001009`, o rollback libera o plano e o cliente recebe `502`. Nada foi gravado e, como o conector não confirmou, nada foi emitido.
-2. Caso residual: o conector emitiu, mas o `commit` falhou. Os boletos existem fora e não aqui. Não dá para eliminar essa janela com duas escritas em sistemas diferentes; o desenho a reduz, porque a referência determinística permite repetir o pedido sem duplicar e reconciliar os boletos emitidos.
+1. Bloqueio/cancelamento grava evento de status, `audit_event` e `outbox_event` na mesma transação.
+2. Worker usa `FOR UPDATE SKIP LOCKED`, lease e backoff, e envia webhook com `Idempotency-Key = event_key`.
+3. Entrega é pelo menos uma vez; consumidor deduplica. A cadeia `audit_event` usa SHA-256, exportação/checkpoint e trigger contra `UPDATE`/`DELETE`; não é blockchain nem resiste a administrador do banco.
 
 > ## Principal desafio
 >
-> - **Qual é:** manter o saldo correto (nunca negativo e sempre igual à soma do extrato) quando operações simultâneas e retentativas atingem as mesmas contas.
-> - **Por que é difícil:** a solução óbvia, ler o saldo, comparar e gravar, tem um intervalo entre a leitura e a gravação: duas requisições leem 100, ambas debitam 80, e o saldo vira −60. Transferências cruzadas (A→B e B→A) travando contas em ordem oposta travam uma à outra. E o cliente que perde a resposta por timeout não sabe se a operação ocorreu, então reenviar sem proteção duplica o débito.
-> - **Como o desenho resolve:** o repository trava as contas envolvidas com `SELECT ... FOR NO KEY UPDATE ORDER BY id` (a ordem fixa elimina o impasse) e recarrega a instância já presente na sessão antes de usar seu saldo. O lock é exclusivo para mudanças de saldo/status, mas compatível com a chave estrangeira da reserva de idempotência. Assim, a verificação do saldo, os lançamentos no ledger e a atualização do cache acontecem sobre o valor confirmado na mesma transação, que é confirmada uma única vez no fim. A segunda requisição espera a trava, lê o saldo novo e recebe `422 QIT001005`. A `Idempotency-Key` é inserida na mesma transação sob `UNIQUE(account_id, scope, idempotency_key)`, então a repetição devolve a resposta original em vez de lançar de novo. `CHECK (balance >= 0)` é a última barreira, e `balance_after` em cada linha permite reconstruir o saldo a partir do extrato.
+> - **Qual é:** preservar saldo e não duplicar lançamentos com concorrência e retentativa.
+> - **Por que é difícil:** leitura/validação/gravação sem lock permite débito duplo; A→B e B→A podem deadlockar; timeout não revela commit.
+> - **Como o desenho resolve:** lock pessimista ordenado por `id`, `CHECK (balance >= 0)`, ledger, saldo e resposta idempotente no mesmo commit; a chave única devolve o resultado confirmado. S7c exercita cinco vezes 40 transferências cruzadas, dez reenvios, antecipação dupla e último saldo. T4.5 registra método/ambiente, não SLO.

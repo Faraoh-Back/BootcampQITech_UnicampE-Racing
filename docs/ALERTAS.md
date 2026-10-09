@@ -10,13 +10,13 @@ groups:
   - name: baas-pme-api
     rules:
       - alert: BaaSHighServerErrorRate
-        expr: sum(rate(baas_http_requests{status=~"5.."}[5m])) / clamp_min(sum(rate(baas_http_requests[5m])), 1) > 0.05
+        expr: sum(rate(baas_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(baas_http_requests_total[5m])), 1) > 0.05
         for: 10m
         labels: { severity: warning }
         annotations: { summary: "Mais de 5% das respostas são 5xx" }
 
       - alert: BaaSConnectorFailures
-        expr: sum(rate(baas_external_connector_failures[10m])) > 0.1
+        expr: sum(rate(baas_external_connector_failures_total[10m])) > 0.1
         for: 10m
         labels: { severity: warning }
         annotations: { summary: "Conector externo falhando continuamente" }

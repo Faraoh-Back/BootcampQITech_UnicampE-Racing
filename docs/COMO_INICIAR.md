@@ -135,7 +135,7 @@ Com a `.venv` pronta e os containers disponíveis, rode de dentro de
 O script fixa a janela noturna só durante a carga, executa cinco vezes as 40
 transferências cruzadas da S7c, coleta `docker stats` e restaura a configuração
 normal. A leitura correta dos arquivos em `artifacts/benchmarks/` e dos limites
-de comparação está em [BENCHMARK.md](BENCHMARK.md).
+de comparação está em [BENCHMARK.md](../docs/BENCHMARK.md).
 
 ---
 
@@ -152,8 +152,9 @@ docker compose up -d --build
 # 3. Confere a saúde
 docker compose ps
 
-# 4. Roda os testes de novo
-pytest
+# 4. Roda os testes de novo com o relógio determinístico
+NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
+./.venv/bin/python -m pytest -q
 ```
 > **Por que isso é importante?** O PostgreSQL só executa o script de inicialização com o volume vazio, e o Docker só copia uma alteração de `database/database.sql` para a imagem em um novo build. Toda mudança no SQL exige `docker compose down -v && docker compose up -d --build`.
 
@@ -169,9 +170,9 @@ pytest
 | **Parar os containers** | `docker compose stop` |
 | **Parar e remover containers** | `docker compose down` |
 | **Resetar banco de dados do zero** | `docker compose down -v` |
-| **Rodar todos os testes** | `pytest` |
-| **Rodar um arquivo específico de teste** | `pytest tests/integration/test_healthcheck.py` |
-| **Rodar testes mostrando prints/logs** | `pytest -s -v` |
+| **Rodar todos os testes** | `./.venv/bin/python -m pytest -q` |
+| **Rodar um arquivo específico de teste** | `./.venv/bin/python -m pytest tests/integration/test_healthcheck.py` |
+| **Rodar testes mostrando prints/logs** | `./.venv/bin/python -m pytest -s -v` |
 
 ### Integração contínua
 
@@ -179,8 +180,8 @@ O workflow [BaaS PME CI](../.github/workflows/baas-pme-ci.yml) roda em todo `pus
 
 ```bash
 docker compose down -v
-docker compose up -d --build
-pytest -q
+NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
+./.venv/bin/python -m pytest -q
 ```
 
 ---

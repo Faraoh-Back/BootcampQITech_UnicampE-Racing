@@ -29,8 +29,10 @@ curl http://localhost:3000/health_check
 
 ## Executar os testes
 
-Os testes são de integração HTTP e usam a API, PostgreSQL e MockServer do
-Compose. A suíte inclui a regra noturna, portanto a execução completa precisa
+Os testes de produto são de integração HTTP e usam a API, PostgreSQL e
+MockServer do Compose. A suíte também contém contratos de infraestrutura para
+triggers, locks e worker, que podem acessar PostgreSQL de forma controlada. A
+execução completa inclui a regra noturna, portanto precisa
 fixar a hora de teste antes do `pytest`:
 
 ```bash
@@ -170,7 +172,7 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 - `src/repositories`: consultas e travas PostgreSQL;
 - `src/models`: mapeamento SQLAlchemy;
 - `src/schemas`: contratos JSON de entrada;
-- `tests/integration`: testes de caixa-preta por HTTP;
+- `tests/integration`: testes de produto por HTTP e contratos de infraestrutura;
 - `database/database.sql`: DDL inicial.
 
 As rotas `sample_entity` e seus arquivos continuam no repositório apenas como

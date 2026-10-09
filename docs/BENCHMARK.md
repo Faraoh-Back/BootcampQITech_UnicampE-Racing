@@ -107,7 +107,7 @@ estado sujo corresponde ao script/ignore da própria T4.5. Resultado:
 | CPU/RAM visíveis | 16 CPUs lógicas / 15 GiB |
 | Runtime | Docker Engine 29.5.3; Docker Compose 5.1.4; Python 3.11.2 |
 | Imagens | API 266 MB, PostgreSQL 451 MB, MockServer 214 MB |
-| Carga | 5 × 40 transferências cruzadas = 200 transferências HTTP concorrentes no total |
+| Carga | 5 repetições sequenciais de 40 transferências HTTP concorrentes = 200 operações no total; pico de concorrência = 40 |
 | Resultado funcional | `5 passed in 6.36s` |
 | Duração de parede do script de carga | **6.753 s** |
 | API ociosa | 0,25% CPU, 88,48 MiB RAM na amostra |
@@ -142,10 +142,11 @@ Use esta sequência, nesta ordem:
    memória que cresce a cada repetição sugere vazamento. Confirme com logs,
    `baas_database_lock_wait_seconds` e consultas de banco antes de concluir.
 
-Exemplo: contra esta referência, uma mediana local acima de aproximadamente
-8,1 s (6,753 × 1,20) deve abrir investigação, desde que todas as condições da
-tabela permaneçam equivalentes. Uma máquina com menos CPUs, cgroup limitado ou
-Docker Desktop não é comparável por esse limiar.
+Exemplo: depois de registrar pelo menos três execuções quentes equivalentes, uma
+mediana local acima de 20% da mediana anterior deve abrir investigação. A
+execução de 6,753 s registrada neste documento é uma linha de base individual,
+não uma mediana nem um limiar de reprovação. Uma máquina com menos CPUs, cgroup
+limitado ou Docker Desktop não é comparável por esse critério.
 
 ## 7. Falhas e diagnósticos rápidos
 

@@ -335,14 +335,17 @@ com o Gate 2 verde.
 ## 9. Rodada 5: Entrega (~9h)
 
 ### T5.1 Teste de pipeline da jornada da PME (C, 3h)
+- **Status:** existe uma primeira jornada em `tests/test_pme_journey.py`, mas ela ainda precisa de endurecimento antes de ser considerada evidência final: status exatos, variáveis padrão do MockServer, sem `print` e paginação que prove a soma de todo o extrato.
 - **Fazer:** um teste de ponta a ponta: criar cliente, criar conta, depositar, emitir plano de boletos (expectativas no MockServer), antecipar, consultar extrato paginado, e conferir a soma do extrato contra o saldo.
 - **Pronto quando:** roda verde do zero, com `reset()` do mock no início.
 
 ### T5.2 Varredura de cobertura de erros (A, 3h)
+- **Status:** parcial. `COBERTURA.md` mapeia o núcleo financeiro; ainda faltam autenticação, auditoria, métricas, timeout, outbox e a reconciliação formal de todos os códigos publicados.
 - **Fazer:** tabela em `docs/COBERTURA.md`: cada código `QIT` do catálogo e a rota, ligados ao teste que o provoca. Cada rota deve ter pelo menos um teste de sucesso e um de erro. Preencher o que faltar.
 - **Pronto quando:** nenhum código do catálogo sem teste (ou removido da RFC com justificativa).
 
 ### T5.3 RFC final e PDF (B, 3h)
+- **Status:** RFC Markdown consolidada no modelo oficial; geração e revisão do PDF final continuam pendentes.
 - **Fazer:** atualizar a RFC (rotas, DER, fluxos, alternativas descartadas no formato "descartada porque X, ganharia se Y", principal desafio); cortar para o limite de 2 a 4 páginas (sugestão: reduzir a tabela de rotas ao essencial, cortar uma alternativa, enxugar fluxos secundários); gerar o PDF final; conferir que o diagrama está legível.
 - **Pronto quando:** PDF com as duas seções fixas, diagrama renderizado, tabela de rotas com erros e idempotência, e revisado pelos três.
 
