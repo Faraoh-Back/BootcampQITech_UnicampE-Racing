@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Time** | Cairê Belo · \Pedro Campanha · \<nome 3\> |
-| **Versão** | 2.5 — pós-S13, observabilidade entregue |
+| **Versão** | 2.6 — pós-S14, observabilidade e limites de espera entregues |
 
 ## Contextualização
 
@@ -15,11 +15,11 @@ A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge d
 
 Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
 
-Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. Autenticação de usuário, auditoria verificável e observabilidade estão entregues; política completa de timeouts, alertas e notificações seguem como evolução planejada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
+Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. Autenticação de usuário, auditoria verificável, observabilidade e política de timeouts estão entregues; alertas e notificações seguem como evolução planejada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
 
 ### Estado deste checkpoint
 
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11, S12 e S13. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A S13 torna o atendimento observável por logs JSON e métricas Prometheus de baixa cardinalidade. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11, S12, S13 e S14. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A S13 torna o atendimento observável por logs JSON e métricas Prometheus de baixa cardinalidade. A S14 limita conexão/leitura externa, trava/consulta PostgreSQL e o orçamento dos pontos bloqueantes da requisição, sem trocar operações incertas por repetição insegura. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
 
 ### Explicando a solução de forma macro
 
@@ -47,6 +47,7 @@ flowchart LR
 | Retentativa duplicar dinheiro | `Idempotency-Key`, hash do corpo e `UNIQUE(account_id, scope, idempotency_key)` | Dez requisições simultâneas retornam a mesma `transaction_key` e geram um único lançamento. |
 | Um boleto gerar liquidez duas vezes | Trava de boleto e vínculo `credit_advance_id` | Duas antecipações concorrentes devolvem exatamente um `201` e um `409 QIT001016`. |
 | Falha externa deixar escrita parcial | Chamada externa antes da persistência e commit único | MockServer simula timeout, erro HTTP e corpo inválido sem plano ou lote parcial. |
+| Espera de banco esgotar workers ou resposta ambígua | `lock_timeout`/`statement_timeout` locais à transação, orçamento de requisição e idempotência persistida | Uma trava longa responde `503 QIT001024` com `X-Request-ID` sem impedir consulta não relacionada; cliente que interrompe a espera repete a mesma chave e obtém um único lançamento. |
 | Histórico alterado silenciosamente | `audit_event` append-only, gatilho que recusa escrita destrutiva e cadeia SHA-256 | Exportação HTTP recalculada nos testes; `UPDATE` e `DELETE` diretos são recusados pelo PostgreSQL. |
 
 Na transferência, a disputa acontece assim: as duas requisições escolhem a mesma
@@ -99,11 +100,17 @@ os rótulos nunca carregam e-mail, documento, token, UUID, IP, hash nem query
 string. Alertas baseados nessas métricas, e CPU/memória em benchmark
 reproduzível, permanecem etapas posteriores.
 
-Os conectores já possuem timeout de cinco segundos e devolvem `502 QIT001009`
-em falha. A próxima etapa define também timeout de conexão/leitura, prazo de
-requisição, `lock_timeout` e `statement_timeout` no banco. O cliente sempre
-deve repetir uma operação financeira com a mesma `Idempotency-Key`, pois um
-timeout de rede pode ocorrer depois que o servidor confirmou o commit.
+Os conectores usam timeout de conexão de 1 segundo e de leitura de 5 segundos,
+ambos reduzidos caso reste menos tempo no orçamento de 15 segundos da
+requisição; falha externa devolve `502 QIT001009`. Ao iniciar uma transação, a
+API aplica `lock_timeout` de 2 segundos e `statement_timeout` de 10 segundos
+somente àquela transação, também limitados pelo orçamento restante. O banco
+esgotado devolve `503 QIT001024` e preserva `X-Request-ID`. Não há cancelamento
+cego de thread: os pontos conhecidos que podem bloquear são limitados, evitando
+deixar uma transação ou chamada externa prender recursos indefinidamente. O
+cliente sempre deve repetir uma operação financeira com a mesma
+`Idempotency-Key`, pois um timeout de rede pode ocorrer depois que o servidor
+confirmou o commit.
 
 Alternativas consideradas e descartadas:
 
@@ -116,7 +123,7 @@ Alternativas consideradas e descartadas:
 
 ### Rotas
 
-Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho); `401` credencial de usuário inválida; `403` token interno ausente/errado ou papel de usuário insuficiente; `404` recurso inexistente; `409` conflito com o estado atual (duplicado, status, chave reutilizada); `422` pedido bem formado que viola regra de negócio; `502` falha em serviço externo. Todas as rotas, menos `/` e `/health_check`, exigem `INTERNAL-TOKEN`; sem ele, ou com valor errado, a resposta é `403 QIT000002`. Nas rotas de conta, `Authorization: Bearer <JWT>` é opcional para o ator técnico, porém, se informado, exige sessão ativa e autorização na PME da conta. Valores monetários são sempre inteiros em centavos.
+Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho); `401` credencial de usuário inválida; `403` token interno ausente/errado ou papel de usuário insuficiente; `404` recurso inexistente; `409` conflito com o estado atual (duplicado, status, chave reutilizada); `422` pedido bem formado que viola regra de negócio; `502` falha em serviço externo; `503` espera/execução PostgreSQL esgotada. Todas as rotas, menos `/` e `/health_check`, exigem `INTERNAL-TOKEN`; sem ele, ou com valor errado, a resposta é `403 QIT000002`. Nas rotas de conta, `Authorization: Bearer <JWT>` é opcional para o ator técnico, porém, se informado, exige sessão ativa e autorização na PME da conta. Valores monetários são sempre inteiros em centavos.
 
 | Método | Caminho | O que faz | Entrada (campos que importam) | Saídas (status e quando) |
 |---|---|---|---|---|
@@ -355,7 +362,7 @@ erDiagram
 **Reajuste e emissão do lote 2: caminho feliz** (o lote 1, em `POST .../billing-plan`, repete os passos 5 a 7 sem a taxa)
 
 1. O resource valida `index_code` (`IPCA` ou `IGPM`). O controller busca o plano pelo par `account_key` e `plan_key`: `404 QIT001013` se não existe ou é de outra conta.
-2. Lê a taxa acumulada no `CentralBankConnector` (timeout de 5 s), sem nenhuma trava. A resposta é interpretada como `Decimal`, nunca como `float`. Falha ou resposta inválida: `502 QIT001009`.
+2. Lê a taxa acumulada no `CentralBankConnector` (conexão de 1 s e leitura de 5 s, limitadas pelo orçamento restante), sem nenhuma trava. A resposta é interpretada como `Decimal`, nunca como `float`. Falha ou resposta inválida: `502 QIT001009`.
 3. Trava a linha do plano (`FOR UPDATE`) e confere se o lote 2 já existe: `409 QIT001014`. Essa é a única trava mantida durante uma chamada externa, e só disputa com o mesmo plano.
 4. Calcula cada parcela: `new_amount = base * (1 + taxa)`, em `Decimal`, arredondada *half-up* para centavo inteiro. Parcelas 13 a 24, vencimentos mensais.
 5. Chama o `BankSlipConnector` com uma referência determinística (`plan_key` e número do lote), para que repetir a chamada não gere boletos duplicados do outro lado. Falha: `502 QIT001009`, nada gravado.

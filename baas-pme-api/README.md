@@ -38,7 +38,7 @@ NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 ./.venv/bin/python -m pytest -q
 ```
 
-Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 137 testes. Depois,
+Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 140 testes. Depois,
 restaure o relógio normal com `docker compose up -d`.
 
 ## Recriar o banco após alterar SQL
@@ -88,6 +88,19 @@ curl -H 'INTERNAL-TOKEN: default_token' http://localhost:3000/metrics
 Os rótulos das métricas não incluem dados pessoais, UUIDs, IPs ou query
 strings; use a rota-modelo, status e código QIT para agregação.
 
+## Timeouts e repetição segura
+
+Chamadas externas usam 1 segundo para conexão e 5 segundos para leitura;
+falhas nelas retornam `502 QIT001009`. A transação PostgreSQL recebe limites
+locais de 2 segundos para trava e 10 segundos para execução; se esgotar,
+retorna `503 QIT001024`. Cada resposta preserva `X-Request-ID` para
+correlação. O orçamento de 15 segundos reduz esses limites quando necessário.
+
+Se o cliente perder ou interromper a resposta de uma operação financeira, não
+deve criar outra chave: deve reenviar exatamente o mesmo payload com a mesma
+`Idempotency-Key`. Assim a API devolve o resultado já confirmado ou conclui uma
+única vez, sem duplicar o lançamento.
+
 ## Configuração
 
 Os valores padrão do Compose permitem iniciar sem `.env`. Para personalizar,
@@ -105,6 +118,11 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 | `NIGHT_LIMIT_CENTS` | `100000` | Limite noturno por saque ou transferência. |
 | `TIMEZONE` | `America/Sao_Paulo` | Fuso do relógio de produção. |
 | `NIGHT_TIME_OVERRIDE` | vazio | Hora fixa exclusiva de testes. |
+| `BANKSLIP_API_CONNECT_TIMEOUT_SECONDS`, `CENTRAL_BANK_API_CONNECT_TIMEOUT_SECONDS` | `1` | Prazo de conexão dos conectores externos. |
+| `BANKSLIP_API_READ_TIMEOUT_SECONDS`, `CENTRAL_BANK_API_READ_TIMEOUT_SECONDS` | `5` | Prazo de leitura dos conectores externos. |
+| `DATABASE_LOCK_TIMEOUT_MS` | `2000` | Espera máxima por trava PostgreSQL por transação. |
+| `DATABASE_STATEMENT_TIMEOUT_MS` | `10000` | Execução máxima de comando PostgreSQL por transação. |
+| `REQUEST_TIMEOUT_SECONDS` | `15` | Orçamento máximo aplicado aos pontos bloqueantes conhecidos. |
 
 ## Estrutura
 

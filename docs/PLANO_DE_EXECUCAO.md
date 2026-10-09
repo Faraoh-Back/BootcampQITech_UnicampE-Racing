@@ -95,7 +95,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R5 
 - **Pronto quando:** cada pessoa tem print do `docker compose ps` com tudo `healthy` e do `pytest` verde.
 
 ### T0.2 Decisões fixas e contratos (A, 1h, com 15 min do time todo)
-- **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). D10–D13 serão acrescentadas na R4.5 como decisões planejadas, sem antecipar contratos inexistentes. Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras. **Atualização:** S11 materializou D10, S12 materializou D11 e S13 materializou D12; somente D13 continua planejada.
+- **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). D10–D13 serão acrescentadas na R4.5 como decisões planejadas, sem antecipar contratos inexistentes. Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras. **Atualização:** S11 materializou D10, S12 materializou D11 e S13/S14 materializaram observabilidade e política de timeout da D12; somente D13 continua planejada.
 - **Pronto quando:** as três pessoas leram e disseram "ok" no PR.
 
 ### T0.3 [Postergado para a Entrega / R5] RFC no modelo oficial da QI Tech e PDF
@@ -143,7 +143,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R5 
 
 ### T1.3 Conectores externos (B, 3h)
 - **Depende de:** T0.4, D6. **Paralelo com:** T1.1.
-- **Fazer:** `BankSlipConnector.issue_batch(external_reference, installments)` e `CentralBankConnector.get_accumulated_rate(index_code)`. Regras: `timeout=5` obrigatório; qualquer falha (timeout, conexão, status diferente de 200, corpo que não é JSON, campo ausente) vira `ExternalConnectorError` (`502 QIT001009`); resposta interpretada com `json.loads(..., parse_float=Decimal)` (nunca `float`); URLs vêm de variável de ambiente. **Não envie o `INTERNAL-TOKEN` para API externa**: só para serviço interno cujo contrato exija.
+- **Fazer:** `BankSlipConnector.issue_batch(external_reference, installments)` e `CentralBankConnector.get_accumulated_rate(index_code)`. Regras: timeout separado de conexão (1 s) e leitura (5 s), ambos configuráveis; qualquer falha (timeout, conexão, status diferente de 200, corpo que não é JSON, campo ausente) vira `ExternalConnectorError` (`502 QIT001009`); resposta interpretada com `json.loads(..., parse_float=Decimal)` (nunca `float`); URLs vêm de variável de ambiente. **Não envie o `INTERNAL-TOKEN` para API externa**: só para serviço interno cujo contrato exija.
 - **Pronto quando:** um script descartável chama cada conector contra o mock rodando e cada falha vira a exceção certa. Os testes de verdade vêm nas fatias S8 a S10 (R1 proíbe teste que importe o conector).
 
 ### T1.4 Helper do MockServer para testes (B, 2h)
@@ -307,9 +307,11 @@ com o Gate 2 verde.
 - **Evidência entregue:** `prometheus-client` com registry própria e rota interna `GET /metrics`; logs JSON no stdout com correlação e identificadores mascarados; métricas de HTTP/latência, QIT, conectores, replay, aquisição de lock e sessões ativas. Rótulos são de baixa cardinalidade e não aceitam PII, tokens, UUIDs, IPs nem query string. Testes provam o incremento de replay e falha do BankSlipConnector e preservam `X-Request-ID` no fluxo de erro.
 
 ### S14 Timeouts e política de retentativa (A, 4h)
+- **Status:** concluída em 2026-10-09. A suíte HTTP soma 140 testes verdes.
 - **Depende de:** Gate 2. **Paralelo com:** S13.
 - **Fazer:** separar timeout de conexão e leitura dos conectores, configurar `lock_timeout` e `statement_timeout` do PostgreSQL e definir prazo máximo de requisição. Documentar o status de resposta para cada esgotamento e reforçar que transação financeira após timeout só pode ser reenviada com a mesma `Idempotency-Key`.
-- **Pronto quando:** MockServer prova timeout de conexão/leitura; lock longo não esgota workers; resposta e logs preservam `request_id`; teste demonstra replay seguro após o cliente interromper a espera.
+- **Pronto quando:** o MockServer prova o timeout de leitura; o timeout de conexão é configurado e tratado pela mesma classe-base de conector (um mock HTTP não consegue atrasar o handshake TCP); lock longo não esgota workers; resposta e logs preservam `request_id`; teste demonstra replay seguro após o cliente interromper a espera.
+- **Evidência entregue:** conectores recebem 1 s para conexão e 5 s para leitura, sempre limitados pelo orçamento de 15 s; o MockServer prova o atraso de leitura e retorna `502 QIT001009`, enquanto falha de conexão é capturada pela mesma exceção `requests.RequestException`. Cada transação PostgreSQL recebe `lock_timeout=2 s` e `statement_timeout=10 s` via configuração local; esgotamento responde `503 QIT001024` com `X-Request-ID`. Testes HTTP seguram uma conta com `FOR UPDATE`, provam que uma consulta não relacionada continua atendida, e simulam cliente que desiste da resposta antes do commit: o replay com a mesma `Idempotency-Key` resulta em um único lançamento.
 
 ### S15 Alertas e notificações confiáveis (B, 5h)
 - **Depende de:** S12 e S13.

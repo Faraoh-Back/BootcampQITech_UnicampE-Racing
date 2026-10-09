@@ -104,6 +104,12 @@ Todos os testes do BaaS PME, incluindo transações, boletos, antecipação e co
 > deixe-a vazia para usar `TIMEZONE=America/Sao_Paulo`. Após os testes, rode
 > `docker compose up -d` para restaurar o comportamento normal.
 
+Os limites padrão de espera já vêm no Compose: 1 s para conexão externa, 5 s
+para leitura, 2 s para lock PostgreSQL e 10 s por comando SQL. Para investigar
+um `503 QIT001024`, use o `X-Request-ID` da resposta junto dos logs JSON da API.
+Depois de uma interrupção de rede em operação financeira, repita apenas com a
+mesma `Idempotency-Key`.
+
 ---
 
 ## 5. Testando a Recriação Limpa do Banco (Passo Crítico)
