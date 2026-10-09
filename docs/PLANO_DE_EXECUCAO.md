@@ -55,9 +55,10 @@
 | **R3** Transferência | S5 Transferência e tarifa | S9 Reajuste (lote 2) | S7a Concorrência (saque), T3.1 Checkpoint da RFC | ~5h |
 | **R4** Garantias | S6 Idempotência nas rotas, S7b Limite noturno | S10 Antecipação | S7c Concorrência (transferência, idempotência, antecipação) | ~6h |
 | **R4.5** Evolução operacional | S11 Identidade e autorização, S14 timeouts | S13 Observabilidade, S15 notificações | S12 Auditoria verificável, T4.5 benchmark | ~19h |
+| **R4.75** API mais completa | S16 retry transacional, S17 precificação | S18 cobrança e antecipação | T4.75 exemplos de defesa | ~14h |
 | **R5** Entrega | T5.2, T5.4, T5.5, T5.7, T5.8 | T5.3, T5.6, T5.7, T5.8 | T5.1, T5.6, T5.7, T5.8, T5.9 | ~9h |
 
-Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R5 55h. A R4.5 é uma expansão opcional de produção; o núcleo do desafio permanece pronto no Gate 2.
+Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.75 60h, R5 69h. R4.5 e R4.75 são expansões opcionais; o núcleo do desafio permanece pronto no Gate 2.
 
 ### Gates e linha de corte
 
@@ -329,6 +330,41 @@ com o Gate 2 verde.
 - **Evidência entregue:** `scripts/benchmark_concurrency.sh` captura ambiente, imagens, amostra ociosa, snapshots NDJSON durante a carga, resultado do pytest e duração, sem apagar volume local. `docs/BENCHMARK.md` documenta carga, comandos, artefatos, referência contextual, critérios de comparação e diagnóstico. A RFC cita o método e seus limites, sem transformar a referência em SLO.
 
 **Gate 3 (opcional).**
+
+---
+
+## 8.75 Rodada 4.75: Ajustes para deixar a API mais completa (~14h)
+
+Esta rodada incorpora os aprendizados da defesa sem transformar decisão de
+negócio em espera automática: retry só é permitido quando uma transação foi
+desfeita por falha transitória de infraestrutura. Saldo insuficiente, limite
+noturno, status inválido e boleto inelegível continuam sendo respostas finais
+do pedido atual.
+
+### T4.75 Exemplos práticos para RFC e defesa (C, 2h)
+- **Fazer:** inserir na RFC exemplos curtos de deadlock potencial A→B/B→A e sua prevenção por **ID interno crescente**, nunca IP; serialização de uma requisição esperando a primeira conta; diferença entre falha de negócio e infraestrutura; e separação entre cobrança da PME e antecipação.
+- **Não fazer:** usar “A estava sem saldo, B transferiu e A passou depois” como exemplo de deadlock. Isso é mudança normal de estado, não ciclo de travas.
+- **Pronto quando:** o time explica deadlock em menos de um minuto e não promete retry automático de `422` nem chama antecipação de empréstimo sem lastro.
+
+### S16 Retentativa transacional apenas para falhas transitórias (A, 4h)
+- **Depende de:** S6 e S14. **Fazer:** executor no controller que reinicia a operação inteira com sessão/transação nova, tentativas limitadas, backoff com jitter e a mesma `Idempotency-Key`, somente para deadlock PostgreSQL (`40P01`) ou falha de serialização (`40001`).
+- **Não fazer:** retentar `400`, `401`, `403`, `404`, `409`, `422`, timeout de conector ou qualquer fluxo depois de I/O externo sem idempotência formal. `InsufficientBalance` deve responder imediatamente; crédito posterior exige nova intenção do cliente.
+- **Cuidado:** rollback completo antes da próxima tentativa; nenhum lançamento, auditoria, outbox ou reserva idempotente pode vazar. Para conectores, retry só antes do I/O ou com referência externa comprovadamente idempotente.
+- **Testar:** falha transitória na primeira tentativa resulta em um único `201`, único ledger/auditoria/outbox e mesmo `operation_key`; `422` não é repetido; esgotamento não deixa escrita parcial; S7c continua verde.
+- **Pronto quando:** RFC e métricas descrevem retry como recuperação de infraestrutura, nunca como espera por dinheiro.
+
+### S17 Precificação versionada e personalizada por PME (A e B, 6h)
+- **Depende de:** S10, S12 e S16. **Fazer:** tabelas de política de preço por operação (`TRANSFER`, `CREDIT_ADVANCE`, `BANK_SLIP_ISSUANCE`), com valor fixo em centavos e/ou percentual em pontos-base, vigência, versão, estado e associação opcional por PME. A precedência é `PME específica > padrão vigente`.
+- **Auditoria:** política publicada não é sobrescrita; correção gera versão nova. A operação guarda snapshot imutável da política, base de cálculo, taxa e valor aplicado no fato financeiro, e `audit_event` registra a escolha. Mudança futura de preço nunca altera histórico.
+- **Regras:** valores em `BIGINT`; percentual em pontos-base ou `Decimal` controlado; arredondamento, vigência e proibição de sobreposição documentados. Emissão de boleto é cobrança explícita de serviço à PME, não valor do boleto do pagador.
+- **Testar:** duas PMEs com preços distintos; padrão sem exceção; mudança futura preservando histórico; sobreposição rejeitada; transferência, antecipação e emissão auditáveis; nenhum `float`.
+- **Pronto quando:** contratos comerciais diferenciados não exigem mudar variável de ambiente ou código, e é possível responder qual tarifa foi aplicada e por quê.
+
+### S18 Dois fluxos explícitos: plano de cobrança e antecipação (B, 2h)
+- **Fazer:** consolidar em RFC, README, contratos e apresentação: **Plano de cobrança** emite boletos da PME para seus próprios pagadores; **Antecipação de recebíveis** dá liquidez à PME sobre boletos pendentes já emitidos e vinculados como lastro.
+- **Não fazer:** incluir contrato de empréstimo, principal sem lastro, juros parcelados, cronograma de amortização, boleto para devedor ou baixa automática. Isso é outro produto de crédito.
+- **Testar:** jornada HTTP emite, seleciona boletos da própria PME, antecipa uma vez e mostra crédito/tarifa no extrato; documentos não usam “empréstimo” como sinônimo de antecipação.
+- **Pronto quando:** um diagrama deixa claros PME, pagador do boleto e recebível que lastreia a liquidez.
 
 ---
 
