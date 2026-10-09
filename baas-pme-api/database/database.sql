@@ -139,6 +139,34 @@ CREATE TRIGGER trg_audit_event_append_only
 BEFORE UPDATE OR DELETE ON audit_event
 FOR EACH ROW EXECUTE FUNCTION reject_audit_event_mutation();
 
+-- A outbox é mutável somente no estado de entrega; o fato de domínio que a
+-- originou continua protegido na auditoria append-only. Um lease permite que
+-- mais de um worker publique em paralelo sem entregar o mesmo evento juntos.
+CREATE TABLE outbox_event (
+    id                SERIAL PRIMARY KEY,
+    event_key         CHAR(36) NOT NULL UNIQUE,
+    topic             VARCHAR(64) NOT NULL,
+    aggregate_type    VARCHAR(64) NOT NULL,
+    aggregate_key     CHAR(36) NOT NULL,
+    payload           JSONB NOT NULL,
+    delivery_attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+    locked_until      TIMESTAMP,
+    lock_token        CHAR(36),
+    published_at      TIMESTAMP,
+    last_error        VARCHAR(500),
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_outbox_delivery_attempts CHECK (delivery_attempts >= 0),
+    CONSTRAINT chk_outbox_lock_pair CHECK (
+        (locked_until IS NULL AND lock_token IS NULL)
+        OR (locked_until IS NOT NULL AND lock_token IS NOT NULL)
+    )
+);
+
+CREATE INDEX idx_outbox_event_pending
+ON outbox_event (next_attempt_at, id)
+WHERE published_at IS NULL;
+
 CREATE TABLE account (
     id          SERIAL PRIMARY KEY,
     account_key CHAR(36) NOT NULL UNIQUE,

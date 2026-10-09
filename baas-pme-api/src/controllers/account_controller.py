@@ -2,12 +2,14 @@ from controllers.base_controller import BaseController
 from dtos import AccountDTO
 from errors import AccountNotFound, CustomerNotFound, InvalidAccountStatusTransition
 from repositories import AccountRepository
+from repositories.outbox_repository import OutboxRepository
 
 
 class AccountController(BaseController):
     def __init__(self) -> None:
         super().__init__(__name__)
         self.account_repository = AccountRepository(self.context)
+        self.outbox_repository = OutboxRepository(self.session)
 
     def create(self, payload: dict) -> dict:
         customer = self.account_repository.get_customer_by_key(payload["customer_key"])
@@ -67,6 +69,19 @@ class AccountController(BaseController):
             account.account_key,
             previous_summary={"status": current_status},
             current_summary={"status": requested_status},
+        )
+        # O evento só existe se o status e a auditoria também confirmarem.
+        # O worker o publicará depois do commit, nunca dentro desta requisição.
+        self.outbox_repository.enqueue(
+            "account.status_changed",
+            "ACCOUNT",
+            account.account_key,
+            {
+                "account_key": account.account_key,
+                "customer_key": account.customer.customer_key,
+                "previous_status": current_status,
+                "status": requested_status,
+            },
         )
         self.session.commit()
         return account_dto

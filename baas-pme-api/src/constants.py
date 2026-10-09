@@ -46,6 +46,14 @@ DATABASE_LOCK_TIMEOUT_MS = int(os.environ.get("DATABASE_LOCK_TIMEOUT_MS", "2000"
 DATABASE_STATEMENT_TIMEOUT_MS = int(os.environ.get("DATABASE_STATEMENT_TIMEOUT_MS", "10000"))
 REQUEST_TIMEOUT_SECONDS = float(os.environ.get("REQUEST_TIMEOUT_SECONDS", "15"))
 
+# A outbox e o worker de notificações ficam fora do controller: o commit do
+# domínio nunca depende de uma resposta de webhook. O destino padrão serve ao
+# ambiente Compose; produção deve apontar para o serviço de notificações.
+NOTIFICATION_WEBHOOK_URL = os.environ.get("NOTIFICATION_WEBHOOK_URL", "http://mock:1080/notifications")
+OUTBOX_POLL_INTERVAL_SECONDS = float(os.environ.get("OUTBOX_POLL_INTERVAL_SECONDS", "1"))
+OUTBOX_LEASE_SECONDS = int(os.environ.get("OUTBOX_LEASE_SECONDS", "30"))
+OUTBOX_RETRY_BASE_SECONDS = int(os.environ.get("OUTBOX_RETRY_BASE_SECONDS", "5"))
+
 # Regras e parâmetros de negócio (D1 e D8)
 TRANSFER_FEE_CENTS = int(os.environ.get("TRANSFER_FEE_CENTS", "100"))
 ADVANCE_FEE_PERCENT = int(os.environ.get("ADVANCE_FEE_PERCENT", "3"))
@@ -99,6 +107,8 @@ def check_variables():
         raise EnvironmentError("Connector and request timeouts must be positive.")
     if DATABASE_LOCK_TIMEOUT_MS < 1 or DATABASE_STATEMENT_TIMEOUT_MS < 1:
         raise EnvironmentError("Database timeouts must be positive milliseconds.")
+    if OUTBOX_POLL_INTERVAL_SECONDS <= 0 or OUTBOX_LEASE_SECONDS < 1 or OUTBOX_RETRY_BASE_SECONDS < 1:
+        raise EnvironmentError("Outbox intervals and lease must be positive.")
 
     # Import tardio evita ciclo durante a leitura das constantes acima.
     from utils.night_limit import validate_night_configuration

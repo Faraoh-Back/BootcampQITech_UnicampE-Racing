@@ -46,6 +46,21 @@ ACTIVE_SESSIONS = Gauge(
     "Sessões de usuário não revogadas e ainda não expiradas no instante da coleta.",
     registry=REGISTRY,
 )
+OUTBOX_PENDING = Gauge(
+    "baas_outbox_pending_events",
+    "Eventos ainda não publicados pela outbox no instante da coleta.",
+    registry=REGISTRY,
+)
+OUTBOX_RETRYING = Gauge(
+    "baas_outbox_retrying_events",
+    "Eventos pendentes que já falharam ao menos uma entrega.",
+    registry=REGISTRY,
+)
+OUTBOX_DELIVERY_ATTEMPTS = Gauge(
+    "baas_outbox_delivery_attempts_total",
+    "Soma persistida das tentativas de entrega da outbox.",
+    registry=REGISTRY,
+)
 
 
 def record_http_request(method: str, route: str, status: int, duration_seconds: float) -> None:
@@ -72,6 +87,12 @@ def observe_lock_wait(operation: str, seconds: float) -> None:
 
 def set_active_sessions(count: int) -> None:
     ACTIVE_SESSIONS.set(count)
+
+
+def set_outbox_state(pending: int, retrying: int, delivery_attempts: int) -> None:
+    OUTBOX_PENDING.set(pending)
+    OUTBOX_RETRYING.set(retrying)
+    OUTBOX_DELIVERY_ATTEMPTS.set(delivery_attempts)
 
 
 def render_metrics() -> bytes:

@@ -133,6 +133,14 @@ def expect_central_bank_status(status_code: int) -> None:
     )
 
 
+def expect_notification(status_code: int = 204) -> None:
+    """Aceita notificações assíncronas publicadas pelo worker da outbox."""
+    _expect(
+        {"method": "POST", "path": "/notifications"},
+        {"statusCode": status_code},
+    )
+
+
 def verify_called(path: str, times: int) -> None:
     """Falha o teste se ``path`` nao tiver sido chamado exatamente ``times`` vezes."""
     payload = {
@@ -177,3 +185,28 @@ def verify_bankslip_external_reference(external_reference: str) -> None:
             raise AssertionError(
                 "A external_reference enviada ao MockServer é diferente da referência esperada."
             )
+
+
+def verify_notification_event(event_key: str, times: int = 1) -> None:
+    """Confere a deduplicação observável pelo identificador do evento."""
+    try:
+        response = requests.put(
+            f"{_base_url()}/mockserver/retrieve?type=REQUESTS",
+            json={"method": "POST", "path": "/notifications"},
+            timeout=_ADMIN_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+    except requests.RequestException as error:
+        raise RuntimeError(f"Nao foi possivel recuperar notificações em {_base_url()}.") from error
+
+    observed = 0
+    for request_made in response.json():
+        body = request_made.get("body")
+        if isinstance(body, dict):
+            body = body.get("string", body.get("json", body))
+        if isinstance(body, str):
+            body = json.loads(body)
+        if isinstance(body, dict) and body.get("event_key") == event_key:
+            observed += 1
+    if observed != times:
+        raise AssertionError(f"Esperava {times} entrega(s) de {event_key}, mas observou {observed}.")
