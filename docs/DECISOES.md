@@ -7,7 +7,7 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D13)
 
-> **Estado RFC 2.4:** D1–D11 estão implementadas. D12–D13 continuam como decisões planejadas da R4.5: não expõem rota, tabela, métrica, erro `QIT` nem garantia de produção antes de sua implementação.
+> **Estado RFC 2.5:** D1–D12 estão implementadas. D13 continua como decisão planejada da R4.5; a política de timeouts permanece na S14 e não é antecipada como entregue.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
@@ -22,7 +22,7 @@
 | **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout (5s padrão), log padronizado de ida e volta e interpretação JSON com `Decimal`. O `INTERNAL-TOKEN` **não** é enviado automaticamente a APIs externas; somente um contrato explícito de serviço interno pode exigi-lo. |
 | **D10** | **Identidade e sessões** | Um `app_user` pertence a uma PME (`customer`) por `user_customer_access`; portanto seu vínculo alcança as contas da PME. A senha usa bcrypt. Login cria sessão persistida por dispositivo, JWT de acesso de 15 minutos (configurável) e refresh token opaco, rotativo e válido por no máximo 8 horas. Papéis: `OWNER`, `OPERATOR`, `VIEWER`. | `INTERNAL-TOKEN` permanece a credencial serviço-a-serviço e não é login nem API Gateway. Em rotas financeiras, a ausência de `Authorization` preserva a chamada técnica interna; se `Authorization: Bearer <JWT>` vier, a sessão ativa e o papel sobre a conta são obrigatórios. `OWNER` administra ciclo de vida; `OWNER`/`OPERATOR` movimentam e emitem cobrança; os três podem consultar. |
 | **D11** | **Auditoria verificável** | `audit_event` é uma cadeia global append-only: ator (`SERVICE` ou `USER`), ação, tipo/chave de recurso, `request_id`, IP de origem, resumo anterior/posterior, timestamp, `previous_hash` e `event_hash`. A cadeia começa em 64 zeros e usa SHA-256 sobre JSON canônico UTF-8. | A inserção adquire `pg_advisory_xact_lock`, evitando bifurcação sob concorrência; o evento entra na mesma transação do fato de negócio. Trigger PostgreSQL recusa `UPDATE`/`DELETE`; correção exige evento compensatório. `GET /audit-events` exporta os dados e `GET /audit-events/checkpoint` expõe a ponta para verificação externa. Isto não é blockchain: não há consenso distribuído nem imutabilidade contra um administrador do próprio banco. |
-| **D12** | **Observabilidade e timeouts (planejada)** | Logs JSON no stdout, métricas de latência, status, QIT, conectores, replay e locks; timeout de conexão/leitura, `lock_timeout` e `statement_timeout` configurados e documentados. | Métrica sem contexto não é evidência: benchmark registra ambiente, carga, duração, CPU e memória. Após timeout em operação financeira, o cliente repete sempre com a mesma `Idempotency-Key`. |
+| **D12** | **Observabilidade** | Logs JSON no stdout com `request_id`, método, rota-modelo, status, duração, conta mascarada e usuário mascarado quando o JWT é válido. `GET /metrics` expõe Prometheus: requisições/latência, QIT, falhas de conectores, replay idempotente, duração de aquisição de travas e sessões ativas. | Rótulos são somente método, rota-modelo, status, código QIT, conector, escopo e operação: **nunca** e-mail, CPF/CNPJ, token, `request_id`, IP, chave de conta ou query string. Tempo de lock é observação da aquisição, não promessa de timeout; timeouts de conexão/leitura e banco pertencem à S14. |
 | **D13** | **Alertas e notificações (planejada)** | Eventos de saída usam `outbox_event`, criado na mesma transação do fato de negócio e publicado por processo separado, idempotente e retentável. | Não há chamada de e-mail/webhook dentro do controller antes do commit. Alertas operacionais derivam de métricas; notificações de domínio respeitam a confirmação da transação. |
 
 ---
@@ -30,7 +30,7 @@
 ### Limite entre contrato atual e evolução planejada
 
 O catálogo e os contratos de rota abaixo descrevem a API implementada, inclusive
-D10 e D11. Os códigos de erro, schemas, URLs e políticas HTTP de D12–D13 serão
+D10–D12. Os códigos de erro, schemas, URLs e políticas HTTP de D13 serão
 definidos junto com seus testes vermelhos, para não transformar intenção de
 roadmap em promessa de integração.
 
@@ -484,4 +484,20 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
 - **Cabeçalhos:** `INTERNAL-TOKEN`.
 - **Resposta Sucesso (`200 OK`):** a ponta atual da cadeia. Para cadeia vazia,
   devolve `{"audit_event_id": null, "event_hash": "000...000"}`.
+- **Erros Possíveis:** `403 QIT000002`.
+
+---
+
+### 3.8. Observabilidade (`/metrics`)
+
+#### `GET /metrics`
+- **Cabeçalhos:** `INTERNAL-TOKEN`.
+- **Resposta Sucesso (`200 OK`):** texto no formato de exposição Prometheus.
+  Métricas: `baas_http_requests_total`,
+  `baas_http_request_duration_seconds`, `baas_qit_errors_total`,
+  `baas_external_connector_failures_total`, `baas_idempotency_replays_total`,
+  `baas_database_lock_wait_seconds` e `baas_active_user_sessions`.
+- **Rótulos permitidos:** método, rota-modelo, status HTTP, código QIT,
+  conector, escopo de idempotência e operação de lock. Não use dados pessoais,
+  tokens, hashes, chaves UUID, IP ou query string como rótulo.
 - **Erros Possíveis:** `403 QIT000002`.

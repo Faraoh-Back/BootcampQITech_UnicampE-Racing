@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Time** | Cairê Belo · \Pedro Campanha · \<nome 3\> |
-| **Versão** | 2.4 — pós-S12, auditoria verificável entregue |
+| **Versão** | 2.5 — pós-S13, observabilidade entregue |
 
 ## Contextualização
 
@@ -15,11 +15,11 @@ A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge d
 
 Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
 
-Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. Autenticação de usuário e auditoria verificável estão entregues; métricas seguem como evolução planejada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
+Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. Autenticação de usuário, auditoria verificável e observabilidade estão entregues; política completa de timeouts, alertas e notificações seguem como evolução planejada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
 
 ### Estado deste checkpoint
 
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11 e S12. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11, S12 e S13. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A S13 torna o atendimento observável por logs JSON e métricas Prometheus de baixa cardinalidade. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
 
 ### Explicando a solução de forma macro
 
@@ -89,12 +89,15 @@ confiar na aplicação para o cálculo. Isto detecta adulteração do histórico
 exportado, mas não é blockchain nem promete resistir a um administrador que
 controle o banco e seus backups.
 
-Os logs atuais vão para stdout do container e podem ser consultados por
-`docker compose logs`. A evolução operacional prevê logs JSON com correlação,
-métricas Prometheus de latência, erros QIT, conectores, idempotência e espera
-por locks, além de alertas baseados nessas métricas. CPU e memória serão
-registradas em benchmark reproduzível — máquina, carga, duração e
-`docker stats` —, não como número isolado sem contexto.
+Os logs vão para stdout do container, um JSON por requisição, e podem ser
+consultados por `docker compose logs`. Cada conclusão traz `request_id`, rota
+normalizada, status, duração, chave de conta mascarada e usuário mascarado
+quando há JWT válido. `GET /metrics` expõe métricas Prometheus de latência,
+requisições, QIT, conectores, idempotência, aquisição de locks e sessões
+ativas. Para não transformar telemetria em vazamento ou problema de memória,
+os rótulos nunca carregam e-mail, documento, token, UUID, IP, hash nem query
+string. Alertas baseados nessas métricas, e CPU/memória em benchmark
+reproduzível, permanecem etapas posteriores.
 
 Os conectores já possuem timeout de cinco segundos e devolvem `502 QIT001009`
 em falha. A próxima etapa define também timeout de conexão/leitura, prazo de
@@ -125,6 +128,7 @@ Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho)
 | `POST` | `/auth/logout` | Revoga somente a sessão do JWT informado | `Authorization: Bearer <JWT>` | `204`; `401 QIT001020` |
 | `GET` | `/audit-events` | Exporta a cadeia de auditoria e sua ponta; é somente leitura | n/a | `200` com eventos e checkpoint |
 | `GET` | `/audit-events/checkpoint` | Retorna somente a ponta atual da cadeia | n/a | `200` |
+| `GET` | `/metrics` | Expõe métricas Prometheus para coleta interna | n/a | `200` texto Prometheus; `403 QIT000002` sem token interno |
 | `POST` | `/customer` | Cadastra a PME. Repetir não cria outra: `UNIQUE(document_number)` e `UNIQUE(email)` | `name`, `email`, `document_number` (CPF ou CNPJ com máscara) | `201` com `customer_key`; `400 QIT000001` corpo fora do formato; `409 QIT001003` documento já cadastrado; `409 QIT001004` e-mail já cadastrado; `422 QIT001010` dígitos verificadores não batem |
 | `GET` | `/customer/{customer_key}` | Devolve um cliente | `customer_key` no caminho | `200`; `404 QIT001001` |
 | `POST` | `/account` | Abre conta com saldo 0 e grava os eventos `PENDING` e `APPROVED` na mesma transação. Não é idempotente: cada chamada abre outra conta (um cliente pode ter várias) | `customer_key` | `201` com `account_key`, `status`, `balance`; `400 QIT000001`; `404 QIT001001` cliente inexistente |

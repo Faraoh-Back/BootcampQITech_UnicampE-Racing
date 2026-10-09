@@ -38,7 +38,7 @@ NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 ./.venv/bin/python -m pytest -q
 ```
 
-Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 133 testes. Depois,
+Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 137 testes. Depois,
 restaure o relógio normal com `docker compose up -d`.
 
 ## Recriar o banco após alterar SQL
@@ -62,6 +62,7 @@ intencional.
 | `POST` | `/user` | Cadastro de usuário e vínculo inicial com a PME. |
 | `POST` | `/auth/login`, `/auth/refresh`, `/auth/logout` | Sessão por dispositivo, JWT curto, rotação de refresh e revogação individual. |
 | `GET` | `/audit-events`, `/audit-events/checkpoint` | Exportação da trilha append-only e ponta da cadeia SHA-256. |
+| `GET` | `/metrics` | Métricas Prometheus internas de operação. |
 | `POST` / `GET` | `/account`, `/account/{account_key}` | Abertura e consulta de conta. |
 | `PUT` | `/account/{account_key}/block`, `/cancel` | Ciclo de vida auditável da conta. |
 | `POST` / `GET` | `/account/{account_key}/transaction`, `/transaction/{transaction_key}` | Depósito, saque, transferência e consulta de lançamento. |
@@ -73,6 +74,19 @@ intencional.
 Depósito, saque, transferência e antecipação exigem `Idempotency-Key`. Uma
 repetição com o mesmo payload devolve `201` e `Idempotent-Replayed: true` sem
 duplicar o ledger.
+
+## Logs e métricas
+
+Os logs da API são JSON no stdout, correlacionados por `request_id` e sem corpo
+de requisição, token, e-mail ou documento. Chaves de conta e usuário aparecem
+somente mascaradas. Para consultar métricas Prometheus localmente:
+
+```bash
+curl -H 'INTERNAL-TOKEN: default_token' http://localhost:3000/metrics
+```
+
+Os rótulos das métricas não incluem dados pessoais, UUIDs, IPs ou query
+strings; use a rota-modelo, status e código QIT para agregação.
 
 ## Configuração
 
