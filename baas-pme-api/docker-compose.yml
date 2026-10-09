@@ -35,6 +35,9 @@ services:
       # A senha que protege os endpoints internos. O padrao vale pra
       # estudar; num sistema de verdade, isso nunca teria valor padrao.
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+      JWT_SECRET: ${JWT_SECRET:-local-development-jwt-secret-change-before-production}
+      JWT_ACCESS_TOKEN_MINUTES: ${JWT_ACCESS_TOKEN_MINUTES:-15}
+      JWT_SESSION_MAX_HOURS: ${JWT_SESSION_MAX_HOURS:-8}
       # A API de boletos e a do Banco Central (MockServer).
       BANKSLIP_API_URL: ${BANKSLIP_API_URL:-http://mock:1080}
       BANKSLIP_API_TIMEOUT: ${BANKSLIP_API_TIMEOUT:-5}

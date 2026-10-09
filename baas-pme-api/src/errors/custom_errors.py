@@ -201,6 +201,58 @@ class InvalidAccountStatusTransition(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class InvalidAccessToken(QIException):
+    code = "QIT001020"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Invalid access token",
+            self.code,
+            401,
+            "The access token is invalid, expired or its session was revoked.",
+            "O token de acesso é inválido, expirou ou sua sessão foi revogada.",
+        )
+
+
+class InvalidCredentials(QIException):
+    code = "QIT001021"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Invalid credentials",
+            self.code,
+            401,
+            "The email or password is invalid.",
+            "O e-mail ou a senha são inválidos.",
+        )
+
+
+class AccountAccessForbidden(QIException):
+    code = "QIT001022"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Account access forbidden",
+            self.code,
+            403,
+            "The authenticated user does not have the required role for this account.",
+            "O usuário autenticado não possui a permissão necessária para esta conta.",
+        )
+
+
+class DuplicatedUserEmail(QIException):
+    code = "QIT001023"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "User email already registered",
+            self.code,
+            409,
+            "There is already a user registered with this email.",
+            "Já existe um usuário cadastrado com este e-mail.",
+        )
+
+
 class NotFoundSampleEntity(QIException):
     """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
 

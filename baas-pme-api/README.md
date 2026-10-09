@@ -3,6 +3,8 @@
 API do desafio QI Tech para uma pequena empresa cobrar mensalidades, movimentar
 caixa e antecipar recebíveis. Valores monetários são sempre inteiros em
 centavos e toda rota, exceto `/` e `/health_check`, exige `INTERNAL-TOKEN`.
+Usuários remotos também podem enviar JWT em `Authorization: Bearer`; nesse caso
+a sessão e o papel na PME são validados antes do acesso à conta.
 
 Os contratos são mantidos em [../docs/RFC.md](../docs/RFC.md) e
 [../docs/DECISOES.md](../docs/DECISOES.md). Eles são a referência para regras
@@ -36,7 +38,7 @@ NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 ./.venv/bin/python -m pytest -q
 ```
 
-Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 126 testes. Depois,
+Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 130 testes. Depois,
 restaure o relógio normal com `docker compose up -d`.
 
 ## Recriar o banco após alterar SQL
@@ -57,6 +59,8 @@ intencional.
 | Método | Caminho | Finalidade |
 |---|---|---|
 | `POST` / `GET` | `/customer`, `/customer/{customer_key}` | Cadastro e consulta de cliente. |
+| `POST` | `/user` | Cadastro de usuário e vínculo inicial com a PME. |
+| `POST` | `/auth/login`, `/auth/refresh`, `/auth/logout` | Sessão por dispositivo, JWT curto, rotação de refresh e revogação individual. |
 | `POST` / `GET` | `/account`, `/account/{account_key}` | Abertura e consulta de conta. |
 | `PUT` | `/account/{account_key}/block`, `/cancel` | Ciclo de vida auditável da conta. |
 | `POST` / `GET` | `/account/{account_key}/transaction`, `/transaction/{transaction_key}` | Depósito, saque, transferência e consulta de lançamento. |
@@ -77,6 +81,9 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 | Variável | Padrão | Uso |
 |---|---:|---|
 | `INTERNAL_TOKEN` | `default_token` | Token interno das rotas protegidas. |
+| `JWT_SECRET` | segredo local de desenvolvimento | Chave de assinatura HS256; defina valor secreto fora do repositório em produção. |
+| `JWT_ACCESS_TOKEN_MINUTES` | `15` | Vida útil do JWT de acesso. |
+| `JWT_SESSION_MAX_HOURS` | `8` | Vida máxima da sessão e de seus refresh tokens. |
 | `TRANSFER_FEE_CENTS` | `100` | Tarifa por transferência. |
 | `ADVANCE_FEE_PERCENT` | `3` | Taxa percentual da antecipação. |
 | `NIGHT_START`, `NIGHT_END` | `20:00`, `06:00` | Janela de limite noturno. |

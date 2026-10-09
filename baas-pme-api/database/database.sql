@@ -73,6 +73,36 @@ CREATE TABLE customer (
     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE app_user (
+    id              SERIAL PRIMARY KEY,
+    user_key        CHAR(36) NOT NULL UNIQUE,
+    name            VARCHAR(255) NOT NULL,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    password_hash   VARCHAR(100) NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE user_customer_access (
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES app_user(id),
+    customer_id     INTEGER NOT NULL REFERENCES customer(id),
+    role            VARCHAR(20) NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT unq_user_customer_access UNIQUE (user_id, customer_id),
+    CONSTRAINT chk_user_customer_role CHECK (role IN ('OWNER', 'OPERATOR', 'VIEWER'))
+);
+
+CREATE TABLE user_session (
+    id                  SERIAL PRIMARY KEY,
+    session_key         CHAR(36) NOT NULL UNIQUE,
+    user_id             INTEGER NOT NULL REFERENCES app_user(id),
+    refresh_token_hash  CHAR(64) NOT NULL UNIQUE,
+    device_name         VARCHAR(100),
+    expires_at          TIMESTAMP NOT NULL,
+    revoked_at          TIMESTAMP,
+    created_at          TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE account (
     id          SERIAL PRIMARY KEY,
     account_key CHAR(36) NOT NULL UNIQUE,

@@ -13,6 +13,7 @@ from resources import (
     AccountResource,
     BillingPlanResource,
     CreditAdvanceResource,
+    AuthResource,
     CustomerResource,
     HealthCheckResource,
     SampleEntityResource,
@@ -137,6 +138,7 @@ def create_app() -> FastAPI:
     billing_plan_resource = BillingPlanResource()
     credit_advance_resource = CreditAdvanceResource()
     transaction_resource = TransactionResource()
+    auth_resource = AuthResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route(
@@ -173,6 +175,10 @@ def create_app() -> FastAPI:
     application.add_api_route("/customer", customer_resource.on_post, methods=["POST"])
     application.add_api_route("/customer/{customer_key}", customer_resource.on_get_by_key, methods=["GET"])
     application.add_api_route("/account", account_resource.on_post, methods=["POST"])
+    application.add_api_route("/user", auth_resource.on_post_user, methods=["POST"])
+    application.add_api_route("/auth/login", auth_resource.on_post_login, methods=["POST"])
+    application.add_api_route("/auth/refresh", auth_resource.on_post_refresh, methods=["POST"])
+    application.add_api_route("/auth/logout", auth_resource.on_post_logout, methods=["POST"])
     application.add_api_route("/account/{account_key}", account_resource.on_get_by_key, methods=["GET"])
     application.add_api_route(
         "/account/{account_key}/block",

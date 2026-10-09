@@ -1,0 +1,20 @@
+{
+  "title": "PostUser",
+  "type": "object",
+  "properties": {
+    "customer_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "name": {"type": "string", "minLength": 1, "maxLength": 255},
+    "email": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    },
+    "password": {"type": "string", "minLength": 8, "maxLength": 72},
+    "role": {"type": "string", "enum": ["OWNER", "OPERATOR", "VIEWER"]}
+  },
+  "required": ["customer_key", "name", "email", "password"],
+  "additionalProperties": false
+}

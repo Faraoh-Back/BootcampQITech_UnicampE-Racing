@@ -5,3 +5,4 @@ from repositories.billing_plan_repository import BillingPlanRepository
 from repositories.idempotency_repository import IdempotencyRepository
 from repositories.transaction_repository import TransactionRepository
 from repositories.credit_advance_repository import CreditAdvanceRepository
+from repositories.user_repository import UserRepository

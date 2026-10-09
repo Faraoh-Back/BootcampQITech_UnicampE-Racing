@@ -42,6 +42,31 @@ class RequestGenerator:
         res = ClientRequisition.send("POST", "/account", payload=payload, headers=h)
         return res.response_status, res.response_json
 
+    # ── IDENTIDADE (/user e /auth) ────────────────────────────────
+    @staticmethod
+    def POST_user(payload: dict, headers: Optional[dict] = None) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("POST", "/user", payload=payload, headers=h)
+        return res.response_status, res.response_json
+
+    @staticmethod
+    def POST_auth_login(payload: dict, headers: Optional[dict] = None) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("POST", "/auth/login", payload=payload, headers=h)
+        return res.response_status, res.response_json
+
+    @staticmethod
+    def POST_auth_refresh(payload: dict, headers: Optional[dict] = None) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("POST", "/auth/refresh", payload=payload, headers=h)
+        return res.response_status, res.response_json
+
+    @staticmethod
+    def POST_auth_logout(headers: Optional[dict] = None) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("POST", "/auth/logout", headers=h)
+        return res.response_status, res.response_json
+
     @staticmethod
     def GET_account(account_key: str, headers: Optional[dict] = None) -> Tuple[int, dict]:
         h = RequestGenerator._default_headers(headers)

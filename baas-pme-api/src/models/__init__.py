@@ -9,6 +9,7 @@ from models.transaction import Transaction
 from models.credit_advance import CreditAdvance
 from models.billing_plan import BillingPlan
 from models.bank_slip import BankSlip, BankSlipStatus, BankSlipStatusEvent
+from models.user import User, UserCustomerAccess, UserSession
 
 __all__ = [
     "Base",
@@ -26,4 +27,7 @@ __all__ = [
     "BankSlip",
     "BankSlipStatus",
     "BankSlipStatusEvent",
+    "User",
+    "UserCustomerAccess",
+    "UserSession",
 ]

@@ -1,0 +1,15 @@
+{
+  "title": "PostAuthLogin",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    },
+    "password": {"type": "string", "minLength": 1, "maxLength": 72},
+    "device_name": {"type": "string", "minLength": 1, "maxLength": 100}
+  },
+  "required": ["email", "password"],
+  "additionalProperties": false
+}

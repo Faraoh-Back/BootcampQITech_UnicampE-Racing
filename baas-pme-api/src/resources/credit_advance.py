@@ -4,12 +4,14 @@ from fastapi.responses import JSONResponse
 
 from controllers import CreditAdvanceController
 from errors import InvalidSchema, MissingIdempotencyKey
+from utils.account_access import authorize_user_if_present
 from utils.schema_handler import SchemaHandler
 
 
 class CreditAdvanceResource:
     @SchemaHandler.validate("post_credit_advance.json")
     def on_post(self, account_key: str, payload: dict, request: Request) -> JSONResponse:
+        authorize_user_if_present(request, account_key, {"OWNER", "OPERATOR"})
         idempotency_key = request.headers.get("Idempotency-Key")
         if not idempotency_key:
             raise MissingIdempotencyKey()
