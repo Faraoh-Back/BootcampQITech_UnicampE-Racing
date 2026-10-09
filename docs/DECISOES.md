@@ -7,7 +7,7 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D13)
 
-> **Estado RFC 2.2:** D1–D9 estão implementadas para cliente, conta, ciclo de vida, ledger, transferência, plano de boletos, reajuste, idempotência, limite noturno e antecipação. D10–D13 são decisões da R4.5, deliberadamente planejadas; não expõem rota, tabela, métrica, erro `QIT` nem garantia de produção antes da implementação.
+> **Estado RFC 2.3:** D1–D10 estão implementadas. D11–D13 continuam como decisões planejadas da R4.5: não expõem rota, tabela, métrica, erro `QIT` nem garantia de produção antes de sua implementação.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
@@ -20,7 +20,7 @@
 | **D7** | **Histórico de Eventos Visível por HTTP (R4)** | `GET /account/{account_key}` expõe `status_events` da conta; `GET .../billing-plan/{plan_key}` expõe `status_events` dentro de cada boleto. | A regra R4 (imutabilidade e auditabilidade: nada deixa de existir) só é testável em caixa-preta se os eventos históricos de status forem inspecionáveis via resposta HTTP. O formato atual é ISO 8601 sem offset, por exemplo `[{ "status": "APPROVED", "event_datetime": "2026-10-02T12:00:00.000000" }]`. |
 | **D8** | **Janela e Limite Noturno** | Saques e transferências noturnos têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte; depósito não é limitado. | A regra segue o limite padrão de transferências noturnas (Pix e TED) para pessoa física. A aplicação usa `TIMEZONE=America/Sao_Paulo`; somente no ambiente de teste, `NIGHT_TIME_OVERRIDE` fixa a hora sem permitir que o cliente HTTP a escolha. |
 | **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout (5s padrão), log padronizado de ida e volta e interpretação JSON com `Decimal`. O `INTERNAL-TOKEN` **não** é enviado automaticamente a APIs externas; somente um contrato explícito de serviço interno pode exigi-lo. |
-| **D10** | **Identidade e sessões (planejada)** | Usuário vinculado à PME/conta, papéis `OWNER`, `OPERATOR` e `VIEWER`, senha com Argon2 ou bcrypt, JWT de acesso curto e refresh token rotativo com sessão máxima de 8 horas. | `INTERNAL-TOKEN` continuará sendo credencial serviço-a-serviço; não é login de usuário nem API Gateway. A tabela de sessão e o `jti` permitem múltiplos dispositivos e revogação individual. |
+| **D10** | **Identidade e sessões** | Um `app_user` pertence a uma PME (`customer`) por `user_customer_access`; portanto seu vínculo alcança as contas da PME. A senha usa bcrypt. Login cria sessão persistida por dispositivo, JWT de acesso de 15 minutos (configurável) e refresh token opaco, rotativo e válido por no máximo 8 horas. Papéis: `OWNER`, `OPERATOR`, `VIEWER`. | `INTERNAL-TOKEN` permanece a credencial serviço-a-serviço e não é login nem API Gateway. Em rotas financeiras, a ausência de `Authorization` preserva a chamada técnica interna; se `Authorization: Bearer <JWT>` vier, a sessão ativa e o papel sobre a conta são obrigatórios. `OWNER` administra ciclo de vida; `OWNER`/`OPERATOR` movimentam e emitem cobrança; os três podem consultar. |
 | **D11** | **Auditoria verificável (planejada)** | Evento `audit_event` append-only, com ator, ação, recurso, `request_id`, origem, resumo anterior/posterior, `previous_hash` e `event_hash`. | Auditoria não é editável: correções criam eventos compensatórios. Restrições no banco impedem `UPDATE`/`DELETE`; checkpoints assinados ou exportados tornam adulteração detectável sem introduzir blockchain. |
 | **D12** | **Observabilidade e timeouts (planejada)** | Logs JSON no stdout, métricas de latência, status, QIT, conectores, replay e locks; timeout de conexão/leitura, `lock_timeout` e `statement_timeout` configurados e documentados. | Métrica sem contexto não é evidência: benchmark registra ambiente, carga, duração, CPU e memória. Após timeout em operação financeira, o cliente repete sempre com a mesma `Idempotency-Key`. |
 | **D13** | **Alertas e notificações (planejada)** | Eventos de saída usam `outbox_event`, criado na mesma transação do fato de negócio e publicado por processo separado, idempotente e retentável. | Não há chamada de e-mail/webhook dentro do controller antes do commit. Alertas operacionais derivam de métricas; notificações de domínio respeitam a confirmação da transação. |
@@ -29,10 +29,10 @@
 
 ### Limite entre contrato atual e evolução planejada
 
-O catálogo e os contratos de rota abaixo descrevem somente a API implementada.
-Os códigos de erro, schemas, URLs e políticas HTTP de D10–D13 serão definidos
-junto com seus testes vermelhos, para não transformar intenção de roadmap em
-promessa de integração.
+O catálogo e os contratos de rota abaixo descrevem a API implementada, inclusive
+D10. Os códigos de erro, schemas, URLs e políticas HTTP de D11–D13 serão
+definidos junto com seus testes vermelhos, para não transformar intenção de
+roadmap em promessa de integração.
 
 ---
 
@@ -71,6 +71,10 @@ Todas as respostas de erro retornam payload JSON padronizado:
 | **QIT001017** | `422 Unprocessable` | `InvalidFirstDueDate` | Data de primeiro vencimento informada no plano de cobrança está no passado. |
 | **QIT001018** | `400 Bad Request` | `MissingIdempotencyKey` | Cabeçalho obrigatório `Idempotency-Key` não foi informado na requisição. |
 | **QIT001019** | `409 Conflict` | `InvalidAccountStatusTransition` | Transição de status da conta não permitida, inclusive tentativa de alterar uma conta `CANCELLED`. |
+| **QIT001020** | `401 Unauthorized` | `InvalidAccessToken` | JWT ausente, malformado, expirado, assinado de forma inválida, refresh token já rotacionado/expirado ou sessão revogada. |
+| **QIT001021** | `401 Unauthorized` | `InvalidCredentials` | E-mail não cadastrado ou senha inválida no login; a resposta não revela qual dos dois falhou. |
+| **QIT001022** | `403 Forbidden` | `AccountAccessForbidden` | Usuário autenticado não possui vínculo com a PME da conta, ou seu papel não autoriza a operação. |
+| **QIT001023** | `409 Conflict` | `DuplicatedUserEmail` | E-mail já cadastrado em `app_user`. |
 
 ### Erros de infraestrutura HTTP
 
@@ -100,6 +104,19 @@ Todas as rotas (exceto `/` e `/health_check`) exigem o cabeçalho:
 ```http
 INTERNAL-TOKEN: <token_configurado>
 ```
+
+As rotas de identidade também exigem esse cabeçalho, pois são expostas atrás da
+fronteira interna. Nas rotas financeiras e de consulta de conta, o cabeçalho
+abaixo é opcional para o ator técnico, mas, quando presente, torna obrigatória
+a autorização do usuário para a conta alvo:
+
+```http
+Authorization: Bearer <access_token_jwt>
+```
+
+Papéis: `OWNER` pode tudo na própria PME; `OPERATOR` cria transações, planos,
+reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
+`401 QIT001020`; falta de vínculo ou papel insuficiente é `403 QIT001022`.
 
 ---
 
@@ -410,3 +427,38 @@ INTERNAL-TOKEN: <token_configurado>
   }
   ```
 - **Erros Possíveis:** `400 QIT000001`, `400 QIT001018`, `403 QIT000002`, `404 QIT001002`, `404 QIT001015`, `409 QIT001006`, `409 QIT001008`, `409 QIT001016`.
+
+---
+
+### 3.6. Identidade e sessões (`/user`, `/auth`)
+
+#### `POST /user`
+- **Cabeçalhos:** `INTERNAL-TOKEN`
+- **Body de Entrada:** `customer_key`, `name`, `email`, `password` (8 a 72
+  caracteres) e `role` opcional (`OWNER` por padrão; `OPERATOR` ou `VIEWER`).
+- **Resposta Sucesso (`201 Created`):** `user_key`, `customer_key`, `role` e
+  `created_at`. Senha e seu hash nunca são retornados.
+- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001001`,
+  `409 QIT001023`.
+
+#### `POST /auth/login`
+- **Cabeçalhos:** `INTERNAL-TOKEN`
+- **Body de Entrada:** `email`, `password`, `device_name` opcional.
+- **Resposta Sucesso (`201 Created`):** `access_token` JWT, `refresh_token`
+  opaco, `token_type: "Bearer"`, `expires_in` (segundos) e `session_key`.
+  O access token dura 15 minutos por padrão e o refresh expira em no máximo 8
+  horas desde o login.
+- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `401 QIT001021`.
+
+#### `POST /auth/refresh`
+- **Cabeçalhos:** `INTERNAL-TOKEN`
+- **Body de Entrada:** `refresh_token`.
+- **Resposta Sucesso (`201 Created`):** mesmo contrato do login, com novo
+  refresh token. O token anterior deixa de funcionar na mesma transação.
+- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `401 QIT001020`.
+
+#### `POST /auth/logout`
+- **Cabeçalhos:** `INTERNAL-TOKEN`, `Authorization: Bearer <access_token>`.
+- **Resposta Sucesso:** `204 No Content`; revoga somente a sessão indicada no
+  JWT, sem encerrar os demais dispositivos do usuário.
+- **Erros Possíveis:** `403 QIT000002`, `401 QIT001020`.

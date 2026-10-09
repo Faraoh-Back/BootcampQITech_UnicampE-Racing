@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Time** | Cairê Belo · Pedro Campanha · \<nome 3\> |
-| **Versão** | 2.2 — pós-S7c, evolução planejada |
+| **Time** | Cairê Belo · \Pedro Campanha · \<nome 3\> |
+| **Versão** | 2.3 — pós-S11, identidade entregue |
 
 ## Contextualização
 
@@ -15,11 +15,11 @@ A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge d
 
 Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
 
-Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas, autenticação de usuário final e qualquer rotina agendada. A autenticação de usuário, as métricas e a auditoria criptograficamente verificável passam a ser evolução planejada, não capacidades já entregues. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
+Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. A autenticação de usuário está entregue; métricas e auditoria criptograficamente verificável seguem como evolução planejada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
 
 ### Estado deste checkpoint
 
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9 e S10. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10 e S11. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
 
 ### Explicando a solução de forma macro
 
@@ -27,7 +27,8 @@ O dinheiro entra por duas portas (depósito e antecipação) e sai por duas (saq
 
 ```mermaid
 flowchart LR
-    C["Sistema cliente"] -->|"HTTP + INTERNAL-TOKEN"| API
+    C["Serviço interno"] -->|"HTTP + INTERNAL-TOKEN"| API
+    U["Usuário remoto"] -->|"Bearer JWT + INTERNAL-TOKEN"| API
     subgraph API["API FastAPI"]
         M["middlewares"] --> R["resource"] --> K["controller"] --> P["repository"]
     end
@@ -66,13 +67,15 @@ sequenceDiagram
 
 ### Evolução de segurança, auditoria e operação
 
-O `INTERNAL-TOKEN` atual protege chamadas internas da API, mas não identifica
-uma pessoa, não representa papéis e não permite revogar uma sessão específica.
-Ele não é um API Gateway. A evolução planejada introduz usuário, vínculo de
-acesso à PME/conta e sessões múltiplas por dispositivo: senha protegida por
-Argon2 ou bcrypt, *access token* JWT curto e *refresh token* rotativo com
-validade máxima de oito horas. Assim uma sessão remota pode ser revogada sem
-derrubar as demais.
+O `INTERNAL-TOKEN` protege chamadas serviço-a-serviço, mas não identifica uma
+pessoa e não é um API Gateway. A S11 adiciona `app_user`, vínculo à PME e
+sessões múltiplas por dispositivo: a senha é protegida por bcrypt, o *access
+token* é JWT de 15 minutos por padrão e o *refresh token* opaco é rotativo com
+validade máxima de oito horas. JWT e sessão persistida permitem revogar um
+dispositivo sem derrubar os demais. Para não quebrar a fronteira existente,
+uma chamada somente com `INTERNAL-TOKEN` continua sendo o ator técnico
+confiável; quando também há `Authorization: Bearer`, a API exige sessão ativa e
+papel na conta: `OWNER` administra, `OWNER`/`OPERATOR` operam e `VIEWER` lê.
 
 Hoje já existem eventos de status de conta e boleto, o ledger imutável e os
 registros de idempotência. A próxima camada será `audit_event`, um log
@@ -106,12 +109,16 @@ Alternativas consideradas e descartadas:
 
 ### Rotas
 
-Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho); `403` token ausente ou errado; `404` recurso inexistente ou que não pertence ao chamador (nunca `403`, para não revelar que existe); `409` conflito com o estado atual (duplicado, status, chave reutilizada); `422` pedido bem formado que viola regra de negócio; `502` falha em serviço externo. Todas as rotas, menos `/` e `/health_check`, exigem o cabeçalho `INTERNAL-TOKEN`; sem ele, ou com valor errado, a resposta é `403 QIT000002`. Valores monetários são sempre inteiros em centavos.
+Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho); `401` credencial de usuário inválida; `403` token interno ausente/errado ou papel de usuário insuficiente; `404` recurso inexistente; `409` conflito com o estado atual (duplicado, status, chave reutilizada); `422` pedido bem formado que viola regra de negócio; `502` falha em serviço externo. Todas as rotas, menos `/` e `/health_check`, exigem `INTERNAL-TOKEN`; sem ele, ou com valor errado, a resposta é `403 QIT000002`. Nas rotas de conta, `Authorization: Bearer <JWT>` é opcional para o ator técnico, porém, se informado, exige sessão ativa e autorização na PME da conta. Valores monetários são sempre inteiros em centavos.
 
 | Método | Caminho | O que faz | Entrada (campos que importam) | Saídas (status e quando) |
 |---|---|---|---|---|
 | `GET` | `/` | Identifica o serviço. Aberta, sem token | n/a | `200` |
 | `GET` | `/health_check` | Diz se está de pé (usada pelo healthcheck do compose). Aberta | n/a | `204` |
+| `POST` | `/user` | Cria usuário e seu primeiro vínculo com a PME. A senha é armazenada apenas como hash bcrypt | `customer_key`, `name`, `email`, `password` (8–72), `role` opcional | `201` com `user_key`, `customer_key`, `role`; `404 QIT001001`; `409 QIT001023` |
+| `POST` | `/auth/login` | Valida credenciais e abre uma sessão por dispositivo | `email`, `password`, `device_name` opcional | `201` com JWT curto, refresh opaco, `session_key`; `401 QIT001021` |
+| `POST` | `/auth/refresh` | Rotaciona refresh token de uma sessão ainda ativa | `refresh_token` | `201` com novo par de tokens; `401 QIT001020` se expirado, revogado ou já usado |
+| `POST` | `/auth/logout` | Revoga somente a sessão do JWT informado | `Authorization: Bearer <JWT>` | `204`; `401 QIT001020` |
 | `POST` | `/customer` | Cadastra a PME. Repetir não cria outra: `UNIQUE(document_number)` e `UNIQUE(email)` | `name`, `email`, `document_number` (CPF ou CNPJ com máscara) | `201` com `customer_key`; `400 QIT000001` corpo fora do formato; `409 QIT001003` documento já cadastrado; `409 QIT001004` e-mail já cadastrado; `422 QIT001010` dígitos verificadores não batem |
 | `GET` | `/customer/{customer_key}` | Devolve um cliente | `customer_key` no caminho | `200`; `404 QIT001001` |
 | `POST` | `/account` | Abre conta com saldo 0 e grava os eventos `PENDING` e `APPROVED` na mesma transação. Não é idempotente: cada chamada abre outra conta (um cliente pode ter várias) | `customer_key` | `201` com `account_key`, `status`, `balance`; `400 QIT000001`; `404 QIT001001` cliente inexistente |
@@ -126,11 +133,19 @@ Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho)
 | `POST` | `/account/{account_key}/billing-plan/{plan_key}/adjustment` | Reajusta o valor pelo índice e emite o lote 2 (parcelas 13 a 24). Idempotente por `UNIQUE(billing_plan_id, installment_number)`: repetir não emite de novo e responde `409` | `index_code` (`IPCA` ou `IGPM`) | `201` com os boletos do lote 2; `400 QIT000001`; `404 QIT001002`, `404 QIT001013`; `409 QIT001014` lote 2 já emitido; `502 QIT001009` Banco Central ou conector de boletos falhou |
 | `POST` | `/account/{account_key}/credit-advance` | Antecipa boletos pendentes: credita o valor menos 3% de taxa. Idempotente por `Idempotency-Key`, e cada boleto só antecipa uma vez (`bank_slip.credit_advance_id`) | Header `Idempotency-Key`; `bank_slip_keys` (de 1 a 50 chaves distintas) | `201` com `credit_advance_key`, `gross_amount`, `fee_amount`, `net_amount`, `balance`; `400 QIT000001`; `400 QIT001018`; `404 QIT001002`; `404 QIT001015` algum boleto inexistente ou de outra conta; `409 QIT001006` conta fora de `APPROVED`; `409 QIT001008`; `409 QIT001016` algum boleto não está `PENDING` ou já foi antecipado |
 
+Quando um JWT é enviado nas rotas de conta, leitura aceita `OWNER`, `OPERATOR`
+ou `VIEWER`; transação, plano, reajuste e antecipação aceitam `OWNER` ou
+`OPERATOR`; bloquear/cancelar aceita somente `OWNER`. Sessão inválida responde
+`401 QIT001020`; papel insuficiente ou vínculo ausente responde `403 QIT001022`.
+
 ### Banco de Dados (Somente diagrama)
 
 ```mermaid
 erDiagram
     CUSTOMER ||--o{ ACCOUNT : "possui"
+    CUSTOMER ||--o{ USER_CUSTOMER_ACCESS : "autoriza"
+    APP_USER ||--o{ USER_CUSTOMER_ACCESS : "possui papel"
+    APP_USER ||--o{ USER_SESSION : "abre"
     ACCOUNT_STATUS ||--o{ ACCOUNT : "status atual"
     ACCOUNT ||--o{ ACCOUNT_STATUS_EVENT : "historiza"
     ACCOUNT_STATUS ||--o{ ACCOUNT_STATUS_EVENT : "status do evento"
@@ -151,6 +166,34 @@ erDiagram
         varchar(18) document_number UK "CPF ou CNPJ com máscara"
         varchar(255) name
         varchar(255) email UK
+        timestamp created_at "default NOW()"
+    }
+
+    APP_USER {
+        serial id PK
+        char(36) user_key UK "identificador público"
+        varchar(255) name
+        varchar(255) email UK
+        varchar(100) password_hash "bcrypt, nunca exposto"
+        timestamp created_at "default NOW()"
+    }
+
+    USER_CUSTOMER_ACCESS {
+        serial id PK
+        int user_id FK
+        int customer_id FK
+        varchar(20) role "OWNER, OPERATOR ou VIEWER"
+        timestamp created_at "default NOW()"
+    }
+
+    USER_SESSION {
+        serial id PK
+        char(36) session_key UK
+        int user_id FK
+        char(64) refresh_token_hash UK "SHA-256; token bruto não persiste"
+        varchar(100) device_name
+        timestamp expires_at "máximo login + 8h"
+        timestamp revoked_at
         timestamp created_at "default NOW()"
     }
 
