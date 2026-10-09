@@ -370,6 +370,72 @@ com o Gate 2 verde.
 
 ---
 
+## 9.5 Hardening de rigor financeiro e operacional (pós-entrega / evolução para produção)
+
+Esta seção transforma os achados de uma revisão com mentalidade de engenharia da QI Tech em trabalho rastreável. Ela **não invalida o núcleo já entregue**: o fluxo atual protege saldo, usa centavos inteiros, locks ordenados, idempotência, auditoria e testes integrados. Contudo, para afirmar garantias bancárias também contra acesso direto ao banco, incidentes operacionais e exposição pública, os itens abaixo precisam ser concluídos.
+
+Prioridade: **P0** bloqueia a afirmação de proteção absoluta/imutabilidade financeira; **P1** é necessário antes de um ambiente produtivo; **P2** eleva maturidade, operabilidade e qualidade da defesa. Cada alteração de DDL deve ser testada com banco recriado usando `docker compose down -v && docker compose up -d --build`.
+
+### P0.1 Ledger e eventos financeiros append-only no banco (A, 4h)
+- **Problema identificado:** atualmente `audit_event` possui trigger contra `UPDATE` e `DELETE`, mas `transaction`, `account_status_event` e `bank_slip_status_event` dependem predominantemente da disciplina da aplicação. Um usuário com privilégio SQL suficiente ainda consegue adulterar ou apagar parte da história financeira.
+- **Fazer:** criar triggers PostgreSQL que bloqueiem `UPDATE` e `DELETE` nas tabelas de lançamentos e eventos de estado financeiros; conceder ao papel da aplicação apenas os privilégios mínimos necessários; documentar o fluxo de correção como evento compensatório, nunca alteração do lançamento original.
+- **Testar:** testes de contrato de infraestrutura devem tentar `UPDATE` e `DELETE` diretos e receber erro; testes HTTP devem provar que cancelamento, bloqueio e operações financeiras continuam criando eventos novos, sem reescrever história.
+- **Pronto quando:** a imutabilidade do ledger e dos eventos é garantida pelo banco, não apenas pelo controller; RFC, DER e `DECISOES.md` descrevem explicitamente a exceção de operações administrativas/migrações, se houver.
+
+### P0.2 Reconciliação entre saldo materializado e ledger (A, 4h)
+- **Problema identificado:** `account.balance` é um cache materializado útil para saldo e concorrência, mas o banco não prova sozinho que ele corresponde à soma dos lançamentos.
+- **Fazer:** definir formalmente quais tipos e sinais de `transaction` compõem o saldo; implementar consulta/rotina de reconciliação por conta, com resultado determinístico e métricas para divergências. Avaliar trigger de validação apenas se não comprometer desempenho e simplicidade; a rotina periódica é a linha mínima obrigatória.
+- **Testar:** criar contas com depósito, saque, transferência, tarifa e antecipação; provar que a reconciliação encontra saldo igual; em ambiente de teste, introduzir divergência controlada e provar detecção/alerta.
+- **Pronto quando:** não se afirma “saldo nunca diverge do extrato” sem evidência verificável; a RFC passa a tratar saldo como projeção materializada reconciliável e informa como investigar/corrigir divergência.
+
+### P0.3 Rejeição absoluta de números não inteiros para dinheiro (A, 2h)
+- **Problema identificado:** transferências validam `type(amount) is int`, mas schemas JSON com `integer` podem aceitar `10.0` dependendo do validador. Em especial, revisar `base_amount` de planos de cobrança e todos os demais valores de entrada.
+- **Fazer:** centralizar validação de centavos para exigir `int` nativo, rejeitar `float`, string numérica, `Decimal` serializado indevidamente, booleano e valores fora do intervalo permitido; manter taxas separadas de montantes e com regra de precisão documentada.
+- **Testar:** para cada rota financeira, enviar `10.0`, `"10"`, `true`, negativo/zero quando não permitido e inteiro válido; apenas o inteiro válido pode chegar ao controller/repositório.
+- **Pronto quando:** nenhum campo monetário atravessa a fronteira HTTP sem prova de ser inteiro em centavos; catálogo de erros e RFC registram o erro de contrato aplicável.
+
+### P1.1 Testes estritamente black-box separados de contratos de infraestrutura (C, 3h)
+- **Problema identificado:** a suíte não importa `src/`, o que é correto, mas alguns testes acessam PostgreSQL diretamente ou iniciam worker por subprocesso. Eles são excelentes testes de infraestrutura, porém não são caixa-preta sob a definição estrita de “somente HTTP”.
+- **Fazer:** separar nomenclatura, diretórios e comandos: uma suíte `api_blackbox` exclusivamente HTTP contra containers e uma suíte `infrastructure_contract` para SQL direto, triggers, locks e workers. Preservar ambas; não reduzir cobertura para cumprir uma etiqueta.
+- **Testar:** executar cada suíte isoladamente em clone/ambiente limpo e documentar dependências, reset do MockServer e critérios de falha.
+- **Pronto quando:** README, RFC e apresentação afirmam precisamente o que cada suíte prova; a R1 pode ser defendida sem ambiguidade.
+
+### P1.2 Nenhuma chamada externa sob lock/transação crítica (A, 4h)
+- **Problema identificado:** o reajuste de plano pode manter lock do `billing_plan` durante chamada ao conector de boleto. Embora não seja lock da conta, I/O externo lento dentro de transação aumenta contenção e risco operacional.
+- **Fazer:** redesenhar com reserva persistida de lote/estado idempotente, commit da reserva, chamada externa fora da transação crítica e finalização posterior protegida por chave única/lock curto. Definir compensação para falha após emissão externa.
+- **Testar:** MockServer lento/falhando não pode manter lock por toda a duração; duas requisições concorrentes para o mesmo lote devem resultar em uma emissão efetiva ou resposta idempotente inequívoca.
+- **Pronto quando:** a RFC registra a alternativa anterior, o novo trade-off e prova que conectores não ficam dentro de locks de domínio.
+
+### P1.3 Banco e ciclo de mudança produtivos (A, 4h)
+- **Fazer:** migrar a evolução do DDL para ferramenta/versionamento de migrations; usar `TIMESTAMPTZ` em UTC nos timestamps novos e definir plano de migração dos existentes; revisar `CHECK`s de positividade, não negatividade e limites de `BIGINT` para os valores financeiros.
+- **Testar:** ambiente vazio e upgrade de uma versão anterior; migração falha de maneira segura e não deixa schema parcialmente aplicado.
+- **Pronto quando:** produção não depende de apagar volume com `down -v`; a documentação distingue claramente bootstrap local de evolução segura do banco.
+
+### P1.4 Perfil de deploy seguro e fronteira interna (B, 4h)
+- **Fazer:** criar configuração/perfil de produção sem `uvicorn --reload`, sem bind mount, sem tokens e segredos padrão, sem porta pública do PostgreSQL e com rede privada entre API, gateway e serviços internos. Exigir segredos por ambiente, limites de CPU/memória e health checks; restringir `INTERNAL-TOKEN` à fronteira gateway/serviço, nunca como credencial pública ampla.
+- **Testar:** subida com variáveis obrigatórias ausentes deve falhar de forma explícita; perfil de produção não publica banco; chamadas internas e JWT mantêm suas fronteiras previstas.
+- **Pronto quando:** README traz comandos distintos para desenvolvimento e produção demonstrativa, e a RFC não confunde defaults locais com controles de produção.
+
+### P1.5 Segurança de identidade e sessões (A, 3h)
+- **Fazer:** adicionar rate limit de login por IP e usuário, auditoria de falhas de autenticação, política de bloqueio/desafio progressivo, revogação administrativa de sessão e estratégia de rotação de segredo/chaves JWT.
+- **Testar:** tentativa de força bruta é limitada sem revelar se o usuário existe; logout/revogação invalida refresh; rotação mantém somente a janela de compatibilidade documentada.
+- **Pronto quando:** a ameaça de credencial roubada e abuso de login possui controles, métricas e alertas documentados.
+
+### P1.6 Operação de falhas do outbox (B, 3h)
+- **Fazer:** definir máximo de tentativas, estado terminal/dead-letter, motivo seguro da falha, procedimento de reprocessamento manual e alertas para backlog/idade do evento. Manter semântica at-least-once e chave idempotente do consumidor.
+- **Testar:** falha permanente não gera retry infinito; operador autorizado consegue reprogramar evento sem duplicar a notificação; métricas distinguem pendente, retry e dead-letter.
+- **Pronto quando:** uma notificação que não pode ser entregue tem destino operacional visível e recuperável, sem comprometer o fato financeiro original.
+
+### P2.1 Contrato de erros e cobertura documental (C, 2h)
+- **Fazer:** decidir e documentar se o payload `{title, description, translation, code}` é contrato QIT próprio ou se a API adotará integralmente RFC 9457 (`type`, `title`, `status`, `detail`, `instance`). Não declarar conformidade parcial como total. Completar `docs/COBERTURA.md` para todos os códigos, inclusive autenticação e timeout, relacionando rota e teste.
+- **Testar:** validar content type, corpo e código de cada erro catalogado; nenhum código publicado pode ficar sem cenário de teste ou justificativa explícita de remoção.
+- **Pronto quando:** catálogo, handlers, RFC, cobertura e testes contam a mesma história.
+
+### P2.2 Consolidação da entrega e defesa (C, 3h)
+- **Fazer:** reconciliar o status real de T5.1 e outras tarefas já iniciadas com o plano; reduzir a RFC final ao formato oficial e limite exigido, preservando desafio principal, garantias verificáveis e alternativas descartadas; qualificar corretamente as evidências de benchmark e testes.
+- **Testar:** revisão cruzada de documentação contra o repositório e execução de clone limpo. Toda afirmação forte — por exemplo, “imutável”, “black-box” ou “RFC 9457” — precisa apontar para garantia técnica ou ser reescrita com precisão.
+- **Pronto quando:** não há divergência entre código, DDL, testes, README, RFC, `DECISOES.md`, `COBERTURA.md` e plano; a defesa consegue explicar limites conhecidos sem prometer uma garantia inexistente.
+
 ## 10. Se travar: tarefas flexíveis sem dependência
 
 Pegue uma destas quando estiver bloqueado esperando outra trilha:
