@@ -49,6 +49,16 @@ class BillingPlanController(BaseController):
             account, plan_key, payload["base_amount"], first_due_date, issued_slips
         )
         plan_dto = BillingPlanDTO.obj_to_created_dict(plan)
+        self.audit.record(
+            "BILLING_PLAN_CREATED",
+            "BILLING_PLAN",
+            plan.plan_key,
+            current_summary={
+                "account_key": account_key,
+                "base_amount": plan.base_amount,
+                "batch_number": 1,
+            },
+        )
         self.session.commit()
         return plan_dto
 
@@ -89,6 +99,18 @@ class BillingPlanController(BaseController):
             for installment in installments
         ]
         bank_slips = self.billing_plan_repository.create_adjustment_batch(plan, rate, issued_slips)
+        self.audit.record(
+            "BILLING_PLAN_ADJUSTED",
+            "BILLING_PLAN",
+            plan.plan_key,
+            previous_summary={"batch_number": 1, "base_amount": plan.base_amount},
+            current_summary={
+                "adjusted_amount": adjusted_amount,
+                "batch_number": 2,
+                "index_code": payload["index_code"],
+                "rate": str(rate),
+            },
+        )
         self.session.commit()
         return {
             "plan_key": plan.plan_key,

@@ -18,6 +18,16 @@ class AccountController(BaseController):
         self.account_repository.update_status(account, "APPROVED")
         self.session.flush()
         account_dto = AccountDTO.obj_to_created_dict(account)
+        self.audit.record(
+            "ACCOUNT_CREATED",
+            "ACCOUNT",
+            account.account_key,
+            current_summary={
+                "balance": account.balance,
+                "customer_key": customer.customer_key,
+                "status": account.status.enumerator,
+            },
+        )
         self.session.commit()
         return account_dto
 
@@ -51,5 +61,12 @@ class AccountController(BaseController):
         self.account_repository.update_status(account, requested_status)
         self.session.flush()
         account_dto = AccountDTO.obj_to_status_change_dict(account)
+        self.audit.record(
+            f"ACCOUNT_{requested_status}",
+            "ACCOUNT",
+            account.account_key,
+            previous_summary={"status": current_status},
+            current_summary={"status": requested_status},
+        )
         self.session.commit()
         return account_dto

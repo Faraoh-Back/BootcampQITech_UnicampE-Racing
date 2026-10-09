@@ -103,6 +103,42 @@ CREATE TABLE user_session (
     created_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+-- A auditoria é uma cadeia append-only. Não há FK de ator de propósito:
+-- eventos de serviço e usuários futuros precisam continuar verificáveis mesmo
+-- se dados pessoais forem anonimizados em outra política.
+CREATE TABLE audit_event (
+    id               SERIAL PRIMARY KEY,
+    actor_type       VARCHAR(20) NOT NULL,
+    actor_key        VARCHAR(64) NOT NULL,
+    action           VARCHAR(64) NOT NULL,
+    resource_type    VARCHAR(64) NOT NULL,
+    resource_key     CHAR(36) NOT NULL,
+    request_id       VARCHAR(64) NOT NULL,
+    origin           VARCHAR(255) NOT NULL,
+    previous_summary JSONB,
+    current_summary  JSONB,
+    previous_hash    CHAR(64) NOT NULL,
+    event_hash       CHAR(64) NOT NULL UNIQUE,
+    event_datetime   TIMESTAMP NOT NULL,
+    created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_audit_actor_type CHECK (actor_type IN ('SERVICE', 'USER')),
+    CONSTRAINT chk_audit_previous_hash CHECK (previous_hash ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT chk_audit_event_hash CHECK (event_hash ~ '^[0-9a-f]{64}$')
+);
+
+CREATE INDEX idx_audit_event_resource ON audit_event(resource_type, resource_key, id);
+
+CREATE OR REPLACE FUNCTION reject_audit_event_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_event is append-only; use a compensating event';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_audit_event_append_only
+BEFORE UPDATE OR DELETE ON audit_event
+FOR EACH ROW EXECUTE FUNCTION reject_audit_event_mutation();
+
 CREATE TABLE account (
     id          SERIAL PRIMARY KEY,
     account_key CHAR(36) NOT NULL UNIQUE,

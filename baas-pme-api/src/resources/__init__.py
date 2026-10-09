@@ -6,3 +6,4 @@ from resources.billing_plan import BillingPlanResource
 from resources.transaction import TransactionResource
 from resources.credit_advance import CreditAdvanceResource
 from resources.auth import AuthResource
+from resources.audit import AuditResource

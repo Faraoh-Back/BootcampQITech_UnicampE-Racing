@@ -81,6 +81,17 @@ class TransactionController(BaseController):
                 account_key, transaction_type, payload["amount"]
             )
         self.idempotency_controller.store_response(idempotency.record, 201, transaction_dto)
+        self.audit.record(
+            f"{transaction_type}_CREATED",
+            "TRANSACTION",
+            transaction_dto["transaction_key"],
+            current_summary={
+                "account_key": account_key,
+                "amount": transaction_dto["amount"],
+                "balance": transaction_dto["balance"],
+                "type": transaction_dto["type"],
+            },
+        )
         self.session.commit()
         return TransactionExecution(body=transaction_dto)
 

@@ -67,6 +67,19 @@ class RequestGenerator:
         res = ClientRequisition.send("POST", "/auth/logout", headers=h)
         return res.response_status, res.response_json
 
+    # ── AUDITORIA (/audit-events) ─────────────────────────────────
+    @staticmethod
+    def GET_audit_events(headers: Optional[dict] = None) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("GET", "/audit-events", headers=h)
+        return res.response_status, res.response_json
+
+    @staticmethod
+    def GET_audit_checkpoint(headers: Optional[dict] = None) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("GET", "/audit-events/checkpoint", headers=h)
+        return res.response_status, res.response_json
+
     @staticmethod
     def GET_account(account_key: str, headers: Optional[dict] = None) -> Tuple[int, dict]:
         h = RequestGenerator._default_headers(headers)

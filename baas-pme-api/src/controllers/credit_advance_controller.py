@@ -71,5 +71,16 @@ class CreditAdvanceController(BaseController):
             credit_advance, requested_keys, account.balance
         )
         self.idempotency_controller.store_response(idempotency.record, 201, response)
+        self.audit.record(
+            "CREDIT_ADVANCE_CREATED",
+            "CREDIT_ADVANCE",
+            credit_advance.credit_advance_key,
+            current_summary={
+                "account_key": account_key,
+                "fee_amount": fee_amount,
+                "gross_amount": gross_amount,
+                "net_amount": response["net_amount"],
+            },
+        )
         self.session.commit()
         return response, False

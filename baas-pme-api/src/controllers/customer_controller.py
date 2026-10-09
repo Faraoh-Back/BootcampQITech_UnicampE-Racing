@@ -40,6 +40,12 @@ class CustomerController(BaseController):
             raise
 
         customer_dto = CustomerDTO.only_obj_key(customer)
+        self.audit.record(
+            "CUSTOMER_CREATED",
+            "CUSTOMER",
+            customer.customer_key,
+            current_summary={"customer_key": customer.customer_key},
+        )
         self.session.commit()
         return customer_dto
 

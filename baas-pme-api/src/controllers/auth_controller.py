@@ -19,6 +19,7 @@ from utils.authentication import (
     password_matches,
     refresh_token_hash,
 )
+from utils.request_context import set_audit_actor
 from constants import JWT_ACCESS_TOKEN_MINUTES, JWT_SESSION_MAX_HOURS
 
 
@@ -45,6 +46,12 @@ class AuthController(BaseController):
             role,
         )
         response = UserDTO.obj_to_created_dict(user, customer.customer_key, role)
+        self.audit.record(
+            "USER_REGISTERED",
+            "USER",
+            user.user_key,
+            current_summary={"customer_key": customer.customer_key, "role": role},
+        )
         self.session.commit()
         return response
 
@@ -54,6 +61,12 @@ class AuthController(BaseController):
             raise InvalidCredentials()
 
         response = self._create_session_response(user, payload.get("device_name"))
+        self.audit.record(
+            "SESSION_CREATED",
+            "USER_SESSION",
+            response["session_key"],
+            current_summary={"user_key": user.user_key},
+        )
         self.session.commit()
         return response
 
@@ -62,9 +75,16 @@ class AuthController(BaseController):
         if session is None:
             raise InvalidAccessToken()
 
+        set_audit_actor("USER", session.user.user_key)
         next_refresh_token = new_refresh_token()
         self.user_repository.rotate_refresh_token(session, refresh_token_hash(next_refresh_token))
         response = self._token_response(session.user.user_key, session.session_key, next_refresh_token)
+        self.audit.record(
+            "SESSION_REFRESHED",
+            "USER_SESSION",
+            session.session_key,
+            current_summary={"user_key": session.user.user_key},
+        )
         self.session.commit()
         return response
 
@@ -73,12 +93,20 @@ class AuthController(BaseController):
         session = self.user_repository.get_active_session_by_key_for_user(claims["sid"], claims["sub"])
         if session is None:
             raise InvalidAccessToken()
+        set_audit_actor("USER", claims["sub"])
         self.user_repository.revoke_session(session)
+        self.audit.record(
+            "SESSION_REVOKED",
+            "USER_SESSION",
+            session.session_key,
+            previous_summary={"revoked": False},
+            current_summary={"revoked": True},
+        )
         self.session.commit()
 
     def authorize_account(
         self, account_key: str, authorization: str | None, allowed_roles: set[str]
-    ) -> None:
+    ) -> str:
         claims = self._claims_for_active_session(authorization)
         session = self.user_repository.get_active_session_by_key_for_user(claims["sid"], claims["sub"])
         if session is None:
@@ -86,6 +114,7 @@ class AuthController(BaseController):
         role = self.user_repository.get_account_role(session.user_id, account_key)
         if role not in allowed_roles:
             raise AccountAccessForbidden()
+        return claims["sub"]
 
     def _claims_for_active_session(self, authorization: str | None) -> dict:
         try:
@@ -97,6 +126,7 @@ class AuthController(BaseController):
             raise InvalidAccessToken() from None
 
     def _create_session_response(self, user, device_name: str | None) -> dict:
+        set_audit_actor("USER", user.user_key)
         refresh_token = new_refresh_token()
         expires_at = datetime.utcnow() + timedelta(hours=JWT_SESSION_MAX_HOURS)
         session = self.user_repository.create_session(

@@ -12,6 +12,9 @@ from controllers import AuthController
 
 def authorize_user_if_present(request: Request, account_key: str, roles: set[str]) -> None:
     if request.headers.get("Authorization") is not None:
-        AuthController().authorize_account(
+        user_key = AuthController().authorize_account(
             account_key, request.headers.get("Authorization"), roles
         )
+        from utils.request_context import set_audit_actor
+
+        set_audit_actor("USER", user_key)

@@ -45,6 +45,10 @@ NO_REQUEST_ID = "-"
 #    guarda um valor SEPARADO por requisição em andamento: cada uma lê o
 #    seu, sem passar o identificador de mão em mão por todas as camadas.
 _request_id: ContextVar[str] = ContextVar("request_id", default=NO_REQUEST_ID)
+_request_origin: ContextVar[str] = ContextVar("request_origin", default="unknown")
+_audit_actor: ContextVar[tuple[str, str]] = ContextVar(
+    "audit_actor", default=("SERVICE", "internal-gateway")
+)
 
 
 def get_request_id() -> str:
@@ -55,6 +59,25 @@ def get_request_id() -> str:
 def set_request_id(request_id: str) -> None:
     """Guarda o identificador desta requisição. Quem chama é o middleware."""
     _request_id.set(request_id)
+
+
+def get_request_origin() -> str:
+    """Origem de rede capturada pelo middleware no início da requisição."""
+    return _request_origin.get()
+
+
+def set_request_origin(origin: str) -> None:
+    _request_origin.set(origin)
+
+
+def get_audit_actor() -> tuple[str, str]:
+    """Ator que será atribuído ao próximo evento da requisição."""
+    return _audit_actor.get()
+
+
+def set_audit_actor(actor_type: str, actor_key: str) -> None:
+    """Troca o ator técnico pelo usuário já autenticado, quando existir."""
+    _audit_actor.set((actor_type, actor_key))
 
 
 def build_request_id(received_request_id: str = None) -> str:

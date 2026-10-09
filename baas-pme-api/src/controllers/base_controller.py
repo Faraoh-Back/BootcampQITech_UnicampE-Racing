@@ -1,6 +1,7 @@
 from abc import ABCMeta
 
 from database import get_context
+from utils.audit import AuditRecorder
 from utils.logger import get_logger
 
 
@@ -22,3 +23,4 @@ class BaseController(metaclass=ABCMeta):
         self.context = get_context()
         self.session = self.context.get_or_create_session()
         self.logger = get_logger(class_name)
+        self.audit = AuditRecorder(self.session)

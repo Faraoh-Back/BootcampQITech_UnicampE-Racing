@@ -1,6 +1,12 @@
 from fastapi import FastAPI, Request
 
-from utils.request_context import REQUEST_ID_HEADER, build_request_id, set_request_id
+from utils.request_context import (
+    REQUEST_ID_HEADER,
+    build_request_id,
+    set_audit_actor,
+    set_request_id,
+    set_request_origin,
+)
 
 
 def register_request_context_middleware(application: FastAPI) -> None:
@@ -39,6 +45,8 @@ def register_request_context_middleware(application: FastAPI) -> None:
     async def create_request_context(request: Request, call_next):
         request_id = build_request_id(request.headers.get(REQUEST_ID_HEADER))
         set_request_id(request_id)
+        set_request_origin(request.client.host if request.client is not None else "unknown")
+        set_audit_actor("SERVICE", "internal-gateway")
 
         response = await call_next(request)
 
