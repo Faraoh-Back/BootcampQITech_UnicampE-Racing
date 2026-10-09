@@ -1,6 +1,6 @@
-# Checkpoint T3.1 — RFC 2.3
+# Checkpoint T3.1 — RFC 2.4
 
-Data da revisão original: 2026-10-03. Atualização de S11: 2026-10-09.
+Data da revisão original: 2026-10-03. Atualizações de S11 e S12: 2026-10-09.
 
 ## Escopo conferido
 
@@ -12,12 +12,13 @@ Data da revisão original: 2026-10-03. Atualização de S11: 2026-10-09.
 | Dinheiro e concorrência | Controller/repository de transação e S7a–S7c | O saldo é protegido por `FOR NO KEY UPDATE` com recarga da entidade; há provas repetidas cinco vezes para saques, 40 transferências cruzadas, idempotência em 10 threads, antecipação simultânea e disputa do último saldo. |
 | Conectores | Controllers de plano, conectores e MockServer | Lote 1 e lote 2 usam referências determinísticas; erros externos retornam `QIT001009` sem escrita parcial. |
 | Identidade e autorização | DDL, `AuthController`, RBAC e testes HTTP | S11 entrega bcrypt, JWT curto, refresh rotativo por até 8 horas, sessões múltiplas revogáveis e papéis por PME. O `INTERNAL-TOKEN` permanece como fronteira serviço-a-serviço; um JWT, quando fornecido, exige papel sobre a conta. |
-| Testes | Suíte HTTP e guardião R1 | `pytest -q`: 130 testes aprovados após S11. |
-| Evolução planejada | RFC 2.3, `DECISOES.md` e R4.5 | Auditoria verificável, observabilidade, timeouts, outbox e benchmark continuam como roadmap, sem serem declarados implementados. |
+| Auditoria verificável | DDL, gatilho, exportação HTTP e testes | S12 grava `audit_event` na mesma transação do domínio, encadeia eventos por SHA-256 sob trava transacional, exporta a cadeia/checkpoint e recusa `UPDATE`/`DELETE` no banco. |
+| Testes | Suíte HTTP e guardião R1 | `pytest -q`: 133 testes aprovados após S12. |
+| Evolução planejada | RFC 2.4, `DECISOES.md` e R4.5 | Observabilidade, timeouts, outbox e benchmark continuam como roadmap, sem serem declarados implementados. |
 
 ## Itens deliberadamente futuros
 
 - **T5.3:** PDF oficial da RFC. O plano já o posterga para a entrega final; não há template ou gerador no repositório neste momento.
-- **R4.5 remanescente:** auditoria append-only, métricas, política de timeout, alertas e benchmark. O Gate 3 é opcional e posterior ao núcleo entregue no Gate 2; S11 já foi concluída.
+- **R4.5 remanescente:** métricas, política de timeout, alertas e benchmark. O Gate 3 é opcional e posterior ao núcleo entregue no Gate 2; S11 e S12 já foram concluídas.
 
 Com esses itens marcados como planejados na RFC e nas decisões, não há divergência conhecida entre a documentação e o código entregue.

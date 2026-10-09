@@ -7,7 +7,7 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D13)
 
-> **Estado RFC 2.3:** D1–D10 estão implementadas. D11–D13 continuam como decisões planejadas da R4.5: não expõem rota, tabela, métrica, erro `QIT` nem garantia de produção antes de sua implementação.
+> **Estado RFC 2.4:** D1–D11 estão implementadas. D12–D13 continuam como decisões planejadas da R4.5: não expõem rota, tabela, métrica, erro `QIT` nem garantia de produção antes de sua implementação.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
@@ -21,7 +21,7 @@
 | **D8** | **Janela e Limite Noturno** | Saques e transferências noturnos têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte; depósito não é limitado. | A regra segue o limite padrão de transferências noturnas (Pix e TED) para pessoa física. A aplicação usa `TIMEZONE=America/Sao_Paulo`; somente no ambiente de teste, `NIGHT_TIME_OVERRIDE` fixa a hora sem permitir que o cliente HTTP a escolha. |
 | **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout (5s padrão), log padronizado de ida e volta e interpretação JSON com `Decimal`. O `INTERNAL-TOKEN` **não** é enviado automaticamente a APIs externas; somente um contrato explícito de serviço interno pode exigi-lo. |
 | **D10** | **Identidade e sessões** | Um `app_user` pertence a uma PME (`customer`) por `user_customer_access`; portanto seu vínculo alcança as contas da PME. A senha usa bcrypt. Login cria sessão persistida por dispositivo, JWT de acesso de 15 minutos (configurável) e refresh token opaco, rotativo e válido por no máximo 8 horas. Papéis: `OWNER`, `OPERATOR`, `VIEWER`. | `INTERNAL-TOKEN` permanece a credencial serviço-a-serviço e não é login nem API Gateway. Em rotas financeiras, a ausência de `Authorization` preserva a chamada técnica interna; se `Authorization: Bearer <JWT>` vier, a sessão ativa e o papel sobre a conta são obrigatórios. `OWNER` administra ciclo de vida; `OWNER`/`OPERATOR` movimentam e emitem cobrança; os três podem consultar. |
-| **D11** | **Auditoria verificável (planejada)** | Evento `audit_event` append-only, com ator, ação, recurso, `request_id`, origem, resumo anterior/posterior, `previous_hash` e `event_hash`. | Auditoria não é editável: correções criam eventos compensatórios. Restrições no banco impedem `UPDATE`/`DELETE`; checkpoints assinados ou exportados tornam adulteração detectável sem introduzir blockchain. |
+| **D11** | **Auditoria verificável** | `audit_event` é uma cadeia global append-only: ator (`SERVICE` ou `USER`), ação, tipo/chave de recurso, `request_id`, IP de origem, resumo anterior/posterior, timestamp, `previous_hash` e `event_hash`. A cadeia começa em 64 zeros e usa SHA-256 sobre JSON canônico UTF-8. | A inserção adquire `pg_advisory_xact_lock`, evitando bifurcação sob concorrência; o evento entra na mesma transação do fato de negócio. Trigger PostgreSQL recusa `UPDATE`/`DELETE`; correção exige evento compensatório. `GET /audit-events` exporta os dados e `GET /audit-events/checkpoint` expõe a ponta para verificação externa. Isto não é blockchain: não há consenso distribuído nem imutabilidade contra um administrador do próprio banco. |
 | **D12** | **Observabilidade e timeouts (planejada)** | Logs JSON no stdout, métricas de latência, status, QIT, conectores, replay e locks; timeout de conexão/leitura, `lock_timeout` e `statement_timeout` configurados e documentados. | Métrica sem contexto não é evidência: benchmark registra ambiente, carga, duração, CPU e memória. Após timeout em operação financeira, o cliente repete sempre com a mesma `Idempotency-Key`. |
 | **D13** | **Alertas e notificações (planejada)** | Eventos de saída usam `outbox_event`, criado na mesma transação do fato de negócio e publicado por processo separado, idempotente e retentável. | Não há chamada de e-mail/webhook dentro do controller antes do commit. Alertas operacionais derivam de métricas; notificações de domínio respeitam a confirmação da transação. |
 
@@ -30,7 +30,7 @@
 ### Limite entre contrato atual e evolução planejada
 
 O catálogo e os contratos de rota abaixo descrevem a API implementada, inclusive
-D10. Os códigos de erro, schemas, URLs e políticas HTTP de D11–D13 serão
+D10 e D11. Os códigos de erro, schemas, URLs e políticas HTTP de D12–D13 serão
 definidos junto com seus testes vermelhos, para não transformar intenção de
 roadmap em promessa de integração.
 
@@ -462,3 +462,26 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
 - **Resposta Sucesso:** `204 No Content`; revoga somente a sessão indicada no
   JWT, sem encerrar os demais dispositivos do usuário.
 - **Erros Possíveis:** `403 QIT000002`, `401 QIT001020`.
+
+---
+
+### 3.7. Auditoria verificável (`/audit-events`)
+
+#### `GET /audit-events`
+- **Cabeçalhos:** `INTERNAL-TOKEN`.
+- **Resposta Sucesso (`200 OK`):** `{ data, checkpoint }`, onde cada item de
+  `data` contém ator, ação, recurso, `request_id`, origem, resumos,
+  `previous_hash`, `event_hash` e `event_datetime`; `checkpoint` contém a
+  ponta atual (`audit_event_id`, `event_hash`). Não há rota de alteração ou
+  remoção de eventos.
+- **Verificação externa:** comece com 64 caracteres `0`, confirme que o
+  `previous_hash` de cada evento é o hash anterior e recalcule `event_hash`
+  com SHA-256 do JSON canônico (`sort_keys`, separadores `,` e `:`, UTF-8) dos
+  campos exportados, sem `audit_event_id` nem checkpoint.
+- **Erros Possíveis:** `403 QIT000002`.
+
+#### `GET /audit-events/checkpoint`
+- **Cabeçalhos:** `INTERNAL-TOKEN`.
+- **Resposta Sucesso (`200 OK`):** a ponta atual da cadeia. Para cadeia vazia,
+  devolve `{"audit_event_id": null, "event_hash": "000...000"}`.
+- **Erros Possíveis:** `403 QIT000002`.

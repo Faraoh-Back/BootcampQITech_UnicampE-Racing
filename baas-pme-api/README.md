@@ -38,7 +38,7 @@ NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 ./.venv/bin/python -m pytest -q
 ```
 
-Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 130 testes. Depois,
+Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 133 testes. Depois,
 restaure o relógio normal com `docker compose up -d`.
 
 ## Recriar o banco após alterar SQL
@@ -61,6 +61,7 @@ intencional.
 | `POST` / `GET` | `/customer`, `/customer/{customer_key}` | Cadastro e consulta de cliente. |
 | `POST` | `/user` | Cadastro de usuário e vínculo inicial com a PME. |
 | `POST` | `/auth/login`, `/auth/refresh`, `/auth/logout` | Sessão por dispositivo, JWT curto, rotação de refresh e revogação individual. |
+| `GET` | `/audit-events`, `/audit-events/checkpoint` | Exportação da trilha append-only e ponta da cadeia SHA-256. |
 | `POST` / `GET` | `/account`, `/account/{account_key}` | Abertura e consulta de conta. |
 | `PUT` | `/account/{account_key}/block`, `/cancel` | Ciclo de vida auditável da conta. |
 | `POST` / `GET` | `/account/{account_key}/transaction`, `/transaction/{transaction_key}` | Depósito, saque, transferência e consulta de lançamento. |

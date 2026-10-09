@@ -95,7 +95,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R5 
 - **Pronto quando:** cada pessoa tem print do `docker compose ps` com tudo `healthy` e do `pytest` verde.
 
 ### T0.2 Decisões fixas e contratos (A, 1h, com 15 min do time todo)
-- **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). D10–D13 serão acrescentadas na R4.5 como decisões planejadas, sem antecipar contratos inexistentes. Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras. **Atualização:** S11 materializou D10, seus schemas, rotas, erros e testes; D11–D13 continuam planejadas.
+- **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). D10–D13 serão acrescentadas na R4.5 como decisões planejadas, sem antecipar contratos inexistentes. Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras. **Atualização:** S11 materializou D10 e S12 materializou D11, com schemas, rotas, erros quando aplicáveis e testes; D12–D13 continuam planejadas.
 - **Pronto quando:** as três pessoas leram e disseram "ok" no PR.
 
 ### T0.3 [Postergado para a Entrega / R5] RFC no modelo oficial da QI Tech e PDF
@@ -284,7 +284,7 @@ o protótipo em uma demonstração mais próxima de produção e deve começar s
 com o Gate 2 verde.
 
 ### S11 Identidade, sessões e autorização (A, 8h)
-- **Status:** concluída em 2026-10-09. A suíte HTTP soma 130 testes verdes.
+- **Status:** concluída em 2026-10-09. A suíte HTTP soma 133 testes verdes após S12.
 - **Depende de:** Gate 2.
 - **Fazer:** criar `user`, vínculo de usuário à PME/conta e `user_session`; cadastro, login, refresh e logout/revogação de uma sessão. Senhas somente com Argon2 ou bcrypt. Emitir JWT de acesso curto e refresh token rotativo com validade máxima de 8 horas; o `jti` e a sessão permitem vários dispositivos e revogação individual. Definir papéis mínimos (`OWNER`, `OPERATOR`, `VIEWER`) e verificar acesso à conta antes de rotas financeiras.
 - **Não fazer:** substituir a autenticação por JWT de 8 horas sem sessão persistida, armazenar senha em texto, ou remover `INTERNAL-TOKEN` sem definir a fronteira serviço-a-serviço.
@@ -292,10 +292,12 @@ com o Gate 2 verde.
 - **Evidência entregue:** `app_user`, `user_customer_access` e `user_session`; bcrypt; JWT de acesso com 15 minutos padrão; refresh opaco rotativo limitado a 8 horas; `POST /user`, `/auth/login`, `/auth/refresh` e `/auth/logout`; `QIT001020`–`QIT001023`; testes cobrem rotação, múltiplos dispositivos, logout individual, papel `VIEWER`, ausência de vínculo e regressão de idempotência na suíte completa. O `INTERNAL-TOKEN` foi preservado como fronteira serviço-a-serviço; `Authorization` passa a exigir RBAC quando fornecido.
 
 ### S12 Auditoria append-only verificável (C, 6h)
+- **Status:** concluída em 2026-10-09. A suíte HTTP soma 133 testes verdes.
 - **Depende de:** S11 para registrar ator; pode iniciar o DDL e os testes antes.
 - **Fazer:** tabela `audit_event` com ator (usuário ou serviço), ação, tipo/chave do recurso, `request_id`, origem, timestamp, resumo anterior/posterior e hashes `previous_hash`/`event_hash`. Proibir `UPDATE` e `DELETE` no banco para essa tabela; correções usam evento compensatório. Exportar ou assinar checkpoints do hash para detectar adulteração fora do banco.
 - **Não fazer:** chamar isso de blockchain nem permitir edição do histórico. Blockchain não é requisito para encadear hashes e provar violação.
 - **Pronto quando:** criar, bloquear, cancelar, transferir e antecipar produzem eventos; tentativa de alterar/apagar evento é recusada; teste recalcula a cadeia de hashes e detecta adulteração.
+- **Evidência entregue:** `audit_event`, índice por recurso e trigger PostgreSQL append-only; `AuditRecorder` inclui evento na mesma transação e serializa a cadeia com `pg_advisory_xact_lock`; ações de cliente, conta, transação, plano, antecipação e sessão são registradas com ator, `request_id`, origem e resumos seguros. `GET /audit-events` exporta a cadeia e `GET /audit-events/checkpoint` publica sua ponta. Testes recalculam SHA-256 de todos os eventos, provam eventos de criar/bloquear/cancelar/transferir/antecipar e confirmam que SQL direto não consegue atualizar nem apagar um evento.
 
 ### S13 Logs estruturados e métricas (B, 5h)
 - **Depende de:** Gate 2. **Paralelo com:** S11 e S12.

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Time** | Cairê Belo · \Pedro Campanha · \<nome 3\> |
-| **Versão** | 2.3 — pós-S11, identidade entregue |
+| **Versão** | 2.4 — pós-S12, auditoria verificável entregue |
 
 ## Contextualização
 
@@ -15,11 +15,11 @@ A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge d
 
 Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
 
-Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. A autenticação de usuário está entregue; métricas e auditoria criptograficamente verificável seguem como evolução planejada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
+Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. Autenticação de usuário e auditoria verificável estão entregues; métricas seguem como evolução planejada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
 
 ### Estado deste checkpoint
 
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10 e S11. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11 e S12. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
 
 ### Explicando a solução de forma macro
 
@@ -47,6 +47,7 @@ flowchart LR
 | Retentativa duplicar dinheiro | `Idempotency-Key`, hash do corpo e `UNIQUE(account_id, scope, idempotency_key)` | Dez requisições simultâneas retornam a mesma `transaction_key` e geram um único lançamento. |
 | Um boleto gerar liquidez duas vezes | Trava de boleto e vínculo `credit_advance_id` | Duas antecipações concorrentes devolvem exatamente um `201` e um `409 QIT001016`. |
 | Falha externa deixar escrita parcial | Chamada externa antes da persistência e commit único | MockServer simula timeout, erro HTTP e corpo inválido sem plano ou lote parcial. |
+| Histórico alterado silenciosamente | `audit_event` append-only, gatilho que recusa escrita destrutiva e cadeia SHA-256 | Exportação HTTP recalculada nos testes; `UPDATE` e `DELETE` diretos são recusados pelo PostgreSQL. |
 
 Na transferência, a disputa acontece assim: as duas requisições escolhem a mesma
 ordem de contas, uma confirma e a outra relê o saldo já atualizado antes de
@@ -77,13 +78,16 @@ uma chamada somente com `INTERNAL-TOKEN` continua sendo o ator técnico
 confiável; quando também há `Authorization: Bearer`, a API exige sessão ativa e
 papel na conta: `OWNER` administra, `OWNER`/`OPERATOR` operam e `VIEWER` lê.
 
-Hoje já existem eventos de status de conta e boleto, o ledger imutável e os
-registros de idempotência. A próxima camada será `audit_event`, um log
-append-only que registra ator, ação, recurso, `request_id`, data, origem e
-estado anterior/posterior. Auditoria não será editável: correções criarão
-eventos compensatórios. Para detectar adulteração, cada evento poderá guardar
-`previous_hash` e `event_hash`, com checkpoints assinados/exportados; não é
-necessário introduzir blockchain para obter essa propriedade.
+Hoje já existem eventos de status de conta e boleto, o ledger imutável, os
+registros de idempotência e a camada `audit_event`. Cada mudança relevante
+cria, na mesma transação, um evento com ator, ação, recurso, `request_id`, IP
+de origem, estado anterior/posterior e os hashes `previous_hash`/`event_hash`.
+Uma trava transacional serializa a ponta da cadeia; o banco recusa `UPDATE` e
+`DELETE`, portanto correções exigem evento compensatório. A cadeia pode ser
+exportada em `/audit-events` e comparada com `/audit-events/checkpoint` sem
+confiar na aplicação para o cálculo. Isto detecta adulteração do histórico
+exportado, mas não é blockchain nem promete resistir a um administrador que
+controle o banco e seus backups.
 
 Os logs atuais vão para stdout do container e podem ser consultados por
 `docker compose logs`. A evolução operacional prevê logs JSON com correlação,
@@ -119,6 +123,8 @@ Convenção de status: `400` formato inválido (corpo, parâmetro ou cabeçalho)
 | `POST` | `/auth/login` | Valida credenciais e abre uma sessão por dispositivo | `email`, `password`, `device_name` opcional | `201` com JWT curto, refresh opaco, `session_key`; `401 QIT001021` |
 | `POST` | `/auth/refresh` | Rotaciona refresh token de uma sessão ainda ativa | `refresh_token` | `201` com novo par de tokens; `401 QIT001020` se expirado, revogado ou já usado |
 | `POST` | `/auth/logout` | Revoga somente a sessão do JWT informado | `Authorization: Bearer <JWT>` | `204`; `401 QIT001020` |
+| `GET` | `/audit-events` | Exporta a cadeia de auditoria e sua ponta; é somente leitura | n/a | `200` com eventos e checkpoint |
+| `GET` | `/audit-events/checkpoint` | Retorna somente a ponta atual da cadeia | n/a | `200` |
 | `POST` | `/customer` | Cadastra a PME. Repetir não cria outra: `UNIQUE(document_number)` e `UNIQUE(email)` | `name`, `email`, `document_number` (CPF ou CNPJ com máscara) | `201` com `customer_key`; `400 QIT000001` corpo fora do formato; `409 QIT001003` documento já cadastrado; `409 QIT001004` e-mail já cadastrado; `422 QIT001010` dígitos verificadores não batem |
 | `GET` | `/customer/{customer_key}` | Devolve um cliente | `customer_key` no caminho | `200`; `404 QIT001001` |
 | `POST` | `/account` | Abre conta com saldo 0 e grava os eventos `PENDING` e `APPROVED` na mesma transação. Não é idempotente: cada chamada abre outra conta (um cliente pode ter várias) | `customer_key` | `201` com `account_key`, `status`, `balance`; `400 QIT000001`; `404 QIT001001` cliente inexistente |
@@ -195,6 +201,22 @@ erDiagram
         timestamp expires_at "máximo login + 8h"
         timestamp revoked_at
         timestamp created_at "default NOW()"
+    }
+
+    AUDIT_EVENT {
+        serial id PK
+        varchar(20) actor_type "SERVICE ou USER"
+        varchar(64) actor_key
+        varchar(64) action
+        varchar(64) resource_type
+        char(36) resource_key
+        varchar(64) request_id
+        varchar(255) origin "IP observado pela API"
+        jsonb previous_summary
+        jsonb current_summary
+        char(64) previous_hash "64 zeros no genesis"
+        char(64) event_hash UK "SHA-256 do evento canônico"
+        timestamp event_datetime
     }
 
     ACCOUNT_STATUS {
