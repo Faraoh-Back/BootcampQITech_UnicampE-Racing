@@ -5,8 +5,10 @@ from decimal import Decimal
 import requests
 
 from errors import ExternalConnectorError
+from constants import REQUEST_TIMEOUT_SECONDS
 from utils.logger import get_logger
 from utils.metrics import record_connector_failure
+from utils.request_context import remaining_request_timeout_seconds
 
 
 class RestConnector:
@@ -17,18 +19,30 @@ class RestConnector:
     deve inclui-lo explicitamente no contrato.
     """
 
-    def __init__(self, class_name: str, base_url: str, timeout: int = 5) -> None:
+    def __init__(
+        self,
+        class_name: str,
+        base_url: str,
+        connect_timeout_seconds: float,
+        read_timeout_seconds: float,
+    ) -> None:
         self.logger = get_logger(class_name)
         self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        self.connect_timeout_seconds = connect_timeout_seconds
+        self.read_timeout_seconds = read_timeout_seconds
 
     def request_json(self, endpoint: str, method: str, payload: dict | None = None) -> dict:
         url = f"{self.base_url}{endpoint}"
         self.logger.info(f"OUTGOING REQUEST {method.upper()} {url}")
         started_at = time.perf_counter()
 
+        remaining = remaining_request_timeout_seconds(REQUEST_TIMEOUT_SECONDS)
+        timeout = (
+            min(self.connect_timeout_seconds, remaining),
+            min(self.read_timeout_seconds, remaining),
+        )
         try:
-            response = requests.request(method.upper(), url, json=payload, timeout=self.timeout)
+            response = requests.request(method.upper(), url, json=payload, timeout=timeout)
         except requests.RequestException as error:
             self.logger.warning(f"EXTERNAL REQUEST FAILED {method.upper()} {url}: {error}")
             record_connector_failure(self.__class__.__name__)

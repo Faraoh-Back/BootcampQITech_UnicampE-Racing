@@ -1,7 +1,11 @@
 from decimal import Decimal
 
 from connectors.rest_connector import RestConnector
-from constants import CENTRAL_BANK_API_TIMEOUT, CENTRAL_BANK_API_URL
+from constants import (
+    CENTRAL_BANK_API_CONNECT_TIMEOUT_SECONDS,
+    CENTRAL_BANK_API_READ_TIMEOUT_SECONDS,
+    CENTRAL_BANK_API_URL,
+)
 from errors import ExternalConnectorError
 
 
@@ -9,7 +13,12 @@ class CentralBankConnector(RestConnector):
     """Cliente da consulta de taxa acumulada de IPCA ou IGPM."""
 
     def __init__(self) -> None:
-        super().__init__(__name__, CENTRAL_BANK_API_URL, CENTRAL_BANK_API_TIMEOUT)
+        super().__init__(
+            __name__,
+            CENTRAL_BANK_API_URL,
+            CENTRAL_BANK_API_CONNECT_TIMEOUT_SECONDS,
+            CENTRAL_BANK_API_READ_TIMEOUT_SECONDS,
+        )
 
     def get_accumulated_rate(self, index_code: str) -> Decimal:
         body = self.request_json(endpoint=f"/index/{index_code}", method="GET")

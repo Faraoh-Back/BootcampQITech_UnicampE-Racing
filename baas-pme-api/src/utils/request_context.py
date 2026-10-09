@@ -1,4 +1,5 @@
 import re
+import time
 import uuid
 from contextvars import ContextVar
 
@@ -49,6 +50,7 @@ _request_origin: ContextVar[str] = ContextVar("request_origin", default="unknown
 _audit_actor: ContextVar[tuple[str, str]] = ContextVar(
     "audit_actor", default=("SERVICE", "internal-gateway")
 )
+_request_started_at: ContextVar[float | None] = ContextVar("request_started_at", default=None)
 
 
 def get_request_id() -> str:
@@ -78,6 +80,18 @@ def get_audit_actor() -> tuple[str, str]:
 def set_audit_actor(actor_type: str, actor_key: str) -> None:
     """Troca o ator técnico pelo usuário já autenticado, quando existir."""
     _audit_actor.set((actor_type, actor_key))
+
+
+def start_request_timeout_budget() -> None:
+    """Marca o início do orçamento; conectores reduzem seus próprios tempos."""
+    _request_started_at.set(time.monotonic())
+
+
+def remaining_request_timeout_seconds(default_timeout_seconds: float) -> float:
+    started_at = _request_started_at.get()
+    if started_at is None:
+        return default_timeout_seconds
+    return max(0.001, default_timeout_seconds - (time.monotonic() - started_at))
 
 
 def build_request_id(received_request_id: str = None) -> str:

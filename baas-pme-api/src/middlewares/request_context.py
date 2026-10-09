@@ -6,6 +6,7 @@ from utils.request_context import (
     set_audit_actor,
     set_request_id,
     set_request_origin,
+    start_request_timeout_budget,
 )
 
 
@@ -47,6 +48,7 @@ def register_request_context_middleware(application: FastAPI) -> None:
         set_request_id(request_id)
         set_request_origin(request.client.host if request.client is not None else "unknown")
         set_audit_actor("SERVICE", "internal-gateway")
+        start_request_timeout_budget()
 
         response = await call_next(request)
 

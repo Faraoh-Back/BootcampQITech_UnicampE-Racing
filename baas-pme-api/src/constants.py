@@ -23,11 +23,28 @@ JWT_SESSION_MAX_HOURS = int(os.environ.get("JWT_SESSION_MAX_HOURS", "8"))
 # produção, apontaria pro serviço de verdade. O código não sabe a
 # diferença, e esse é o ponto.
 BANKSLIP_API_URL = os.environ.get("BANKSLIP_API_URL", "http://localhost:8080")
-BANKSLIP_API_TIMEOUT = int(os.environ.get("BANKSLIP_API_TIMEOUT", "5"))
+BANKSLIP_API_CONNECT_TIMEOUT_SECONDS = float(
+    os.environ.get("BANKSLIP_API_CONNECT_TIMEOUT_SECONDS", "1")
+)
+BANKSLIP_API_READ_TIMEOUT_SECONDS = float(
+    os.environ.get("BANKSLIP_API_READ_TIMEOUT_SECONDS", "5")
+)
 
 # A API do Banco Central (consulta a índices como IPCA e IGPM)
 CENTRAL_BANK_API_URL = os.environ.get("CENTRAL_BANK_API_URL", "http://mock:1080")
-CENTRAL_BANK_API_TIMEOUT = int(os.environ.get("CENTRAL_BANK_API_TIMEOUT", "5"))
+CENTRAL_BANK_API_CONNECT_TIMEOUT_SECONDS = float(
+    os.environ.get("CENTRAL_BANK_API_CONNECT_TIMEOUT_SECONDS", "1")
+)
+CENTRAL_BANK_API_READ_TIMEOUT_SECONDS = float(
+    os.environ.get("CENTRAL_BANK_API_READ_TIMEOUT_SECONDS", "5")
+)
+
+# Limites de cada transação PostgreSQL e orçamento total para pontos de espera
+# conhecidos na requisição. Não há cancelamento cego de thread HTTP: depois de
+# um cliente desistir, a mesma Idempotency-Key é a única repetição segura.
+DATABASE_LOCK_TIMEOUT_MS = int(os.environ.get("DATABASE_LOCK_TIMEOUT_MS", "2000"))
+DATABASE_STATEMENT_TIMEOUT_MS = int(os.environ.get("DATABASE_STATEMENT_TIMEOUT_MS", "10000"))
+REQUEST_TIMEOUT_SECONDS = float(os.environ.get("REQUEST_TIMEOUT_SECONDS", "15"))
 
 # Regras e parâmetros de negócio (D1 e D8)
 TRANSFER_FEE_CENTS = int(os.environ.get("TRANSFER_FEE_CENTS", "100"))
@@ -70,6 +87,18 @@ def check_variables():
 
     if JWT_ACCESS_TOKEN_MINUTES < 1 or JWT_SESSION_MAX_HOURS < 1:
         raise EnvironmentError("JWT token durations must be positive integers.")
+
+    timeout_values = {
+        "BANKSLIP_API_CONNECT_TIMEOUT_SECONDS": BANKSLIP_API_CONNECT_TIMEOUT_SECONDS,
+        "BANKSLIP_API_READ_TIMEOUT_SECONDS": BANKSLIP_API_READ_TIMEOUT_SECONDS,
+        "CENTRAL_BANK_API_CONNECT_TIMEOUT_SECONDS": CENTRAL_BANK_API_CONNECT_TIMEOUT_SECONDS,
+        "CENTRAL_BANK_API_READ_TIMEOUT_SECONDS": CENTRAL_BANK_API_READ_TIMEOUT_SECONDS,
+        "REQUEST_TIMEOUT_SECONDS": REQUEST_TIMEOUT_SECONDS,
+    }
+    if any(value <= 0 for value in timeout_values.values()):
+        raise EnvironmentError("Connector and request timeouts must be positive.")
+    if DATABASE_LOCK_TIMEOUT_MS < 1 or DATABASE_STATEMENT_TIMEOUT_MS < 1:
+        raise EnvironmentError("Database timeouts must be positive milliseconds.")
 
     # Import tardio evita ciclo durante a leitura das constantes acima.
     from utils.night_limit import validate_night_configuration

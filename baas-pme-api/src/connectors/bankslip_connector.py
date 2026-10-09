@@ -1,5 +1,9 @@
 from connectors.rest_connector import RestConnector
-from constants import BANKSLIP_API_TIMEOUT, BANKSLIP_API_URL
+from constants import (
+    BANKSLIP_API_CONNECT_TIMEOUT_SECONDS,
+    BANKSLIP_API_READ_TIMEOUT_SECONDS,
+    BANKSLIP_API_URL,
+)
 from errors import ExternalConnectorError
 
 
@@ -7,7 +11,12 @@ class BankSlipConnector(RestConnector):
     """Cliente do contrato externo de emissao em lote de boletos."""
 
     def __init__(self) -> None:
-        super().__init__(__name__, BANKSLIP_API_URL, BANKSLIP_API_TIMEOUT)
+        super().__init__(
+            __name__,
+            BANKSLIP_API_URL,
+            BANKSLIP_API_CONNECT_TIMEOUT_SECONDS,
+            BANKSLIP_API_READ_TIMEOUT_SECONDS,
+        )
 
     def issue_batch(self, external_reference: str, installments: list[dict]) -> list[dict]:
         body = self.request_json(

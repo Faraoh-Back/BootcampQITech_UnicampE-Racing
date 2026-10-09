@@ -253,6 +253,21 @@ class DuplicatedUserEmail(QIException):
         )
 
 
+class DatabaseOperationTimeout(QIException):
+    """PostgreSQL cancelou lock ou statement antes de consumir workers."""
+
+    code = "QIT001024"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Database operation timed out",
+            self.code,
+            503,
+            "The database exceeded its configured lock or statement timeout.",
+            "A operação excedeu o tempo de espera configurado no banco. Tente novamente.",
+        )
+
+
 class NotFoundSampleEntity(QIException):
     """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
 

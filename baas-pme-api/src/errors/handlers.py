@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy.exc import OperationalError
 
 from errors.base_error import (
     QIException,
@@ -11,8 +12,10 @@ from errors.base_error import (
     MethodNotAllowed,
     NotFoundResource,
 )
+from errors.custom_errors import DatabaseOperationTimeout
 from utils.logger import get_logger
 from utils.metrics import record_qit_error
+from utils.request_context import REQUEST_ID_HEADER, get_request_id
 
 
 logger = get_logger(__name__)
@@ -30,7 +33,12 @@ def qi_exception_to_response(exception: QIException) -> JSONResponse:
         "translation": exception.translation,
         "code": exception.code,
     }
-    return JSONResponse(status_code=exception.http_status, content=body)
+    response = JSONResponse(status_code=exception.http_status, content=body)
+    # Erros que escapam de um middleware interno (como timeout do banco)
+    # podem ser convertidos antes de o middleware de contexto voltar. O
+    # cabeçalho também é colocado aqui para nunca perder a correlação.
+    response.headers[REQUEST_ID_HEADER] = get_request_id()
+    return response
 
 
 def describe_validation_error(error: dict) -> str:
@@ -99,5 +107,15 @@ def register_error_handlers(application: FastAPI) -> None:
 
     @application.exception_handler(Exception)
     def handle_unexpected_error(request: Request, exception: Exception) -> JSONResponse:
+        if isinstance(exception, OperationalError) and getattr(exception.orig, "pgcode", None) in {
+            "55P03",
+            "57014",
+        }:
+            timeout_error = DatabaseOperationTimeout()
+            record_qit_error(
+                timeout_error.code,
+                getattr(request.scope.get("route"), "path", None) or "unmatched",
+            )
+            return qi_exception_to_response(timeout_error)
         logger.exception(f"Erro inesperado em {request.method} {request.url.path}")
         return qi_exception_to_response(InternalError())

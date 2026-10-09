@@ -95,10 +95,16 @@ Ensinar um custo que não existe é pior do que não ensinar nada.
 from contextvars import ContextVar
 from typing import Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from constants import DATABASE_URL
+from constants import (
+    DATABASE_LOCK_TIMEOUT_MS,
+    DATABASE_STATEMENT_TIMEOUT_MS,
+    DATABASE_URL,
+    REQUEST_TIMEOUT_SECONDS,
+)
+from utils.request_context import remaining_request_timeout_seconds
 
 # A S7c abre até 40 requisições HTTP simultâneas de propósito. O pool precisa
 # acomodar essa carga de teste sem transformar espera por conexão em um falso
@@ -114,6 +120,23 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
+
+
+@event.listens_for(SessionLocal, "after_begin")
+def configure_transaction_timeouts(session, transaction, connection) -> None:
+    """Limita apenas a transação atual; conexões devolvidas ao pool ficam limpas."""
+    remaining_ms = int(remaining_request_timeout_seconds(REQUEST_TIMEOUT_SECONDS) * 1000)
+    lock_timeout_ms = min(DATABASE_LOCK_TIMEOUT_MS, remaining_ms)
+    statement_timeout_ms = min(DATABASE_STATEMENT_TIMEOUT_MS, remaining_ms)
+    # set_config(..., true) equivale a SET LOCAL e evita interpolar SQL.
+    connection.execute(
+        text("SELECT set_config('lock_timeout', :timeout, true)"),
+        {"timeout": f"{lock_timeout_ms}ms"},
+    )
+    connection.execute(
+        text("SELECT set_config('statement_timeout', :timeout, true)"),
+        {"timeout": f"{statement_timeout_ms}ms"},
+    )
 
 
 class Context:
