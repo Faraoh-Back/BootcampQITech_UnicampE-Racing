@@ -322,9 +322,11 @@ com o Gate 2 verde.
 - **Evidência entregue:** `outbox_event` é criado junto de bloqueio/cancelamento e da auditoria; `workers/outbox_publisher.py` roda separado (ou no perfil Compose `workers`), usa `FOR UPDATE SKIP LOCKED`, lease e backoff exponencial. O webhook recebe `Idempotency-Key=event_key`; sucesso não volta à fila e falha mantém a linha para nova tentativa. `baas_outbox_pending_events`, `baas_outbox_retrying_events` e `baas_outbox_delivery_attempts_total` são derivados do estado persistido no `/metrics`, enquanto `docs/ALERTAS.md` fornece regras para 5xx, conectores, locks, outbox e recursos de container. Três testes HTTP/MockServer provam commit conjunto, não republicação e retentativa.
 
 ### T4.5 Benchmark reproduzível de concorrência (C, 2h)
+- **Status:** concluída em 2026-10-09. A carga S7c canônica passou 5 vezes (40 transferências cruzadas por repetição) em 6,753 s de parede no ambiente de referência.
 - **Depende de:** S13; pode ser antecipado como rascunho depois do Gate 2.
 - **Fazer:** registrar em `docs/BENCHMARK.md` hardware/ambiente, versão do Compose, carga, número de threads, duração, resultado da S7c e leitura de CPU/memória via `docker stats`. Medir pelo menos cenário ocioso e as 40 transferências cruzadas.
 - **Pronto quando:** outra pessoa consegue repetir o comando e distinguir limite da máquina de regressão de concorrência; a RFC cita o método, não números sem contexto.
+- **Evidência entregue:** `scripts/benchmark_concurrency.sh` captura ambiente, imagens, amostra ociosa, snapshots NDJSON durante a carga, resultado do pytest e duração, sem apagar volume local. `docs/BENCHMARK.md` documenta carga, comandos, artefatos, referência contextual, critérios de comparação e diagnóstico. A RFC cita o método e seus limites, sem transformar a referência em SLO.
 
 **Gate 3 (opcional).**
 

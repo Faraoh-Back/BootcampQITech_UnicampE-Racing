@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Time** | Cairê Belo · \Pedro Campanha · \<nome 3\> |
-| **Versão** | 2.7 — pós-S15, notificações transacionais entregues |
+| **Versão** | 2.8 — pós-T4.5, evidência de concorrência reproduzível entregue |
 
 ## Contextualização
 
@@ -19,7 +19,7 @@ Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, 
 
 ### Estado deste checkpoint
 
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11, S12, S13, S14 e S15. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A S13 torna o atendimento observável por logs JSON e métricas Prometheus de baixa cardinalidade. A S14 limita conexão/leitura externa, trava/consulta PostgreSQL e o orçamento dos pontos bloqueantes da requisição, sem trocar operações incertas por repetição insegura. A S15 grava notificações de bloqueio/cancelamento em outbox na mesma transação, e um worker as entrega depois do commit com chave idempotente e retentativa. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11, S12, S13, S14, S15 e T4.5. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A T4.5 torna a primeira dessas cargas repetível com coleta de ambiente e `docker stats`; o resultado de referência é contextual e não um SLO. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A S13 torna o atendimento observável por logs JSON e métricas Prometheus de baixa cardinalidade. A S14 limita conexão/leitura externa, trava/consulta PostgreSQL e o orçamento dos pontos bloqueantes da requisição, sem trocar operações incertas por repetição insegura. A S15 grava notificações de bloqueio/cancelamento em outbox na mesma transação, e um worker as entrega depois do commit com chave idempotente e retentativa. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
 
 ### Explicando a solução de forma macro
 
@@ -49,6 +49,7 @@ flowchart LR
 | Falha externa deixar escrita parcial | Chamada externa antes da persistência e commit único | MockServer simula timeout, erro HTTP e corpo inválido sem plano ou lote parcial. |
 | Espera de banco esgotar workers ou resposta ambígua | `lock_timeout`/`statement_timeout` locais à transação, orçamento de requisição e idempotência persistida | Uma trava longa responde `503 QIT001024` com `X-Request-ID` sem impedir consulta não relacionada; cliente que interrompe a espera repete a mesma chave e obtém um único lançamento. |
 | Notificar antes de confirmar ou perder notificação | `outbox_event` na mesma transação, worker separado, lease, backoff e `event_key` idempotente | Bloqueio/cancelamento cria evento junto ao status; sucesso não é republicado; falha fica pendente e a repetição conserva a mesma chave de entrega. |
+| Regressão de concorrência confundida com limite da máquina | Carga S7c canônica, metadados do host/imagens e `docker stats` ocioso/sob carga | Script reproduz 5×40 transferências cruzadas e documenta duração contextual, CPU/RAM observadas e critérios de comparação. |
 | Histórico alterado silenciosamente | `audit_event` append-only, gatilho que recusa escrita destrutiva e cadeia SHA-256 | Exportação HTTP recalculada nos testes; `UPDATE` e `DELETE` diretos são recusados pelo PostgreSQL. |
 
 Na transferência, a disputa acontece assim: as duas requisições escolhem a mesma
@@ -124,6 +125,14 @@ entre o aceite remoto e a atualização local, o webhook poderá receber de novo
 o mesmo `Idempotency-Key`, igual ao `event_key`; por isso o consumidor precisa
 deduplicar. Não se promete a impossível entrega exatamente uma vez entre bancos
 independentes.
+
+A evidência de desempenho não é expressa como SLO sem contexto. A T4.5 executa
+o mesmo teste S7c de transferências cruzadas cinco vezes, captura commit,
+versões, CPUs, memória, imagens e `docker stats` em repouso e durante a carga.
+Na máquina de referência (16 CPUs lógicas, 15 GiB, Docker 29.5.3), a carga
+passou em 6,753 s de parede; esse número só pode ser comparado com ambiente
+equivalente. O método, os artefatos e a interpretação estão em
+`docs/BENCHMARK.md`.
 
 Alternativas consideradas e descartadas:
 

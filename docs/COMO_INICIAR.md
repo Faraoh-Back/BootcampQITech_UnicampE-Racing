@@ -123,6 +123,20 @@ docker compose --profile workers up -d outbox-worker
 Ele publica somente eventos confirmados de bloqueio/cancelamento e reenvia
 falhas com a mesma `Idempotency-Key`; o destinatário deve deduplicar essa chave.
 
+### Benchmark reproduzível de concorrência
+
+Com a `.venv` pronta e os containers disponíveis, rode de dentro de
+`baas-pme-api/`:
+
+```bash
+./scripts/benchmark_concurrency.sh
+```
+
+O script fixa a janela noturna só durante a carga, executa cinco vezes as 40
+transferências cruzadas da S7c, coleta `docker stats` e restaura a configuração
+normal. A leitura correta dos arquivos em `artifacts/benchmarks/` e dos limites
+de comparação está em [BENCHMARK.md](BENCHMARK.md).
+
 ---
 
 ## 5. Testando a Recriação Limpa do Banco (Passo Crítico)

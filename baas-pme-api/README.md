@@ -41,6 +41,19 @@ NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 143 testes. Depois,
 restaure o relógio normal com `docker compose up -d`.
 
+## Benchmark de concorrência
+
+Para repetir a carga S7c canônica (cinco repetições de 40 transferências
+cruzadas), com duração, versões, amostras ociosas e `docker stats` sob carga:
+
+```bash
+./scripts/benchmark_concurrency.sh
+```
+
+O resultado fica em `artifacts/benchmarks/<UTC>/`, ignorado pelo Git por ser
+dependente da máquina. Leia [../docs/BENCHMARK.md](../docs/BENCHMARK.md) antes
+de comparar números: a referência é evidência contextual, não um SLO.
+
 ## Recriar o banco após alterar SQL
 
 `database/database.sql` é copiado para a imagem do PostgreSQL durante o build.

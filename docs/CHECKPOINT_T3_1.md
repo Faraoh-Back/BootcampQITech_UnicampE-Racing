@@ -1,6 +1,6 @@
-# Checkpoint T3.1 — RFC 2.7
+# Checkpoint T3.1 — RFC 2.8
 
-Data da revisão original: 2026-10-03. Atualizações de S11, S12, S13, S14 e S15: 2026-10-09.
+Data da revisão original: 2026-10-03. Atualizações de S11, S12, S13, S14, S15 e T4.5: 2026-10-09.
 
 ## Escopo conferido
 
@@ -16,12 +16,13 @@ Data da revisão original: 2026-10-03. Atualizações de S11, S12, S13, S14 e S1
 | Observabilidade | Logs, registry Prometheus, rota e testes HTTP | S13 entrega logs JSON correlacionados, conta/usuário mascarados, `/metrics` interno e métricas seguras de HTTP, QIT, conectores, replay, locks e sessões. |
 | Timeouts e retentativa | Configuração, conectores, PostgreSQL, handlers e testes HTTP | S14 aplica conexão/leitura de 1 s/5 s, orçamento de requisição de 15 s e `lock_timeout`/`statement_timeout` transacionais de 2 s/10 s. Falha externa é `502 QIT001009`; timeout de banco é `503 QIT001024`, ambos correlacionáveis por `request_id`. |
 | Outbox e alertas | DDL, worker, métricas, MockServer e testes | S15 grava `outbox_event` com bloqueio/cancelamento no mesmo commit, publica após o commit por worker separado com lease e backoff, e entrega `event_key` como chave idempotente. Métricas e regras de alerta cobrem fila, 5xx, conector e lock; CPU/memória usam métricas do runtime. |
+| Benchmark de concorrência | Script, S7c, `docker stats` e `BENCHMARK.md` | T4.5 reutiliza 5×40 transferências cruzadas da S7c, captura host/imagens/versões, amostra containers ociosos e sob carga e registra método de comparação. A referência de 6,753 s é contextual, não SLO. |
 | Testes | Suíte HTTP e guardião R1 | `pytest -q`: 143 testes aprovados após S15. |
-| Evolução planejada | RFC 2.7, `DECISOES.md` e R4.5 | Benchmark reproduzível continua como roadmap, sem ser declarado implementado. |
+| Evolução planejada | RFC 2.8, `DECISOES.md` e R5 | A entrega final (cobertura, pipeline e PDF) continua como roadmap, sem ser declarada implementada. |
 
 ## Itens deliberadamente futuros
 
 - **T5.3:** PDF oficial da RFC. O plano já o posterga para a entrega final; não há template ou gerador no repositório neste momento.
-- **R4.5 remanescente:** benchmark. O Gate 3 é opcional e posterior ao núcleo entregue no Gate 2; S11, S12, S13, S14 e S15 já foram concluídas.
+- **R4.5 remanescente:** nenhum item. O Gate 3 opcional está evidenciado; S11, S12, S13, S14, S15 e T4.5 foram concluídas.
 
 Com esses itens marcados como planejados na RFC e nas decisões, não há divergência conhecida entre a documentação e o código entregue.

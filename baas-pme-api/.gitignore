@@ -76,3 +76,7 @@ coverage.xml
 # --- Tipagem estática --------------------------------------
 .mypy_cache/
 .ruff_cache/
+
+# Saídas locais do benchmark: o método e um resultado de referência vivem em
+# docs/, mas cada execução produz números dependentes da máquina.
+artifacts/benchmarks/
