@@ -56,7 +56,10 @@ services:
       # a API recarrega sozinha (o --reload ali embaixo).
       - ./src:/app
     # --reload: salvou o arquivo, a API reinicia sozinha.
-    command: uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header --reload
+    # O middleware da aplicação já registra cada requisição como JSON. O
+    # access log padrão do Uvicorn é desligado para não misturar linhas texto
+    # sem request_id ao stdout estruturado.
+    command: uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header --no-access-log --reload
     healthcheck:
       # "Subiu" nao e a mesma coisa que "ja responde". E esta checagem
       # que diz quando a API passa a atender de verdade — espere ela

@@ -1,4 +1,5 @@
 from uuid import uuid4
+import time
 
 from constants import ADVANCE_FEE_PERCENT
 from controllers.base_controller import BaseController
@@ -11,6 +12,7 @@ from errors import (
     BankSlipNotFound,
 )
 from repositories import AccountRepository, CreditAdvanceRepository, TransactionRepository
+from utils.metrics import observe_lock_wait, record_idempotency_replay
 
 
 class CreditAdvanceController(BaseController):
@@ -32,18 +34,23 @@ class CreditAdvanceController(BaseController):
             account.id, "credit_advance", idempotency_key, payload
         )
         if idempotency.should_replay:
+            record_idempotency_replay("credit_advance")
             return idempotency.response_body, True
 
+        started_at = time.perf_counter()
         account = self.account_repository.get_by_key_for_update(account_key)
+        observe_lock_wait("account", time.perf_counter() - started_at)
         if account is None:
             raise AccountNotFound(account_key)
         if account.status.enumerator != "APPROVED":
             raise AccountNotApproved(account_key)
 
         requested_keys = payload["bank_slip_keys"]
+        started_at = time.perf_counter()
         bank_slips = self.credit_advance_repository.get_bank_slips_for_account_for_update(
             account.id, requested_keys
         )
+        observe_lock_wait("bank_slips", time.perf_counter() - started_at)
         if len(bank_slips) != len(requested_keys):
             raise BankSlipNotFound()
         if any(

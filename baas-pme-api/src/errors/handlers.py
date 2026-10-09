@@ -12,6 +12,7 @@ from errors.base_error import (
     NotFoundResource,
 )
 from utils.logger import get_logger
+from utils.metrics import record_qit_error
 
 
 logger = get_logger(__name__)
@@ -51,6 +52,7 @@ def register_error_handlers(application: FastAPI) -> None:
 
     @application.exception_handler(QIException)
     def handle_qi_exception(request: Request, exception: QIException) -> JSONResponse:
+        record_qit_error(exception.code, getattr(request.scope.get("route"), "path", None) or "unmatched")
         return qi_exception_to_response(exception)
 
     @application.exception_handler(StarletteHTTPException)

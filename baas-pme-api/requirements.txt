@@ -22,3 +22,5 @@ requests==2.32.3
 # Credenciais de usuário: bcrypt para senha e PyJWT para tokens assinados.
 bcrypt==4.2.1
 PyJWT==2.10.1
+# Registry Prometheus para métricas operacionais expostas em /metrics.
+prometheus-client==0.23.1

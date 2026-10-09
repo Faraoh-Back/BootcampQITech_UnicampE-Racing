@@ -1,12 +1,37 @@
 import time
+import re
 
 from fastapi import FastAPI, Request
 
 from constants import BYPASS_ENDPOINTS
 from utils.logger import get_logger
+from utils.metrics import record_http_request
+from utils.authentication import decode_access_token
 
 
 logger = get_logger(__name__)
+ACCOUNT_PATH = re.compile(r"^/account/([^/]+)")
+
+
+def _mask_key(value: str) -> str:
+    return f"{value[:6]}…{value[-4:]}" if len(value) > 10 else "***"
+
+
+def _account_key_from_path(path: str) -> str | None:
+    match = ACCOUNT_PATH.match(path)
+    return _mask_key(match.group(1)) if match else None
+
+
+def _user_key_from_authorization(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    try:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            return None
+        return _mask_key(decode_access_token(token)["sub"])
+    except (KeyError, ValueError):
+        return None
 
 
 def register_request_logger_middleware(application: FastAPI) -> None:
@@ -37,24 +62,24 @@ def register_request_logger_middleware(application: FastAPI) -> None:
         if request.url.path in BYPASS_ENDPOINTS:
             return await call_next(request)
 
-        # O que veio depois do "?" no endereço entra no log de entrada:
-        # é metade do pedido, e sem ele a linha "GET /sample_entities"
-        # não diz qual página alguém pediu.
-        #
-        # E fica a lição pelo avesso: se a query string vai parar no
-        # log, ela NÃO é lugar para segredo. Um token na URL acaba
-        # gravado aqui, no histórico do navegador e no log de todo proxy
-        # do caminho. Segredo viaja em cabeçalho, como o INTERNAL-TOKEN.
-        requested_path = request.url.path
-        if request.url.query:
-            requested_path = f"{requested_path}?{request.url.query}"
-
         started_at = time.perf_counter()
-        logger.info(f"ENTROU {request.method} {requested_path}")
-
         response = await call_next(request)
-
-        elapsed_ms = (time.perf_counter() - started_at) * 1000
-        logger.info(f"SAIU {response.status_code} {request.method} {request.url.path} - {elapsed_ms:.1f} ms")
+        elapsed_seconds = time.perf_counter() - started_at
+        elapsed_ms = elapsed_seconds * 1000
+        route = getattr(request.scope.get("route"), "path", None) or "unmatched"
+        if request.url.path != "/metrics":
+            record_http_request(request.method, route, response.status_code, elapsed_seconds)
+        logger.info(
+            "request_completed",
+            extra={
+                "event": "request_completed",
+                "method": request.method,
+                "route": route,
+                "status": response.status_code,
+                "duration_ms": round(elapsed_ms, 3),
+                "account_key": _account_key_from_path(request.url.path),
+                "user_key": _user_key_from_authorization(request.headers.get("Authorization")),
+            },
+        )
 
         return response

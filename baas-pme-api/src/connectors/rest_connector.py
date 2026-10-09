@@ -6,6 +6,7 @@ import requests
 
 from errors import ExternalConnectorError
 from utils.logger import get_logger
+from utils.metrics import record_connector_failure
 
 
 class RestConnector:
@@ -30,20 +31,24 @@ class RestConnector:
             response = requests.request(method.upper(), url, json=payload, timeout=self.timeout)
         except requests.RequestException as error:
             self.logger.warning(f"EXTERNAL REQUEST FAILED {method.upper()} {url}: {error}")
+            record_connector_failure(self.__class__.__name__)
             raise ExternalConnectorError(self.__class__.__name__) from error
 
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         self.logger.info(f"INCOMING RESPONSE {response.status_code} {method.upper()} {url} - {elapsed_ms:.1f} ms")
 
         if response.status_code != 200:
+            record_connector_failure(self.__class__.__name__)
             raise ExternalConnectorError(self.__class__.__name__)
 
         try:
             body = json.loads(response.content, parse_float=Decimal)
         except (TypeError, ValueError, json.JSONDecodeError) as error:
+            record_connector_failure(self.__class__.__name__)
             raise ExternalConnectorError(self.__class__.__name__) from error
 
         if not isinstance(body, dict):
+            record_connector_failure(self.__class__.__name__)
             raise ExternalConnectorError(self.__class__.__name__)
 
         return body

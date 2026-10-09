@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request
 from constants import BYPASS_ENDPOINTS, INTERNAL_TOKEN
 from errors.base_error import ForbiddenNotInternal
 from errors.handlers import qi_exception_to_response
+from utils.metrics import record_qit_error
 
 
 def register_internal_token_middleware(application: FastAPI) -> None:
@@ -25,6 +26,7 @@ def register_internal_token_middleware(application: FastAPI) -> None:
             return await call_next(request)
 
         if request.headers.get("INTERNAL-TOKEN") != INTERNAL_TOKEN:
+            record_qit_error("QIT000002", getattr(request.scope.get("route"), "path", None) or "unmatched")
             return qi_exception_to_response(ForbiddenNotInternal())
 
         return await call_next(request)

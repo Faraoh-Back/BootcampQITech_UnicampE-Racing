@@ -1,4 +1,5 @@
 from datetime import date
+import time
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 
@@ -16,6 +17,7 @@ from errors import (
 )
 from repositories import BillingPlanRepository
 from utils.date import add_months
+from utils.metrics import observe_lock_wait
 
 
 class BillingPlanController(BaseController):
@@ -83,7 +85,9 @@ class BillingPlanController(BaseController):
         # leituras repetidas do mesmo plano não devem prender uma transação.
         rate = CentralBankConnector().get_accumulated_rate(payload["index_code"])
 
+        started_at = time.perf_counter()
         plan = self.billing_plan_repository.get_by_key_for_account_for_update(plan_key, account.id)
+        observe_lock_wait("billing_plan", time.perf_counter() - started_at)
         if plan is None:
             raise BillingPlanNotFound(plan_key)
         if self.billing_plan_repository.has_batch(plan.id, 2):

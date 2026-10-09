@@ -1,4 +1,5 @@
 import logging
+import json
 import sys
 
 from constants import APP_ENV, SERVICE_NAME
@@ -10,7 +11,34 @@ from utils.request_context import get_request_id
 #
 #   2026-09-01 12:00:00 [INFO] bootcamp-api.middlewares.request_logger
 #   [8f3c1e42-...] - ENTROU GET /sample_entities
-LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s [%(request_id)s] - %(message)s"
+
+
+class JsonFormatter(logging.Formatter):
+    """Uma linha JSON por evento, adequada para stdout de containers."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "request_id": getattr(record, "request_id", "-"),
+        }
+        for field in (
+            "event",
+            "method",
+            "route",
+            "status",
+            "duration_ms",
+            "account_key",
+            "user_key",
+        ):
+            value = getattr(record, field, None)
+            if value is not None:
+                payload[field] = value
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 class RequestIdFilter(logging.Filter):
@@ -41,7 +69,7 @@ def setup_logging() -> None:
         level = logging.DEBUG
 
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    handler.setFormatter(JsonFormatter())
 
     # O filtro fica no HANDLER, não num logger específico: assim toda
     # linha que passar por aqui ganha o campo, venha ela do nosso código

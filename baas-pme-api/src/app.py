@@ -15,6 +15,7 @@ from resources import (
     CreditAdvanceResource,
     AuthResource,
     AuditResource,
+    MetricsResource,
     CustomerResource,
     HealthCheckResource,
     SampleEntityResource,
@@ -141,6 +142,7 @@ def create_app() -> FastAPI:
     transaction_resource = TransactionResource()
     auth_resource = AuthResource()
     audit_resource = AuditResource()
+    metrics_resource = MetricsResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route(
@@ -185,6 +187,7 @@ def create_app() -> FastAPI:
     application.add_api_route(
         "/audit-events/checkpoint", audit_resource.on_get_checkpoint, methods=["GET"]
     )
+    application.add_api_route("/metrics", metrics_resource.on_get, methods=["GET"])
     application.add_api_route("/account/{account_key}", account_resource.on_get_by_key, methods=["GET"])
     application.add_api_route(
         "/account/{account_key}/block",

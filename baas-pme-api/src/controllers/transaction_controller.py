@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import time
 from uuid import uuid4
 
 from constants import NIGHT_LIMIT_CENTS, TRANSFER_FEE_CENTS
@@ -16,6 +17,7 @@ from errors import (
 )
 from repositories import AccountRepository, TransactionRepository
 from utils.night_limit import is_night_window
+from utils.metrics import observe_lock_wait, record_idempotency_replay
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,7 @@ class TransactionController(BaseController):
             account.id, "transaction", idempotency_key, payload
         )
         if idempotency.should_replay:
+            record_idempotency_replay("transaction")
             return TransactionExecution(body=idempotency.response_body, replayed=True)
 
         if transaction_type == "TRANSFER" and destination_account_key == account_key:
@@ -98,7 +101,9 @@ class TransactionController(BaseController):
     def _create_single_account_transaction(
         self, account_key: str, transaction_type: str, amount: int
     ) -> dict:
+        started_at = time.perf_counter()
         account = self.account_repository.get_by_key_for_update(account_key)
+        observe_lock_wait("account", time.perf_counter() - started_at)
         if account is None:
             raise AccountNotFound(account_key)
         if account.status.enumerator != "APPROVED":
@@ -119,9 +124,11 @@ class TransactionController(BaseController):
     def _create_transfer(
         self, origin_account_key: str, destination_account_key: str, amount: int
     ) -> dict:
+        started_at = time.perf_counter()
         accounts = self.account_repository.get_by_keys_for_update(
             [origin_account_key, destination_account_key]
         )
+        observe_lock_wait("transfer_accounts", time.perf_counter() - started_at)
         accounts_by_key = {account.account_key: account for account in accounts}
         origin = accounts_by_key.get(origin_account_key)
         destination = accounts_by_key.get(destination_account_key)

@@ -75,6 +75,16 @@ class UserRepository:
     def revoke_session(self, session: UserSession) -> None:
         session.revoked_at = datetime.utcnow()
 
+    def count_active_sessions(self) -> int:
+        return (
+            self.session.query(UserSession)
+            .filter(
+                UserSession.revoked_at.is_(None),
+                UserSession.expires_at > datetime.utcnow(),
+            )
+            .count()
+        )
+
     def get_account_role(self, user_id: int, account_key: str) -> str | None:
         access = (
             self.session.query(UserCustomerAccess)

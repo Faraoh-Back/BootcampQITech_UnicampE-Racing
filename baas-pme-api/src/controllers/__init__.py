@@ -7,3 +7,4 @@ from controllers.transaction_controller import TransactionController
 from controllers.credit_advance_controller import CreditAdvanceController
 from controllers.auth_controller import AuthController
 from controllers.audit_controller import AuditController
+from controllers.metrics_controller import MetricsController
