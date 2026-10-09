@@ -110,6 +110,19 @@ um `503 QIT001024`, use o `X-Request-ID` da resposta junto dos logs JSON da API.
 Depois de uma interrupção de rede em operação financeira, repita apenas com a
 mesma `Idempotency-Key`.
 
+### Worker de notificações (opcional)
+
+O perfil `workers` mantém o publicador de outbox separado da API HTTP. Para
+ativá-lo, configure `NOTIFICATION_WEBHOOK_URL` para o serviço destinatário e
+rode:
+
+```bash
+docker compose --profile workers up -d outbox-worker
+```
+
+Ele publica somente eventos confirmados de bloqueio/cancelamento e reenvia
+falhas com a mesma `Idempotency-Key`; o destinatário deve deduplicar essa chave.
+
 ---
 
 ## 5. Testando a Recriação Limpa do Banco (Passo Crítico)

@@ -38,7 +38,7 @@ NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 ./.venv/bin/python -m pytest -q
 ```
 
-Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 140 testes. Depois,
+Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 143 testes. Depois,
 restaure o relógio normal com `docker compose up -d`.
 
 ## Recriar o banco após alterar SQL
@@ -88,6 +88,28 @@ curl -H 'INTERNAL-TOKEN: default_token' http://localhost:3000/metrics
 Os rótulos das métricas não incluem dados pessoais, UUIDs, IPs ou query
 strings; use a rota-modelo, status e código QIT para agregação.
 
+## Notificações confiáveis
+
+Bloquear ou cancelar uma conta cria uma notificação na `outbox_event` no mesmo
+commit do status e da auditoria. A requisição HTTP nunca chama webhook: o
+processo separado faz isso depois. Para ativá-lo localmente:
+
+```bash
+docker compose --profile workers up -d outbox-worker
+```
+
+Ou processe somente um lote, útil para diagnóstico:
+
+```bash
+docker compose --profile workers run --rm outbox-worker --once
+```
+
+O webhook recebe `Idempotency-Key` igual ao `event_key`. A garantia é entrega
+**pelo menos uma vez**: o consumidor deve deduplicar essa chave. Falhas ficam
+na outbox com backoff exponencial; sucesso não é reenviado. As regras
+Prometheus para 5xx, conectores, lock, fila e falhas de entrega estão em
+[../docs/ALERTAS.md](../docs/ALERTAS.md).
+
 ## Timeouts e repetição segura
 
 Chamadas externas usam 1 segundo para conexão e 5 segundos para leitura;
@@ -123,6 +145,10 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 | `DATABASE_LOCK_TIMEOUT_MS` | `2000` | Espera máxima por trava PostgreSQL por transação. |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `10000` | Execução máxima de comando PostgreSQL por transação. |
 | `REQUEST_TIMEOUT_SECONDS` | `15` | Orçamento máximo aplicado aos pontos bloqueantes conhecidos. |
+| `NOTIFICATION_WEBHOOK_URL` | `http://mock:1080/notifications` | Webhook que recebe eventos da outbox; em produção, serviço de notificações. |
+| `OUTBOX_POLL_INTERVAL_SECONDS` | `1` | Intervalo de consulta do worker. |
+| `OUTBOX_LEASE_SECONDS` | `30` | Duração do lease que impede dois workers de publicar juntos. |
+| `OUTBOX_RETRY_BASE_SECONDS` | `5` | Base do backoff exponencial após falha de entrega. |
 
 ## Estrutura
 

@@ -7,7 +7,7 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D13)
 
-> **Estado RFC 2.6:** D1–D12 estão implementadas. D13 continua como decisão planejada da R4.5; a política de timeouts foi materializada pela S14 como parte da D12.
+> **Estado RFC 2.7:** D1–D13 estão implementadas; S15 materializou a outbox, o publicador e as regras operacionais de alerta. O benchmark continua como decisão de evidência futura.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
@@ -23,16 +23,15 @@
 | **D10** | **Identidade e sessões** | Um `app_user` pertence a uma PME (`customer`) por `user_customer_access`; portanto seu vínculo alcança as contas da PME. A senha usa bcrypt. Login cria sessão persistida por dispositivo, JWT de acesso de 15 minutos (configurável) e refresh token opaco, rotativo e válido por no máximo 8 horas. Papéis: `OWNER`, `OPERATOR`, `VIEWER`. | `INTERNAL-TOKEN` permanece a credencial serviço-a-serviço e não é login nem API Gateway. Em rotas financeiras, a ausência de `Authorization` preserva a chamada técnica interna; se `Authorization: Bearer <JWT>` vier, a sessão ativa e o papel sobre a conta são obrigatórios. `OWNER` administra ciclo de vida; `OWNER`/`OPERATOR` movimentam e emitem cobrança; os três podem consultar. |
 | **D11** | **Auditoria verificável** | `audit_event` é uma cadeia global append-only: ator (`SERVICE` ou `USER`), ação, tipo/chave de recurso, `request_id`, IP de origem, resumo anterior/posterior, timestamp, `previous_hash` e `event_hash`. A cadeia começa em 64 zeros e usa SHA-256 sobre JSON canônico UTF-8. | A inserção adquire `pg_advisory_xact_lock`, evitando bifurcação sob concorrência; o evento entra na mesma transação do fato de negócio. Trigger PostgreSQL recusa `UPDATE`/`DELETE`; correção exige evento compensatório. `GET /audit-events` exporta os dados e `GET /audit-events/checkpoint` expõe a ponta para verificação externa. Isto não é blockchain: não há consenso distribuído nem imutabilidade contra um administrador do próprio banco. |
 | **D12** | **Observabilidade e limites de espera** | Logs JSON no stdout com `request_id`, método, rota-modelo, status, duração, conta mascarada e usuário mascarado quando o JWT é válido. `GET /metrics` expõe Prometheus: requisições/latência, QIT, falhas de conectores, replay idempotente, duração de aquisição de travas e sessões ativas. Conectores têm conexão de 1 s e leitura de 5 s; cada transação PostgreSQL recebe `lock_timeout` de 2 s e `statement_timeout` de 10 s, todos limitados pelo orçamento de requisição de 15 s. | Rótulos são somente método, rota-modelo, status, código QIT, conector, escopo e operação: **nunca** e-mail, CPF/CNPJ, token, `request_id`, IP, chave de conta ou query string. Falha externa devolve `502 QIT001009`; espera/execução PostgreSQL esgotada devolve `503 QIT001024`, sempre correlacionável por `X-Request-ID`. Uma interrupção ou timeout no cliente não informa se houve commit: operação financeira só pode ser repetida com a mesma `Idempotency-Key`. |
-| **D13** | **Alertas e notificações (planejada)** | Eventos de saída usam `outbox_event`, criado na mesma transação do fato de negócio e publicado por processo separado, idempotente e retentável. | Não há chamada de e-mail/webhook dentro do controller antes do commit. Alertas operacionais derivam de métricas; notificações de domínio respeitam a confirmação da transação. |
+| **D13** | **Alertas e notificações confiáveis** | Bloquear ou cancelar uma conta grava `outbox_event` na mesma transação do status e da auditoria. O worker separado reclama eventos por *lease*, faz `POST` ao webhook com `Idempotency-Key = event_key` e marca sucesso; falha preserva o evento, incrementa tentativa e agenda retentativa exponencial. | Não há chamada de e-mail/webhook dentro do controller antes do commit. A entrega é **pelo menos uma vez**: queda após o webhook aceitar pode reenviar a mesma chave, que o consumidor deve deduplicar. Métricas de outbox, HTTP 5xx, conector e lock alimentam regras Prometheus documentadas; CPU/memória dependem de coletor do runtime (ex.: cAdvisor), não da API. |
 
 ---
 
 ### Limite entre contrato atual e evolução planejada
 
 O catálogo e os contratos de rota abaixo descrevem a API implementada, inclusive
-D10–D12. Os códigos de erro, schemas, URLs e políticas HTTP de D13 serão
-definidos junto com seus testes vermelhos, para não transformar intenção de
-roadmap em promessa de integração.
+D10–D13. A outbox não expõe uma rota pública: é infraestrutura interna e seu
+contrato de integração é o webhook versionado por `topic`, documentado na RFC.
 
 ---
 

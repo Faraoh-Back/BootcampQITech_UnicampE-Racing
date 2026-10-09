@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Time** | Cairê Belo · \Pedro Campanha · \<nome 3\> |
-| **Versão** | 2.6 — pós-S14, observabilidade e limites de espera entregues |
+| **Versão** | 2.7 — pós-S15, notificações transacionais entregues |
 
 ## Contextualização
 
@@ -15,11 +15,11 @@ A garantia sobre o dinheiro é tripla: o saldo nunca fica negativo nem diverge d
 
 Para saques e transferências, a janela noturna vai de 20h a 6h do dia seguinte, no fuso `America/Sao_Paulo`. Nesse período, cada operação pode movimentar no máximo 100000 centavos (R$ 1.000,00), refletindo o limite padrão aplicado a transferências noturnas como Pix e TED para pessoas físicas. Depósitos não têm esse limite. Os testes automatizados precisam controlar relógio ou configuração para exercitar a regra sem depender do horário de execução.
 
-Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. Autenticação de usuário, auditoria verificável, observabilidade e política de timeouts estão entregues; alertas e notificações seguem como evolução planejada. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
+Fora do escopo da implementação atual: pagamento e baixa de boletos, estorno, múltiplas moedas e qualquer rotina agendada. Autenticação de usuário, auditoria verificável, observabilidade, timeouts e notificações transacionais estão entregues. A integração de Alertmanager e a coleta de CPU/memória do runtime permanecem responsabilidade do ambiente operacional, com regras reproduzíveis documentadas. O bloqueio e o cancelamento de conta pertencem ao escopo: o bloqueio é exposto por HTTP para tornar a máquina de estados testável; cancelamento é uma transição de status auditável, sem remoção física de dados.
 
 ### Estado deste checkpoint
 
-Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11, S12, S13 e S14. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A S13 torna o atendimento observável por logs JSON e métricas Prometheus de baixa cardinalidade. A S14 limita conexão/leitura externa, trava/consulta PostgreSQL e o orçamento dos pontos bloqueantes da requisição, sem trocar operações incertas por repetição insegura. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
+Esta versão cobre as entregas S1, S2, S2b, S3, S4, S5, S6, S7a, S7b, S7c, S8, S9, S10, S11, S12, S13, S14 e S15. A concorrência avançada é provada por HTTP contra PostgreSQL: 40 transferências cruzadas, dez reenvios simultâneos da mesma chave de idempotência, duas antecipações do mesmo boleto e duas transferências disputando o último saldo, todos repetidos cinco vezes. A S11 adiciona usuários, sessões por dispositivo, JWT curto, refresh rotativo e papéis por PME. A S12 encadeia os fatos de domínio por SHA-256, com exportação e checkpoint verificáveis fora da API. A S13 torna o atendimento observável por logs JSON e métricas Prometheus de baixa cardinalidade. A S14 limita conexão/leitura externa, trava/consulta PostgreSQL e o orçamento dos pontos bloqueantes da requisição, sem trocar operações incertas por repetição insegura. A S15 grava notificações de bloqueio/cancelamento em outbox na mesma transação, e um worker as entrega depois do commit com chave idempotente e retentativa. A regra noturna é aplicada pelo controller antes de disputar a trava de saldo; o relógio real usa `TIMEZONE` e o ambiente de teste pode fixar apenas a hora com `NIGHT_TIME_OVERRIDE`.
 
 ### Explicando a solução de forma macro
 
@@ -48,6 +48,7 @@ flowchart LR
 | Um boleto gerar liquidez duas vezes | Trava de boleto e vínculo `credit_advance_id` | Duas antecipações concorrentes devolvem exatamente um `201` e um `409 QIT001016`. |
 | Falha externa deixar escrita parcial | Chamada externa antes da persistência e commit único | MockServer simula timeout, erro HTTP e corpo inválido sem plano ou lote parcial. |
 | Espera de banco esgotar workers ou resposta ambígua | `lock_timeout`/`statement_timeout` locais à transação, orçamento de requisição e idempotência persistida | Uma trava longa responde `503 QIT001024` com `X-Request-ID` sem impedir consulta não relacionada; cliente que interrompe a espera repete a mesma chave e obtém um único lançamento. |
+| Notificar antes de confirmar ou perder notificação | `outbox_event` na mesma transação, worker separado, lease, backoff e `event_key` idempotente | Bloqueio/cancelamento cria evento junto ao status; sucesso não é republicado; falha fica pendente e a repetição conserva a mesma chave de entrega. |
 | Histórico alterado silenciosamente | `audit_event` append-only, gatilho que recusa escrita destrutiva e cadeia SHA-256 | Exportação HTTP recalculada nos testes; `UPDATE` e `DELETE` diretos são recusados pelo PostgreSQL. |
 
 Na transferência, a disputa acontece assim: as duas requisições escolhem a mesma
@@ -112,6 +113,18 @@ cliente sempre deve repetir uma operação financeira com a mesma
 `Idempotency-Key`, pois um timeout de rede pode ocorrer depois que o servidor
 confirmou o commit.
 
+Bloquear ou cancelar não chama webhook dentro do controller. A mesma transação
+grava o status, seu evento de auditoria e um `outbox_event` com o tópico
+`account.status_changed`. O processo `outbox-worker` (perfil Compose
+`workers`) reclama eventos pendentes com `FOR UPDATE SKIP LOCKED` e *lease* de
+30 segundos, publica o payload após o commit e registra o resultado. Sucesso é
+final; erro HTTP ou de rede incrementa tentativas e agenda nova tentativa com
+backoff exponencial. A entrega é pelo menos uma vez: caso o processo morra
+entre o aceite remoto e a atualização local, o webhook poderá receber de novo
+o mesmo `Idempotency-Key`, igual ao `event_key`; por isso o consumidor precisa
+deduplicar. Não se promete a impossível entrega exatamente uma vez entre bancos
+independentes.
+
 Alternativas consideradas e descartadas:
 
 - **Lock otimista** (coluna `version` e retentativa): descartado porque, sob disputa na mesma conta, devolve erro ao cliente ou repete a operação inteira, e uma transferência mexe em duas contas e três lançamentos, o que torna repetir caro. Ganharia se a disputa por conta fosse rara e repetir fosse barato.
@@ -171,6 +184,7 @@ erDiagram
     ACCOUNT ||--o{ IDEMPOTENCY_KEY : "registra"
     ACCOUNT ||--o{ BILLING_PLAN : "contrata"
     ACCOUNT ||--o{ CREDIT_ADVANCE : "solicita"
+    ACCOUNT ||--o{ OUTBOX_EVENT : "notifica status"
     BILLING_PLAN ||--o{ BANK_SLIP : "gera"
     CREDIT_ADVANCE |o--o{ BANK_SLIP : "antecipa"
     BANK_SLIP_STATUS ||--o{ BANK_SLIP : "status atual"
@@ -228,6 +242,20 @@ erDiagram
         char(64) previous_hash "64 zeros no genesis"
         char(64) event_hash UK "SHA-256 do evento canônico"
         timestamp event_datetime
+    }
+
+    OUTBOX_EVENT {
+        serial id PK
+        char(36) event_key UK "Idempotency-Key do webhook"
+        varchar(64) topic "account.status_changed"
+        varchar(64) aggregate_type
+        char(36) aggregate_key
+        jsonb payload "sem PII do destinatário"
+        int delivery_attempts
+        timestamp next_attempt_at
+        timestamp locked_until
+        timestamp published_at
+        varchar(500) last_error
     }
 
     ACCOUNT_STATUS {

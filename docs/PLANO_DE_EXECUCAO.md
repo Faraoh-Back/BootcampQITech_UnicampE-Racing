@@ -95,7 +95,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R5 
 - **Pronto quando:** cada pessoa tem print do `docker compose ps` com tudo `healthy` e do `pytest` verde.
 
 ### T0.2 Decisões fixas e contratos (A, 1h, com 15 min do time todo)
-- **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). D10–D13 serão acrescentadas na R4.5 como decisões planejadas, sem antecipar contratos inexistentes. Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras. **Atualização:** S11 materializou D10, S12 materializou D11 e S13/S14 materializaram observabilidade e política de timeout da D12; somente D13 continua planejada.
+- **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). D10–D13 serão acrescentadas na R4.5 como decisões planejadas, sem antecipar contratos inexistentes. Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras. **Atualização:** S11 materializou D10, S12 materializou D11, S13/S14 materializaram observabilidade e timeout da D12, e S15 materializou D13.
 - **Pronto quando:** as três pessoas leram e disseram "ok" no PR.
 
 ### T0.3 [Postergado para a Entrega / R5] RFC no modelo oficial da QI Tech e PDF
@@ -314,10 +314,12 @@ com o Gate 2 verde.
 - **Evidência entregue:** conectores recebem 1 s para conexão e 5 s para leitura, sempre limitados pelo orçamento de 15 s; o MockServer prova o atraso de leitura e retorna `502 QIT001009`, enquanto falha de conexão é capturada pela mesma exceção `requests.RequestException`. Cada transação PostgreSQL recebe `lock_timeout=2 s` e `statement_timeout=10 s` via configuração local; esgotamento responde `503 QIT001024` com `X-Request-ID`. Testes HTTP seguram uma conta com `FOR UPDATE`, provam que uma consulta não relacionada continua atendida, e simulam cliente que desiste da resposta antes do commit: o replay com a mesma `Idempotency-Key` resulta em um único lançamento.
 
 ### S15 Alertas e notificações confiáveis (B, 5h)
+- **Status:** concluída em 2026-10-09. A suíte HTTP soma 143 testes verdes.
 - **Depende de:** S12 e S13.
 - **Fazer:** criar `outbox_event` na mesma transação do fato de negócio e um publicador separado. Alarmes operacionais cobrem aumento de `5xx`, falha de conector, lock lento e uso sustentado de recursos; notificações de domínio podem comunicar bloqueio/cancelamento ao responsável da PME.
 - **Não fazer:** enviar e-mail ou webhook dentro do controller antes do commit, pois uma falha externa não pode desfazer ou duplicar uma operação financeira.
 - **Pronto quando:** o commit cria o evento de saída junto com a mudança de domínio; repetição do publicador é idempotente; falha de entrega é retentável e observável.
+- **Evidência entregue:** `outbox_event` é criado junto de bloqueio/cancelamento e da auditoria; `workers/outbox_publisher.py` roda separado (ou no perfil Compose `workers`), usa `FOR UPDATE SKIP LOCKED`, lease e backoff exponencial. O webhook recebe `Idempotency-Key=event_key`; sucesso não volta à fila e falha mantém a linha para nova tentativa. `baas_outbox_pending_events`, `baas_outbox_retrying_events` e `baas_outbox_delivery_attempts_total` são derivados do estado persistido no `/metrics`, enquanto `docs/ALERTAS.md` fornece regras para 5xx, conectores, locks, outbox e recursos de container. Três testes HTTP/MockServer provam commit conjunto, não republicação e retentativa.
 
 ### T4.5 Benchmark reproduzível de concorrência (C, 2h)
 - **Depende de:** S13; pode ser antecipado como rascunho depois do Gate 2.
