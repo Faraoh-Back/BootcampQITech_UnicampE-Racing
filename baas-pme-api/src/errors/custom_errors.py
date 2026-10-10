@@ -71,6 +71,20 @@ class RiskLimitExceeded(QIException):
         )
 
 
+class PolicyChangeRequestNotFound(QIException):
+    code = "QIT001028"
+    def __init__(self):
+        super().__init__("Policy change request not found", self.code, 404,
+            "The policy change request was not found.", "A proposta de alteração de política não foi encontrada.")
+
+
+class MakerCheckerViolation(QIException):
+    code = "QIT001029"
+    def __init__(self, detail: str = "The creator cannot approve this request."):
+        super().__init__("Maker-checker violation", self.code, 409, detail,
+            "A proposta não pode ser aprovada pelo próprio criador ou não está pendente.")
+
+
 class InsufficientBalance(QIException):
     """O débito solicitado não cabe no saldo disponível da conta."""
 

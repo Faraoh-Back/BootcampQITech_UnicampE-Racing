@@ -60,6 +60,18 @@ class RequestGenerator:
         res = ClientRequisition.send("POST", f"/account/{account_key}/quote", payload=payload, headers=h)
         return res.response_status, res.response_json
 
+    @staticmethod
+    def POST_policy_change_request(payload: dict, headers: dict) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("POST", "/policy-change-request", payload=payload, headers=h)
+        return res.response_status, res.response_json
+
+    @staticmethod
+    def PUT_policy_change_request(request_key: str, action: str, headers: dict) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("PUT", f"/policy-change-request/{request_key}/{action}", headers=h)
+        return res.response_status, res.response_json
+
     # ── IDENTIDADE (/user e /auth) ────────────────────────────────
     @staticmethod
     def POST_user(payload: dict, headers: Optional[dict] = None) -> Tuple[int, dict]:

@@ -1,0 +1,1 @@
+{"type":"object","additionalProperties":false,"required":["customer_key","policy_type","policy"],"properties":{"customer_key":{"type":"string","minLength":36,"maxLength":36},"policy_type":{"type":"string","enum":["PRICING","RISK"]},"policy":{"type":"object"}}}

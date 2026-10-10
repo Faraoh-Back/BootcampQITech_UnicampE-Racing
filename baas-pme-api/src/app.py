@@ -23,6 +23,7 @@ from resources import (
     PricingPolicyResource,
     RiskPolicyResource,
     QuoteResource,
+    PolicyChangeRequestResource,
 )
 from utils.logger import setup_logging
 
@@ -149,6 +150,7 @@ def create_app() -> FastAPI:
     pricing_policy_resource = PricingPolicyResource()
     risk_policy_resource = RiskPolicyResource()
     quote_resource = QuoteResource()
+    policy_change_request_resource = PolicyChangeRequestResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route(
@@ -197,6 +199,9 @@ def create_app() -> FastAPI:
     application.add_api_route("/pricing-policy", pricing_policy_resource.on_post, methods=["POST"])
     application.add_api_route("/risk-policy", risk_policy_resource.on_post, methods=["POST"])
     application.add_api_route("/account/{account_key}/quote", quote_resource.on_post, methods=["POST"])
+    application.add_api_route("/policy-change-request", policy_change_request_resource.on_post, methods=["POST"])
+    application.add_api_route("/policy-change-request/{request_key}/submit", policy_change_request_resource.on_submit, methods=["PUT"])
+    application.add_api_route("/policy-change-request/{request_key}/approve", policy_change_request_resource.on_approve, methods=["PUT"])
     application.add_api_route("/account/{account_key}", account_resource.on_get_by_key, methods=["GET"])
     application.add_api_route(
         "/account/{account_key}/block",

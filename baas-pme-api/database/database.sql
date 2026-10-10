@@ -309,6 +309,26 @@ CREATE TABLE quote (
     CONSTRAINT chk_quote_amounts CHECK (gross_amount >= 0 AND fee_amount >= 0 AND net_amount >= 0)
 );
 
+CREATE TABLE policy_change_request (
+    id                SERIAL PRIMARY KEY,
+    request_key       CHAR(36) NOT NULL UNIQUE,
+    customer_id       INTEGER NOT NULL REFERENCES customer(id),
+    policy_type       VARCHAR(20) NOT NULL,
+    payload           JSONB NOT NULL,
+    status            VARCHAR(20) NOT NULL,
+    creator_user_id   INTEGER NOT NULL REFERENCES app_user(id),
+    approver_user_id  INTEGER REFERENCES app_user(id),
+    published_policy_key CHAR(36),
+    submitted_at      TIMESTAMP,
+    approved_at       TIMESTAMP,
+    retired_at        TIMESTAMP,
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_policy_change_type CHECK (policy_type IN ('PRICING', 'RISK')),
+    CONSTRAINT chk_policy_change_status CHECK (status IN ('DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'RETIRED'))
+);
+
+CREATE INDEX idx_policy_change_customer_status ON policy_change_request(customer_id, status, id);
+
 CREATE INDEX idx_quote_account_expiration ON quote (account_id, expires_at DESC);
 
 CREATE TABLE account_status_event (

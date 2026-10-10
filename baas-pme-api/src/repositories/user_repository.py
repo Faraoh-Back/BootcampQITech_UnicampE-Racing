@@ -93,3 +93,10 @@ class UserRepository:
             .first()
         )
         return access.role if access is not None else None
+
+    def get_customer_role(self, user_id: int, customer_id: int) -> str | None:
+        access = self.session.query(UserCustomerAccess).filter(
+            UserCustomerAccess.user_id == user_id,
+            UserCustomerAccess.customer_id == customer_id,
+        ).first()
+        return access.role if access is not None else None
