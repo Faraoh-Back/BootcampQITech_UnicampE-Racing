@@ -290,6 +290,27 @@ CREATE TABLE customer_daily_outgoing (
     CONSTRAINT chk_customer_daily_outgoing_non_negative CHECK (consumed_amount >= 0)
 );
 
+CREATE TABLE quote (
+    id                  SERIAL PRIMARY KEY,
+    quote_key           CHAR(36) NOT NULL UNIQUE,
+    account_id          INTEGER NOT NULL REFERENCES account(id),
+    operation           VARCHAR(40) NOT NULL,
+    request_hash        CHAR(64) NOT NULL,
+    gross_amount        BIGINT NOT NULL,
+    fee_amount          BIGINT NOT NULL,
+    net_amount          BIGINT NOT NULL,
+    pricing_policy_key  CHAR(36) NOT NULL,
+    pricing_version     INTEGER NOT NULL,
+    risk_policy_key     CHAR(36) NOT NULL,
+    risk_version        INTEGER NOT NULL,
+    expires_at          TIMESTAMP NOT NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_quote_operation CHECK (operation IN ('TRANSFER', 'BILLING_PLAN', 'CREDIT_ADVANCE')),
+    CONSTRAINT chk_quote_amounts CHECK (gross_amount >= 0 AND fee_amount >= 0 AND net_amount >= 0)
+);
+
+CREATE INDEX idx_quote_account_expiration ON quote (account_id, expires_at DESC);
+
 CREATE TABLE account_status_event (
     id             SERIAL PRIMARY KEY,
     account_id     INTEGER NOT NULL REFERENCES account(id),

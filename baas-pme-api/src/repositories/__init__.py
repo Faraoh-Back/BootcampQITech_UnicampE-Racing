@@ -9,3 +9,4 @@ from repositories.user_repository import UserRepository
 from repositories.audit_repository import AuditRepository
 from repositories.pricing_repository import PricingRepository
 from repositories.risk_policy_repository import RiskPolicyRepository
+from repositories.quote_repository import QuoteRepository

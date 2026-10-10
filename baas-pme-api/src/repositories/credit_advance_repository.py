@@ -24,6 +24,15 @@ class CreditAdvanceRepository:
             .all()
         )
 
+    def get_bank_slips_for_account(self, account_id: int, bank_slip_keys: list[str]):
+        return (
+            self.session.query(BankSlip)
+            .join(BillingPlan)
+            .filter(BillingPlan.account_id == account_id, BankSlip.bank_slip_key.in_(bank_slip_keys))
+            .order_by(BankSlip.id.asc())
+            .all()
+        )
+
     def create(self, account_id: int, gross_amount: int, fee_amount: int) -> CreditAdvance:
         credit_advance = CreditAdvance(
             credit_advance_key=str(uuid4()),

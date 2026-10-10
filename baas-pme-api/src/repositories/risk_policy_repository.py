@@ -58,6 +58,37 @@ class RiskPolicyRepository:
         if not self.resolve(customer_id).billing_plan_enabled:
             raise ProductNotEnabled("BILLING_PLAN")
 
+    def evaluate_transfer(self, customer_id: int, amount: int) -> tuple[RiskPolicy, int]:
+        policy = self.resolve(customer_id)
+        if not policy.transfer_enabled:
+            raise ProductNotEnabled("TRANSFER")
+        if amount > policy.max_transfer_amount:
+            raise RiskLimitExceeded("transfer amount")
+        usage = self.session.query(CustomerDailyOutgoing).filter(
+            CustomerDailyOutgoing.customer_id == customer_id,
+            CustomerDailyOutgoing.operation_date == date.today(),
+        ).first()
+        consumed = usage.consumed_amount if usage else 0
+        if consumed + amount > policy.daily_outgoing_limit:
+            raise RiskLimitExceeded("daily outgoing amount")
+        return policy, consumed
+
+    def evaluate_billing_plan(self, customer_id: int) -> RiskPolicy:
+        policy = self.resolve(customer_id)
+        if not policy.billing_plan_enabled:
+            raise ProductNotEnabled("BILLING_PLAN")
+        return policy
+
+    def evaluate_credit_advance(self, customer_id: int, amount: int, bank_slips: int) -> RiskPolicy:
+        policy = self.resolve(customer_id)
+        if not policy.credit_advance_enabled:
+            raise ProductNotEnabled("CREDIT_ADVANCE")
+        if amount > policy.max_credit_advance_amount:
+            raise RiskLimitExceeded("credit advance amount")
+        if bank_slips > policy.max_advance_bank_slips:
+            raise RiskLimitExceeded("credit advance bank slip count")
+        return policy
+
     def apply_billing_plan(self, customer_id: int, amount: int) -> RiskPolicySnapshot:
         policy = self.resolve(customer_id)
         if not policy.billing_plan_enabled:

@@ -14,6 +14,7 @@ from models.audit_event import AuditEvent
 from models.outbox_event import OutboxEvent
 from models.pricing import PricingPolicy, PricingSnapshot
 from models.risk_policy import CustomerDailyOutgoing, RiskPolicy, RiskPolicySnapshot
+from models.quote import Quote
 
 __all__ = [
     "Base",
@@ -41,4 +42,5 @@ __all__ = [
     "RiskPolicy",
     "RiskPolicySnapshot",
     "CustomerDailyOutgoing",
+    "Quote",
 ]
