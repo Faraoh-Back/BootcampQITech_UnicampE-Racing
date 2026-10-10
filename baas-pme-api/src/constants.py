@@ -45,6 +45,12 @@ CENTRAL_BANK_API_READ_TIMEOUT_SECONDS = float(
 DATABASE_LOCK_TIMEOUT_MS = int(os.environ.get("DATABASE_LOCK_TIMEOUT_MS", "2000"))
 DATABASE_STATEMENT_TIMEOUT_MS = int(os.environ.get("DATABASE_STATEMENT_TIMEOUT_MS", "10000"))
 REQUEST_TIMEOUT_SECONDS = float(os.environ.get("REQUEST_TIMEOUT_SECONDS", "15"))
+DATABASE_TRANSIENT_RETRY_MAX_ATTEMPTS = int(
+    os.environ.get("DATABASE_TRANSIENT_RETRY_MAX_ATTEMPTS", "2")
+)
+DATABASE_TRANSIENT_RETRY_BASE_DELAY_MS = int(
+    os.environ.get("DATABASE_TRANSIENT_RETRY_BASE_DELAY_MS", "25")
+)
 
 # A outbox e o worker de notificações ficam fora do controller: o commit do
 # domínio nunca depende de uma resposta de webhook. O destino padrão serve ao
@@ -107,6 +113,8 @@ def check_variables():
         raise EnvironmentError("Connector and request timeouts must be positive.")
     if DATABASE_LOCK_TIMEOUT_MS < 1 or DATABASE_STATEMENT_TIMEOUT_MS < 1:
         raise EnvironmentError("Database timeouts must be positive milliseconds.")
+    if DATABASE_TRANSIENT_RETRY_MAX_ATTEMPTS < 1 or DATABASE_TRANSIENT_RETRY_BASE_DELAY_MS < 0:
+        raise EnvironmentError("Transient database retry settings must be non-negative and valid.")
     if OUTBOX_POLL_INTERVAL_SECONDS <= 0 or OUTBOX_LEASE_SECONDS < 1 or OUTBOX_RETRY_BASE_SECONDS < 1:
         raise EnvironmentError("Outbox intervals and lease must be positive.")
 

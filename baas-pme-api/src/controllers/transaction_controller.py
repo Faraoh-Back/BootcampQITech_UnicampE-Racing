@@ -18,6 +18,7 @@ from errors import (
 from repositories import AccountRepository, TransactionRepository
 from utils.night_limit import is_night_window
 from utils.metrics import observe_lock_wait, record_idempotency_replay
+from utils.transient_retry import execute_with_transient_retry
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,15 @@ class TransactionController(BaseController):
         self.account_repository = AccountRepository(self.context)
         self.transaction_repository = TransactionRepository(self.context)
         self.idempotency_controller = IdempotencyController(self.context)
+
+    @classmethod
+    def create_with_transient_retry(
+        cls, account_key: str, payload: dict, idempotency_key: str
+    ) -> TransactionExecution:
+        """Recria controller/sessão para cada tentativa transitória completa."""
+        return execute_with_transient_retry(
+            lambda: cls().create(account_key, payload, idempotency_key)
+        )
 
     def create(self, account_key: str, payload: dict, idempotency_key: str) -> TransactionExecution:
         # O JSON Schema considera 10.0 como integer; no domínio monetário

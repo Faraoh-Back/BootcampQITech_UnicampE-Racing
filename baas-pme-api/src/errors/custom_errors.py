@@ -268,6 +268,21 @@ class DatabaseOperationTimeout(QIException):
         )
 
 
+class DatabaseTransientFailure(QIException):
+    """Falha transitória esgotou as tentativas seguras da operação."""
+
+    code = "QIT001025"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Transient database operation failed",
+            self.code,
+            503,
+            "The database could not complete the operation after safe transient retries.",
+            "O banco não concluiu a operação após retentativas seguras. Tente novamente com a mesma Idempotency-Key.",
+        )
+
+
 class NotFoundSampleEntity(QIException):
     """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
 

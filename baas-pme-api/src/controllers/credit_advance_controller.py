@@ -13,6 +13,7 @@ from errors import (
 )
 from repositories import AccountRepository, CreditAdvanceRepository, TransactionRepository
 from utils.metrics import observe_lock_wait, record_idempotency_replay
+from utils.transient_retry import execute_with_transient_retry
 
 
 class CreditAdvanceController(BaseController):
@@ -24,6 +25,15 @@ class CreditAdvanceController(BaseController):
         self.credit_advance_repository = CreditAdvanceRepository(self.context)
         self.transaction_repository = TransactionRepository(self.context)
         self.idempotency_controller = IdempotencyController(self.context)
+
+    @classmethod
+    def create_with_transient_retry(
+        cls, account_key: str, payload: dict, idempotency_key: str
+    ) -> tuple[dict, bool]:
+        """Recria controller/sessão para cada tentativa transitória completa."""
+        return execute_with_transient_retry(
+            lambda: cls().create(account_key, payload, idempotency_key)
+        )
 
     def create(self, account_key: str, payload: dict, idempotency_key: str) -> tuple[dict, bool]:
         account = self.account_repository.get_by_key(account_key)

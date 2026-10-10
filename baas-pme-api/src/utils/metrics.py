@@ -35,6 +35,12 @@ IDEMPOTENCY_REPLAYS = Counter(
     ["scope"],
     registry=REGISTRY,
 )
+DATABASE_TRANSIENT_RETRIES = Counter(
+    "baas_database_transient_retries",
+    "Retentativas completas causadas por falhas transitórias do PostgreSQL.",
+    ["cause"],
+    registry=REGISTRY,
+)
 LOCK_WAIT = Histogram(
     "baas_database_lock_wait_seconds",
     "Tempo observado ao adquirir consulta que pode disputar uma trava PostgreSQL.",
@@ -79,6 +85,10 @@ def record_connector_failure(connector: str) -> None:
 
 def record_idempotency_replay(scope: str) -> None:
     IDEMPOTENCY_REPLAYS.labels(scope=scope).inc()
+
+
+def record_database_transient_retry(cause: str) -> None:
+    DATABASE_TRANSIENT_RETRIES.labels(cause=cause).inc()
 
 
 def observe_lock_wait(operation: str, seconds: float) -> None:

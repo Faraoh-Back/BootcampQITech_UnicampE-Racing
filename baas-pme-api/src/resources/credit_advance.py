@@ -18,7 +18,7 @@ class CreditAdvanceResource:
         if len(idempotency_key) > 64:
             raise InvalidSchema("Idempotency-Key must contain at most 64 characters.")
 
-        credit_advance, replayed = CreditAdvanceController().create(
+        credit_advance, replayed = CreditAdvanceController.create_with_transient_retry(
             account_key, payload, idempotency_key
         )
         response = JSONResponse(content=jsonable_encoder(credit_advance), status_code=http_status.HTTP_201_CREATED)

@@ -18,7 +18,9 @@ class TransactionResource:
         if len(idempotency_key) > 64:
             raise InvalidSchema("Idempotency-Key must contain at most 64 characters.")
 
-        execution = TransactionController().create(account_key, payload, idempotency_key)
+        execution = TransactionController.create_with_transient_retry(
+            account_key, payload, idempotency_key
+        )
         response = JSONResponse(
             content=jsonable_encoder(execution.body),
             status_code=http_status.HTTP_201_CREATED,
