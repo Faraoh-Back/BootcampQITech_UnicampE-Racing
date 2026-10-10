@@ -119,6 +119,24 @@ testes, pois eles controlam manualmente as entregas.
 
 ## Benchmark de concorrência
 
+### Validação final isolada
+
+Para testar sem recriar o schema do seu banco atual:
+
+```bash
+bash scripts/validate_delivery.sh --snapshot
+```
+
+Cria clone local com snapshot não ignorado, `.venv` nova e Compose com
+API/DB/mock em 13000/15432/11080. Executa as três seleções, suíte completa,
+métricas e benchmark; remove só containers/volumes descartáveis dessa execução.
+O checkout é preservado e os relatórios ficam em `artifacts/delivery/<UTC>/`.
+Não equivale a clone remoto/VM virgem ou teste por outra pessoa. Depois do
+commit, `--head` testa somente o conteúdo commitado. Comandos, artefatos PDF
+e limites estão em [ENTREGA](../docs/entrega/ENTREGA.md).
+
+### Carga canônica
+
 Para repetir a carga S7c canônica (cinco repetições de 40 transferências
 cruzadas), com duração, versões, amostras ociosas e `docker stats` sob carga:
 

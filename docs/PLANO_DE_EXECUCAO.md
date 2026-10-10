@@ -101,7 +101,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 - **Pronto quando:** as três pessoas leram e disseram "ok" no PR.
 
 ### T0.3 [Postergado para a Entrega / R5] RFC no modelo oficial da QI Tech e PDF
-- **Status:** Postergado para o fechamento (T5.3 na Rodada 5).
+- **Status:** artefatos preparados no fechamento T5.3: RFC final de quatro páginas em `docs/entrega/RFC_FINAL.pdf`, com fonte editável e DER vetorial. Aceite dos integrantes ainda requer confirmação; a RFC integral permanece preservada.
 - **Fazer:** Na etapa final, adaptar a RFC diretamente no formato/template oficial fornecido pela QI Tech e gerar o PDF final conforme as diretrizes do desafio.
 
 
@@ -408,7 +408,7 @@ do pedido atual.
 - **Pronto quando:** nenhum código do catálogo sem teste (ou removido da RFC com justificativa).
 
 ### T5.3 RFC final e PDF (B, 3h)
-- **Status:** **parcial**. A RFC Markdown está consolidada no modelo oficial, versão 3.2, com headings iguais ao modelo e todos os métodos/rotas e 23 tabelas de produto protegidos por testes estáticos, incluindo os fluxos e as evoluções S11–S21. Adota garantias verificadas/limitações conhecidas e registra líquido positivo como regra aprovada com implementação pendente; geração, revisão visual e versionamento do PDF final continuam pendentes.
+- **Status:** **artefatos concluídos em 2026-10-10; aceite do time pendente**. `docs/entrega/RFC_FINAL.md` e PDF de quatro páginas seguem o modelo oficial, versão 3.2, sem apagar a RFC integral/contratos. Conservam 28 rotas, 23 entidades, relações/cardinalidades e todos os fluxos S1–S21/pipelines. DER vetorial gerado da RFC integral; revisão visual pelo agente e validação automática de overflow, páginas e hashes. A regra P0.4 permanece explicitamente não implementada. Revisão dos integrantes não foi inventada.
 - **Fazer:** atualizar a RFC (rotas, DER, fluxos, alternativas descartadas no formato "descartada porque X, ganharia se Y", principal desafio); cortar para o limite de 2 a 4 páginas (sugestão: reduzir a tabela de rotas ao essencial, cortar uma alternativa, enxugar fluxos secundários); gerar o PDF final; conferir que o diagrama está legível.
 - **Pronto quando:** PDF com as duas seções fixas, diagrama renderizado, tabela de rotas com erros e idempotência, e revisado pelos três.
 
@@ -418,25 +418,26 @@ do pedido atual.
 - **Pronto quando:** alguém que não participou consegue seguir só o README.
 
 ### T5.5 Teste de clone limpo em Linux (A, 1,5h)
-- **Status:** **pendente**. A execução local e o benchmark foram registrados, mas não há evidência de clone novo executado por outra pessoa em ambiente Linux limpo.
+- **Status:** **validação isolada concluída; critério independente parcial**. `scripts/validate_delivery.sh --snapshot` passou em 2026-10-10 com `.venv`/banco novos: 10 guardas, 170 HTTP, 26 infraestrutura e 206 na suíte completa; métricas consultadas; benchmark 5×40 verde (parede 7,506 s). Só o projeto descartável foi removido; banco original preservado. Evidência em `docs/entrega/ENTREGA.md`. Não substitui clone remoto do commit final, VM virgem ou pessoa independente: essa confirmação continua pendente. `--head` poderá validar somente o conteúdo commitado após publicação.
 - **Fazer:** numa máquina ou VM Linux **limpa** (a do jurado é Linux): `git clone` do repositório, **sem editar nada**, `docker compose up --build`, esperar API/banco `healthy` e mock `Up`, preparar `.venv` e executar os comandos de testes do README com relógio noturno fixo. O Compose tem padrões demonstrativos e `.env.example`; nunca versionar segredos reais. Use banco de teste descartável.
 - **Pronto quando:** tudo verde sem nenhum passo manual além dos comandos do README. Quem executa **não** pode ser quem escreveu o compose.
 
 ### T5.6 Apresentação em PDF (B e C, 2h cada)
-- **Status:** **pendente**. Não há apresentação final em PDF versionada no repositório.
+- **Status:** **artefato concluído em 2026-10-10; aceite do time pendente**. `docs/entrega/APRESENTACAO.pdf` possui dez slides 16:9; fonte Markdown, ferramentas e manifesto acompanham o PDF. Inclui enredo, arquitetura, desafio financeiro, deadlock por ID (não IP), replay/retry, preço/risco/cotação/quatro olhos, identidade/auditoria/outbox, testes/pipeline, métricas/benchmark e alternativas/limitações. Revisão visual e overflow conferidos pelo agente; os integrantes ainda precisam aprovar.
 - **Fazer:** a apresentação explica o sistema no lugar de vocês: o enredo da PME (cobra, recebe, antecipa, paga, audita), o ecossistema (API, banco, mock), a regra de negócio (o que o sistema permite, o que barra e por quê), o principal desafio com o diagrama de concorrência, e as decisões descartadas. Slides ou documento, em PDF.
 - **Pronto quando:** PDF final revisado pelos três.
 
 ### T5.7 Ensaio da defesa (A, B e C, 2h cada)
-- **Status:** **pendente**. Exige ensaio humano e registro objetivo de que o time consegue defender as decisões sem consultar o código.
+- **Status:** **roteiro concluído; ensaio humano pendente**. `docs/entrega/DEFESA.md` organiza roteiro de dez minutos, perguntas/respostas sustentadas pelos contratos e folha de registro. Cada integrante deve apresentar e responder sem consultar código; os campos de aceite não foram preenchidos pelo agente.
 - **Fazer:** lista de perguntas prováveis e ensaio cruzado: por que lock pessimista? por que a ordem de travas por `id`? o que acontece se o commit falha depois de o conector emitir? por que 404 e não 403? por que centavos? por que o saldo é cache e o ledger é a verdade? como provam que o teste é caixa-preta? por que `ON CONFLICT`? o que cortaram e por quê? Cada pessoa deve saber explicar **qualquer** decisão.
 - **Pronto quando:** cada pessoa respondeu todas as perguntas da lista sem consultar o código.
 
 ### T5.8 Buffer de bugs (A, B e C, ~4h no total)
 - **Status:** **aberto por definição**. Reservado para o que o clone limpo, a geração do PDF e o ensaio acharem; não deve ser convertido em funcionalidade nova.
+- **Achado tratado nesta rodada:** o smoke confundia porta publicada com porta interna do MockServer; validar em 11080 reproduziu a falha. A asserção passa a verificar a escuta interna 1080 definida no Compose. Benchmark agora consulta a porta API configurada, permitindo a execução isolada. Nenhuma alteração no comportamento financeiro/hardening 9.5.
 
 ### T5.9 Publicação (C, 0,25h)
-- **Status:** **pendente de confirmação externa**. Antes da entrega, verificar o repositório público em janela anônima e confirmar o commit e os artefatos finais visíveis.
+- **Status:** **parcial; publicação final pendente**. A API pública do GitHub respondeu HTTP 200 sem credenciais em 2026-10-10, confirmando acesso anônimo ao repositório. Checklist e arquivos em `docs/entrega/ENTREGA.md`; não houve commit/push, alteração de visibilidade ou execução remota do Actions nesta rodada. Confirmar commit final e PDFs visíveis depois da publicação pelo responsável; acesso ao repositório não prova publicação dos novos artefatos.
 - Tornar o repositório **público**, abrir em janela anônima, conferir que o último commit é o esperado e que a RFC em PDF está no repositório ou anexada. O que estiver no repositório nessa data é o que a banca vê.
 
 ---
@@ -632,7 +633,7 @@ Esses números são estimativas históricas de planejamento, não horas efetivam
 ## 12. Checklist final de entrega
 
 - [x] R1: nenhum arquivo de `tests/` importa `src/` (teste guardião verde).
-- [ ] R2: `docker compose up` sobe tudo sem passos manuais, em Linux limpo. **Pendente:** clone limpo independente.
+- [ ] R2: `docker compose up` sobe tudo sem passos manuais, em Linux limpo. **Parcial:** validação automatizada em clone local/snapshot, venv/banco novos e mesmo Docker daemon; clone remoto/VM e pessoa independentes ainda pendentes.
 - [x] R3: todos os códigos publicados têm cenário associado na matriz. Isso não significa todas as falhas econômicas/combinações cobertas nem elimina `QIT000500`; ver P0.4.
 - [x] R4: eventos de status e de auditoria são append-only na aplicação e visíveis pelos contratos previstos; não há `is_deleted` no domínio financeiro.
 - [ ] R5 universal: DTOs financeiros usam UUID; exportação/checkpoint administrativo expõem ID sequencial. **Exceção documentada**, decisão de aderência literal pendente em P1.10.
@@ -640,7 +641,7 @@ Esses números são estimativas históricas de planejamento, não horas efetivam
 - [x] R7: RFC com decisões tomadas e descartadas ("ganharia se ...").
 - [x] R8: lançamento de outra conta responde 404 com o mesmo corpo do inexistente, com teste.
 - [x] Concorrência: suíte funcional cobre saque, transferência cruzada, idempotência simultânea e antecipação dupla. O benchmark mede **somente transferência cruzada**, cinco repetições de 40 chamadas (200 total); resultados datados em BENCHMARK.
-- [ ] RFC em PDF com 2 seções fixas, 2 a 4 páginas, diagrama renderizado. **Pendente:** gerar e revisar PDF.
-- [ ] Apresentação em PDF. **Pendente.**
+- [x] RFC em PDF com 2 seções fixas, quatro páginas e DER vetorial renderizado; fontes preservadas, guardas/hash e revisão visual pelo agente. **Aceite do time pendente.**
+- [x] Apresentação em PDF, dez slides 16:9, fontes editáveis e guardas/hash. **Aceite do time pendente.**
 - [ ] Repositório público no dia da entrega, README completo. **Parcial:** README está disponível; publicação e checagem anônima pendentes.
 - [ ] Os três sabem defender qualquer decisão. **Pendente:** ensaio cruzado.

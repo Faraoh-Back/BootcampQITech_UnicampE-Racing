@@ -10,7 +10,45 @@ A regra de antecipação com líquido positivo foi aprovada após esta validaç�
 está documentada em DECISOES 3.5.1 e aguarda implementação/testes em P0.4.
 Os resultados abaixo não demonstram uma recusa que ainda não foi implementada.
 
-## Resultado registrado nesta revisão
+## Validação final da entrega em snapshot isolado
+
+Executada em **2026-10-10 07:30:27–07:33:26 UTC**, por
+`bash scripts/validate_delivery.sh --snapshot`: clone local com as alterações
+de trabalho, venv/banco novos, Compose exclusivo e portas 13000/15432/11080.
+Base `524c7608ba305978bae7c97ece7348b8961c8a6a`, 44 entradas modificadas/novas
+na origem. Não é clone remoto do commit publicado nem teste humano em VM virgem.
+Foram acrescentadas quatro guardas de entrega à revisão anterior de 202 testes;
+nenhum comportamento financeiro/DDL ou item 9.5 foi implementado nesta rodada.
+
+| Execução | Resultado |
+|---|---|
+| Suíte completa em venv nova | **206 passed in 61.55s** |
+| API estritamente HTTP | **170 passed**, 51.58 s; 36 deselected |
+| Contratos de infraestrutura | **26 passed**, 9.06 s; 180 deselected |
+| Guardas estáticas | **10 passed**, 1.10 s; 196 deselected |
+| Benchmark S7c separado | **5 passed in 7.14s**; parede **7,506 s**; 200 operações |
+| Métricas | GET `/metrics` aprovado; exposition salva após a suíte e antes do benchmark |
+| Compilação/dependências | compileall sem erro; pip check sem incompatibilidade na venv nova |
+| Container API | uid=100(user), não-root; API/DB healthy e mock Up |
+| Artefatos PDF | RFC com quatro páginas; apresentação com dez; DER vetorial, fonte e SHA-256; revisão visual pelo agente |
+| Cleanup isolado | exit_code=0; só containers/rede/volumes descartáveis dessa execução removidos |
+| Ambiente original | Containers originais saudáveis, mesmos IDs; banco original não foi alvo das suítes |
+
+Artefatos: `baas-pme-api/artifacts/delivery/20261010T073026Z/`, ignorados pelo
+Git, com ambiente/pip-freeze, resultados/JUnit, metrics.prom e benchmark.
+Reprodução e confirmações humanas/externas em [ENTREGA](entrega/ENTREGA.md).
+As durações não são SLO; a diferença para execuções anteriores não prova ganho
+de desempenho. O mesmo host/Docker e caches de imagem foram reutilizados.
+
+As novas guardas conferem seções/rotas no modelo oficial, todas as entidades e
+relações do DER, PDF/páginas/hashes e que P0.4 não aparece como implementada.
+Seu Red foi executado antes dos artefatos: quatro falhas por arquivos ainda
+ausentes; Green com dez guardas. O teste de fumaça do MockServer foi corrigido
+após reproduzir porta publicada 11080 versus escuta interna 1080. Falhas
+intermediárias de artefato/script foram corrigidas e não são resultado final
+verde nem defeito financeiro escondido; registro em ENTREGA.
+
+## Revisão anterior de 10/10/2026 — 202 testes (preservada)
 
 Executado em 2026-10-10, com Python de `baas-pme-api/.venv`, API real no
 Compose e `NIGHT_TIME_OVERRIDE=21:00`. Partiu-se de 155 testes aprovados;
@@ -201,7 +239,7 @@ TDD retrospectivo ao histórico inteiro: o Red/Green aqui é da revisão.
 | P1 | Exportação completa da auditoria, cadeia global serializada e paginação offset não são provas de escalabilidade/snapshot estável sob novas escritas | P1.10 |
 | P1 | Erros inesperados e exceções de bibliotecas podem escrever parâmetros SQL/URLs em traceback; logs normais sem body não equivalem a sanitização universal | P1.11 |
 | P1 | Backup/restore e retomada financeira após perda de dados não foram comprovados pela revisão | P1.12 |
-| P2 | PDF de 2–4 páginas, clone limpo independente e execução remota do CI não foram comprovados nesta revisão | T5.3/T5.5/P2.2 |
+| P2 | PDFs foram gerados/revistos pelo agente; aceite do time, clone remoto/Linux novo por outra pessoa e execução remota do CI ainda não foram comprovados | T5.3/T5.5/P2.2 |
 | P2 | Combinações de papel/rota/estado, expiração/calendário e quedas não são exaustivas; faltam capacidade sustentada e alertas efetivamente exercitados | P2.3/P2.4 |
 
 Esses itens estão documentados como lacunas, não mascarados por testes verdes.

@@ -42,4 +42,7 @@ class TestSmoke:
         assert resp.status_code == 200
         data = resp.json()
         assert "ports" in data
-        assert int(mock_port) in data["ports"]
+        # A API administrativa informa a porta de escuta DENTRO do container
+        # (--serverPort 1080 no Compose), não a porta publicada no host.
+        # MOCK_PORT=11080 continua acessando o serviço interno na porta 1080.
+        assert 1080 in data["ports"]

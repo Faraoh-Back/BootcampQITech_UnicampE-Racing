@@ -1,0 +1,17 @@
+{
+  "source_version": "3.2",
+  "rfc_pages": 4,
+  "presentation_pages": 10,
+  "sha256": {
+    "../RFC.md": "1e372b30ec2f84cb3896b701efd717144cdf97b8a04eaa1fa0a1323be8d0273e",
+    "RFC_FINAL.md": "780ce6d5c27cc3e39406bc181b24a7efe7cc27f6d0bee61d7ce84d6ce90d0598",
+    "APRESENTACAO.md": "f9454c3a8b984a89aa93ae7302a6e6c178e7ad1c8b387af63cf4efe0cb53a061",
+    "der-financeiro.svg": "f2a087607fe5f5a02ea0efa7f34015d8b173e6eb1804746317e4ca5825edd1e6",
+    "der-operacional.svg": "ef43c9009c14d0d2614d1b09002bd7502197e26f470500c98974ae3ff40509f3",
+    "tools/render.mjs": "5bca647a4af85de8e91274afa851210c55d6abd8338cedaed448bab46251aac0",
+    "tools/package-lock.json": "bc411c2d5a0f2821a25645cd7c03df11e5cd7c082ebf232ff818dddefb777924",
+    "RFC_FINAL.pdf": "d97ae0cb55128a37b63d664a9085eef1a3bd9a1fcfdd0472434ee865e1ef73d2",
+    "APRESENTACAO.pdf": "983586ceb9c38e6256a2217fccf2f67fb040bbaef15f670557cfc2969706084b"
+  },
+  "note": "Conteúdo e integridade rastreáveis; bytes de PDF podem variar com data/Chromium/fontes."
+}

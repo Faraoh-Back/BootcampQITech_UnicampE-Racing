@@ -228,3 +228,41 @@ execuções repetidas com cache/carga externa controlados e limites equivalentes
 O resultado funcional comprovado é 200 operações corretas, sem deadlock no
 cenário testado. A suíte completa de features/pipelines está em COBERTURA;
 o benchmark não a substitui.
+
+## 11. Validação de entrega em ambiente isolado
+
+Em **2026-10-10 07:33 UTC**, o validador T5.5 executou a carga canônica em
+clone local + snapshot, venv/banco novos e Compose exclusivo. Base Git
+`524c7608ba305978bae7c97ece7348b8961c8a6a`; origem com 44 entradas dirty;
+checkout do benchmark com 43 entradas dirty. Os arquivos não foram commitados
+e não se tratou de clone remoto publicado ou VM limpa. Linux 6.1.0-49-amd64,
+x86_64, 16 CPUs lógicas, 15 GiB visíveis, Docker 29.5.3, Compose 5.1.4,
+Python 3.11.2. O host/Docker/cache são compartilhados com o ambiente original.
+
+| Campo | Observação |
+|---|---|
+| Carga | 5 × 40 transferências cruzadas; 200 operações; pico de 40 concorrentes |
+| Correção | **5 passed in 7.14s**; pytest_exit_code=0 |
+| Parede ao redor de pytest | **7,506 s** |
+| API ociosa | 0,24% CPU / 100,6 MiB |
+| PostgreSQL ocioso | 0,02% CPU / 44,12 MiB |
+| MockServer ocioso | 0,10% CPU / 242,4 MiB |
+| Maior CPU amostrada | API **83,53%**; PostgreSQL **46,64%**; MockServer **12,24%** |
+| Maior RAM amostrada | API **129,1 MiB**; PostgreSQL **124,7 MiB**; MockServer **242,4 MiB** |
+| Amostras completas | Três snapshots dos três containers em 07:33:16, :19 e :22 UTC |
+| Artefatos | `baas-pme-api/artifacts/delivery/20261010T073026Z/benchmark/` |
+| Encerramento | Somente projeto descartável removido; containers originais intactos |
+
+O benchmark passa a respeitar `SERVER_LOCALHOST`/`API_PORT` na consulta de
+saúde; a validação usou 127.0.0.1:13000, sem assumir porta 3000. Não houve
+mudança na carga financeira nem na semântica da S7c. Métricas Prometheus foram
+consultadas depois da suíte completa e antes de a API ser recriada para o
+benchmark; não são uma coleta contínua desta carga. Regras de alerta continuam
+propostas, sem stack de coletores ou teste de notificação de alerta instalado.
+
+A amostra é mais curta que a da seção 10, mas isso **não prova melhoria**:
+cache, dados, disponibilidade do host e atividade concorrente variam. CPU/RAM
+são máximos observados no espaçamento real de docker stats, não picos
+garantidos. A evidência funcional é a invariância financeira em 200 chamadas;
+capacidade sustentável/SLO continuam fora do escopo. Resultados de todas as
+features/pipelines e limites do snapshot estão em COBERTURA/ENTREGA.

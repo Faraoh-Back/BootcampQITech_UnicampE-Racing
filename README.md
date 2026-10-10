@@ -16,6 +16,12 @@ siga o [README da API](baas-pme-api/README.md) para subir e testar o projeto.
 O [índice da documentação](docs/README.md) separa contratos, evidências de
 testes/benchmark, histórico e pendências da entrega.
 
+Artefatos para a banca: [RFC em PDF — quatro páginas](docs/entrega/RFC_FINAL.pdf)
+e [apresentação — dez slides](docs/entrega/APRESENTACAO.pdf). Fontes editáveis,
+roteiro de defesa, geração e validação isolada estão no
+[registro de entrega](docs/entrega/ENTREGA.md). Revisão do time, ensaio,
+clone remoto independente e publicação precisam de confirmação humana.
+
 A apresentação do produto é baseada em **garantias verificadas e limitações
 conhecidas**, não em segurança absoluta. A regra aprovada de líquido positivo
 na antecipação está documentada, com implementação pendente P0.4 do plano.

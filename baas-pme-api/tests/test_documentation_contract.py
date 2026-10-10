@@ -1,6 +1,8 @@
 """Rastreabilidade estática de entrega; sem importar código da aplicação."""
 
 import ast
+import hashlib
+import json
 from pathlib import Path
 import re
 
@@ -56,3 +58,48 @@ def test_every_financial_domain_table_is_in_rfc_diagram():
     rfc = (DOCS / "RFC.md").read_text()
     entities = set(re.findall(r"^\s*([A-Z_]+)\s*\{", rfc, re.MULTILINE))
     assert tables <= entities, f"Entidades entregues ausentes no DER: {tables - entities}"
+
+
+def test_delivery_rfc_keeps_official_sections_and_all_product_routes():
+    final = (DOCS / "entrega/RFC_FINAL.md").read_text()
+    pattern = r"^#{2,3} .+$"
+    expected = re.findall(pattern, (DOCS / "bootcamp-rfc-modelo.md").read_text(), re.MULTILINE)
+    assert re.findall(pattern, final, re.MULTILINE) == expected
+    assert final.count("> ## Principal desafio") == 1
+    routes = re.findall(r"^\| (GET|POST|PUT) \| `([^`]+)`", (DOCS / "RFC.md").read_text(), re.MULTILINE)
+    for method, route in routes:
+        assert f"| {method} | `{route}` |" in final, (method, route)
+
+
+def test_delivery_diagrams_preserve_every_entity_and_relationship():
+    rfc = (DOCS / "RFC.md").read_text()
+    diagrams = "\n".join(
+        (DOCS / "entrega" / name).read_text()
+        for name in ("der-financeiro.svg", "der-operacional.svg")
+    )
+    entities = set(re.findall(r"^\s*([A-Z_]+)\s*\{", rfc, re.MULTILINE))
+    for entity in entities:
+        assert f'data-entity="{entity}"' in diagrams
+    relationships = re.findall(r'^\s*([A-Z_]+)\s+(\S+--\S+)\s+([A-Z_]+)\s*:\s*(\w+)', rfc, re.MULTILINE)
+    for left, cardinality, right, label in relationships:
+        assert f'data-relation="{left}:{cardinality}:{right}:{label}"' in diagrams
+
+
+def test_delivery_pdfs_have_expected_pages_and_are_not_empty():
+    manifest = json.loads((DOCS / "entrega/artefatos.json").read_text())
+    for relative, digest in manifest["sha256"].items():
+        source = (DOCS / "entrega" / relative).read_bytes()
+        assert hashlib.sha256(source).hexdigest() == digest, f"Regere os PDFs: {relative} mudou"
+    for name, pages in (("RFC_FINAL.pdf", 4), ("APRESENTACAO.pdf", 10)):
+        pdf = (DOCS / "entrega" / name).read_bytes()
+        assert pdf.startswith(b"%PDF-")
+        assert len(pdf) > 20_000
+        assert len(re.findall(rb"/Type\s*/Page\b", pdf)) == pages
+
+
+def test_delivery_does_not_present_excluded_business_rule_as_implemented():
+    for name in ("RFC_FINAL.md", "APRESENTACAO.md", "DEFESA.md"):
+        document = (DOCS / "entrega" / name).read_text()
+        assert "P0.4" in document
+        assert "não implementada" in document
+        assert "garantias verificadas" in document.lower()

@@ -12,6 +12,7 @@ documental com comportamento já validado na API.
 |---|---|---|
 | [RFC](RFC.md) | Síntese arquitetural no modelo oficial: problema, solução, rotas, DER e fluxos | Defesa técnica e versão final para a banca |
 | [Modelo oficial](bootcamp-rfc-modelo.md) | Estrutura e orientações fornecidas pela organização | Conferir seções fixas e preparar PDF de 2–4 páginas |
+| [Entrega e artefatos](entrega/ENTREGA.md) | RFC de quatro páginas, apresentação, roteiro de defesa e execução isolada | Gerar/revisar PDFs, reproduzir validação e fechar confirmações humanas |
 | [DECISOES](DECISOES.md) | Contrato detalhado vigente: decisões D1–D16, regras, payloads, erros e limites | Implementação/integração e explicação dos contratos |
 | [README da API](../baas-pme-api/README.md) | Guia único de instalação, execução, camadas e comandos de validação | Subir o serviço, executar testes e localizar código |
 | [COBERTURA](COBERTURA.md) | Matriz de features/erros/testes, resultados medidos e lacunas da revisão | Sustentar afirmações de qualidade com evidência |
@@ -35,9 +36,10 @@ documental com comportamento já validado na API.
    execução local verde não é capacidade garantida de produção.
 5. Consulte 9.5 do plano para não apresentar backlog como entregue; use
    `ALERTAS.md` somente como proposta de monitoramento.
-6. Renderize o DER e revise o PDF: número de páginas e legibilidade não são
-   provados pelos testes estáticos de Markdown. Preserve todos os fluxos,
-   resumindo-os e remetendo detalhes de contrato às fontes acima.
+6. A síntese [RFC_FINAL.md](entrega/RFC_FINAL.md) preserva as seções/rotas e os
+   fluxos; seu PDF e DER vetorial são gerados pelas ferramentas de entrega.
+   Guardas conferem entidades/relações, páginas e hashes, mas a legibilidade
+   ainda exige revisão visual. O conteúdo integral continua em RFC/DECISOES.
 
 As contagens atuais ficam em COBERTURA, não repetidas em cada guia. Os marcos
 antigos de 143/155 testes e benchmarks anteriores permanecem identificados

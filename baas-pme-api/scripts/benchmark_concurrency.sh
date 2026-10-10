@@ -9,6 +9,7 @@ PYTHON_BIN="${PYTHON_BIN:-./.venv/bin/python}"
 TEST_TARGET="tests/integration/transaction/test_advanced_concurrency.py::TestAdvancedConcurrency::test_cross_transfers_finish_without_deadlock_and_preserve_total_minus_fees"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 OUTPUT_DIR="${BENCHMARK_OUTPUT_DIR:-artifacts/benchmarks/$RUN_ID}"
+HEALTH_URL="http://${SERVER_LOCALHOST:-localhost}:${API_PORT:-3000}/health_check"
 
 if [[ ! -x "$PYTHON_BIN" ]]; then
   echo "Python do projeto não encontrado: $PYTHON_BIN" >&2
@@ -47,12 +48,12 @@ SUMMARY="$OUTPUT_DIR/summary.txt"
 # comparação. Não removemos volumes: benchmark não deve apagar dados locais.
 NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 for _ in $(seq 1 30); do
-  if curl --fail --silent http://localhost:3000/health_check >/dev/null; then
+  if curl --fail --silent "$HEALTH_URL" >/dev/null; then
     break
   fi
   sleep 1
 done
-curl --fail --silent http://localhost:3000/health_check >/dev/null
+curl --fail --silent "$HEALTH_URL" >/dev/null
 
 docker compose ps > "$OUTPUT_DIR/compose-ps.txt"
 docker compose images > "$OUTPUT_DIR/compose-images.txt"

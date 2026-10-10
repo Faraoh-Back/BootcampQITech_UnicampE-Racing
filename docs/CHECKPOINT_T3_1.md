@@ -24,11 +24,11 @@ permanece pendente P0.4; os marcos de testes abaixo não a comprovam.
 | Outbox e alertas | DDL, worker, métricas, MockServer e testes | S15 grava outbox com bloqueio/cancelamento no mesmo commit; worker usa lease/backoff e chave de evento. Entrega é pelo menos uma vez. Regras de alerta são exemplos, não stack instalado; CPU/memória são amostras do runtime. |
 | Benchmark de concorrência | Script, S7c, `docker stats` e `BENCHMARK.md` | T4.5 reutiliza 5×40 transferências cruzadas da S7c, captura host/imagens/versões, amostra containers ociosos e sob carga e registra método de comparação. A referência de 6,753 s é contextual, não SLO. |
 | Testes | Suíte HTTP, infraestrutura e guardas estáticas | O marco histórico após S15 foi `143 passed`; após S21, `155 passed`. Contagens atuais e regressões da revisão ficam exclusivamente em COBERTURA. A guarda de imports não transforma testes SQL/worker em caixa-preta HTTP. |
-| Evolução e entrega | RFC 3.2, `DECISOES.md` e R5 | Jornada, matriz, README e separação da pipeline foram revisados; regra de líquido positivo está aprovada, com implementação pendente. PDF/legibilidade, clone independente e apresentação continuam pendentes. |
+| Evolução e entrega | RFC 3.2, `DECISOES.md` e R5 | Jornada, matriz, README e separação da pipeline foram revisados; regra de líquido positivo está aprovada, com implementação pendente. RFC em PDF de quatro páginas e apresentação de dez slides possuem fontes/DER/hash e revisão visual pelo agente; aceite do time, clone remoto independente, ensaio e publicação continuam pendentes. |
 
 ## Itens deliberadamente futuros
 
-- **T5.3:** o [modelo oficial](bootcamp-rfc-modelo.md) existe e a RFC segue suas seções. Geração/revisão visual do PDF de 2–4 páginas continuam pendentes.
+- **T5.3:** o [modelo oficial](bootcamp-rfc-modelo.md) existe e a RFC segue suas seções. A [síntese em PDF](entrega/RFC_FINAL.pdf) possui quatro páginas e DER vetorial, mantendo a RFC integral. Guardas/hash e revisão visual pelo agente foram executadas; aceite final dos integrantes ainda é necessário. Reprodução e demais confirmações em [ENTREGA](entrega/ENTREGA.md).
 - **R4.5 e R4.75:** entregues. Além do Gate 3, preço/risco versionados, cotação informativa e propostas maker-checker possuem contratos, snapshots/auditoria e testes HTTP. O benchmark foi reexecutado no fechamento; seus artefatos e números contextualizados estão em `BENCHMARK.md`.
 
 O checkpoint registra evidências por marco, não uma aprovação universal.
