@@ -59,6 +59,7 @@ Exceto `/` e `/health_check`, as rotas exigem `INTERNAL-TOKEN`. Em rotas de cont
 | `POST` | `/pricing-policy` | Publica tarifa padrão ou por PME | operação, centavos, bps, PME opcional | `201`; `400`, `403`, `404` |
 | `POST` | `/risk-policy` | Publica regra de risco/produto padrão ou por PME | habilitações e limites em centavos | `201`; `400`, `403`, `404` |
 | `POST` | `/account/{key}/quote` | Calcula prévia informativa de custo e limite | operação, valor ou boletos | `201`; `400`, `404`, `409`, `422` |
+| `POST/PUT` | `/policy-change-request`, `.../{key}/submit|approve` | Proposta e dupla aprovação de política PME | JWT OWNER, tipo e regra | `201/200`; `401`, `403`, `404`, `409` |
 | `POST` | `/user`, `/auth/login|refresh|logout` | Usuário e sessões | PME, credenciais, refresh/JWT | `201/204`; `400`, `401`, `403`, `409` |
 | `GET` | `/audit-events[/checkpoint]`, `/metrics` | Auditoria e métricas internas | n/a | `200`; `403` sem token |
 

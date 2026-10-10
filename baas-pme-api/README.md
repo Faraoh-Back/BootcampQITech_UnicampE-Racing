@@ -110,6 +110,15 @@ intencional.
 | `POST` | `/pricing-policy` | Publicação interna de tarifa padrão ou específica por PME. |
 | `POST` | `/risk-policy` | Publicação interna de habilitações e limites de risco por PME. |
 | `POST` | `/account/{account_key}/quote` | Prévia de tarifa, líquido e limites para transferência, cobrança ou antecipação. |
+| `POST` / `PUT` | `/policy-change-request`, `/{key}/submit`, `/{key}/approve` | Proposta de política por PME e aprovação por outro OWNER. |
+
+## Alterações comerciais com quatro olhos
+
+Uma condição comercial específica de PME deve nascer como proposta em
+`DRAFT`, ser submetida a `PENDING_APPROVAL` e receber aprovação de outro
+usuário `OWNER` autenticado por JWT. Propostas pendentes não entram nos
+resolvedores de preço ou risco; ao aprovar, a API publica uma nova versão e
+registra criador, aprovador e evento na trilha auditável.
 
 ## Cotação antes da confirmação
 
