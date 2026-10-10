@@ -16,9 +16,9 @@ SQLAlchemy==2.0.23
 # a 2.9.5 tentaria compilar do zero e o build quebrava.
 psycopg2-binary==2.9.10
 # O requests e com que este servico chama OUTROS servicos por HTTP.
-# So os connectors (src/connectors/) podem usa-lo — nenhuma chamada
-# externa fica solta no meio do codigo.
-requests==2.32.3
+# Conectores isolam o I/O síncrono de domínio; o publicador da outbox usa
+# requests em um processo separado, após o commit financeiro.
+requests==2.32.4
 # Credenciais de usuário: bcrypt para senha e PyJWT para tokens assinados.
 bcrypt==4.2.1
 PyJWT==2.10.1

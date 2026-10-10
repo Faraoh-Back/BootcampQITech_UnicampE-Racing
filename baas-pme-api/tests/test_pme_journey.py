@@ -1,97 +1,103 @@
-import pytest
-import requests
-from os import environ
-from tests.utils.payload_generator import PayloadGenerator
+"""Jornada determinística: governa preço, cobra, antecipa, paga e audita."""
+
+from uuid import uuid4
+
+from tests.utils.auth import owner_headers
+from tests.utils.mock_server import expect_bankslip_ok, expect_central_bank_rate, reset, verify_called
 from tests.utils.request_generator import RequestGenerator
-from tests.utils.mock_server import expect_bankslip_ok 
 
-def test_pme_full_journey(make_account):
-    # ------------------------------------------------------------------
-    # 0. RESET DO MOCKSERVER (Requisito T5.1)
-    # ------------------------------------------------------------------
-    mock_host = environ.get("MOCKSERVER_HOST", "localhost")
-    mock_port = environ.get("MOCKSERVER_PORT", "1080")
-    reset_res = requests.put(f"http://{mock_host}:{mock_port}/mockserver/reset")
-    assert reset_res.status_code == 200, "Falha ao resetar MockServer no início do teste"
 
-    # ------------------------------------------------------------------
-    # 1 e 2. CRIAR CLIENTE E CRIAR CONTA
-    # ------------------------------------------------------------------
-    # Usando a fixture de apoio
-    account_info = make_account()
-    assert account_info["status"] in (200, 201), "Falha na criação da conta"
-    
-    account_key = account_info["response"]["account_key"]
-    
-    # ------------------------------------------------------------------
-    # 3. DEPOSITAR (Aporte inicial de R$ 10.000,00 -> 1.000.000 centavos)
-    # ------------------------------------------------------------------
-    deposit_payload = PayloadGenerator.create_transaction_payload(
-        amount=1000000,  # Inteiro em centavos
-        transaction_type="DEPOSIT"
-    )
-    status, res_deposit = RequestGenerator.POST_transaction(account_key, deposit_payload)
-    assert status in (200, 201), f"Erro no depósito: {res_deposit}"
-    print(f"[OK] Depósito de R$ 10.000,00 realizado.")
-    # ------------------------------------------------------------------
-    # 4. EMITIR PLANO DE BOLETOS
-    # ------------------------------------------------------------------
-    # Configura a expectativa de sucesso para emissão de boletos no MockServer
-    expect_bankslip_ok()
+def full_statement(account_key):
+    entries = []
+    for page in range(100):
+        status, statement = RequestGenerator.GET_transactions(account_key, {"page": page, "limit": 2})
+        assert status == 200
+        assert statement["page"] == page and statement["limit"] == 2
+        entries.extend(statement["data"])
+        if statement["is_last_page"]:
+            assert len({entry["transaction_key"] for entry in entries}) == len(entries)
+            return entries
+    raise AssertionError("Extrato não terminou em 100 páginas")
 
-    billing_plan_payload = PayloadGenerator.create_billing_plan_payload(
-        base_amount=500000  # R$ 5.000,00 em centavos
-    )
-    status, res_plan = RequestGenerator.POST_billing_plan(account_key, billing_plan_payload)
-    assert status in (200, 201), f"Erro na emissão do plano: {res_plan}"
-    print(f"[OK] Plano de boletos emitido com sucesso.")
 
-    # ------------------------------------------------------------------
-    # 5. ANTECIPAR CRÉDITO
-    # ------------------------------------------------------------------
-    # Extrai as chaves dos boletos gerados pelo plano
-    bank_slips = res_plan.get("bank_slips", [])
-    bank_slip_keys = [
-        bs.get("bank_slip_key") or bs.get("key") for bs in bank_slips
-    ]
+def test_pme_full_journey(make_customer, make_account):
+    reset()
+    try:
+        customer = make_customer()
+        assert customer["status"] == 201
+        customer_key = customer["response"]["customer_key"]
+        account = make_account(customer_key)
+        assert account["status"] == 201
+        origin = account["response"]["account_key"]
+        destination = make_account()["response"]["account_key"]
+        maker, checker = owner_headers(customer_key), owner_headers(customer_key)
 
-    advance_payload = PayloadGenerator.create_credit_advance_payload(
-        bank_slip_keys=bank_slip_keys
-    )
-    status, res_advance = RequestGenerator.POST_credit_advance(account_key, advance_payload)
-    assert status in (200, 201), f"Erro na antecipação: {res_advance}"
-    print("[OK] Antecipação realizada com sucesso.")
+        status, proposal = RequestGenerator.POST_policy_change_request({
+            "customer_key": customer_key, "policy_type": "PRICING",
+            "policy": {"operation": "TRANSFER", "fixed_fee_cents": 7, "percentage_basis_points": 0},
+        }, maker)
+        assert status == 201
+        assert RequestGenerator.PUT_policy_change_request(proposal["request_key"], "submit", maker)[0] == 200
+        status, approved = RequestGenerator.PUT_policy_change_request(proposal["request_key"], "approve", checker)
+        assert status == 200 and approved["status"] == "ACTIVE"
 
-    # ------------------------------------------------------------------
-    # 6. CONSULTAR EXTRATO PAGINADO
-    # ------------------------------------------------------------------
-    # Usa page="0" para acessar a primeira página do extrato
-    status, res_transactions = RequestGenerator.GET_transactions(
-        account_key,
-        params={"page": "0", "limit": "50"}
-    )
-    assert status == 200, f"Erro ao buscar extrato: {res_transactions}"
-    print("[OK] Extrato consultado com sucesso.")
+        for operation, fee in (("BANK_SLIP_ISSUANCE", 4), ("CREDIT_ADVANCE", 11)):
+            assert RequestGenerator.POST_pricing_policy({
+                "customer_key": customer_key, "operation": operation,
+                "fixed_fee_cents": fee, "percentage_basis_points": 0,
+            })[0] == 201
+        assert RequestGenerator.POST_transaction(origin, {"type": "DEPOSIT", "amount": 1000}, headers=maker)[0] == 201
 
-    # ------------------------------------------------------------------
-    # 7. CONFERIR SOMA DO EXTRATO CONTRA O SALDO DA CONTA
-    # ------------------------------------------------------------------
-    transactions_list = res_transactions.get("data", [])
-    assert len(transactions_list) > 0, "Lista de transações não deveria estar vazia"
+        expect_bankslip_ok()
+        status, plan = RequestGenerator.POST_billing_plan(origin, {
+            "base_amount": 1000, "first_due_date": "2027-01-31",
+        }, maker)
+        assert status == 201 and len(plan["bank_slips"]) == 12
+        assert plan["issuance_fee_amount"] == 4
+        verify_called("/bank-slips", 1)
+        reset()
+        expect_central_bank_rate("IPCA", "4.83")
+        expect_bankslip_ok(range(13, 25))
+        status, adjustment = RequestGenerator.POST_billing_plan_adjustment(
+            origin, plan["plan_key"], {"index_code": "IPCA"}, maker
+        )
+        assert status == 201 and adjustment["adjusted_amount"] == 1048
+        assert len(adjustment["bank_slips"]) == 12
+        verify_called("/bank-slips", 1)
+        verify_called("/index/IPCA", 1)
 
-    # Busca o saldo atualizado da conta
-    status, res_account = RequestGenerator.GET_account(account_key)
-    assert status == 200
-    current_balance = res_account["balance"]
+        slips = [plan["bank_slips"][0]["bank_slip_key"], adjustment["bank_slips"][0]["bank_slip_key"]]
+        status, quote = RequestGenerator.POST_quote(origin, {
+            "operation": "CREDIT_ADVANCE", "bank_slip_keys": slips,
+        }, maker)
+        assert status == 201 and quote["fee_amount"] == 11
+        advance_key = str(uuid4())
+        status, advance = RequestGenerator.POST_credit_advance(origin, {"bank_slip_keys": slips}, advance_key, maker)
+        assert status == 201 and advance["net_amount"] == 2037
+        assert RequestGenerator.POST_credit_advance(origin, {"bank_slip_keys": slips}, advance_key, maker) == (201, advance)
+        assert RequestGenerator.POST_credit_advance(origin, {"bank_slip_keys": slips}, headers=maker)[1]["code"] == "QIT001016"
 
-    # Tipos de transação que somam ao saldo (créditos)
-    credit_types = {"DEPOSIT", "ADVANCE_CREDIT", "TRANSFER_IN"}
+        transfer_key = str(uuid4())
+        payload = {"type": "TRANSFER", "amount": 500, "destination_account_key": destination}
+        status, transfer = RequestGenerator.POST_transaction(origin, payload, transfer_key, maker)
+        assert status == 201 and transfer["fee_amount"] == 7
+        assert RequestGenerator.POST_transaction(origin, payload, transfer_key, maker) == (201, transfer)
+        assert RequestGenerator.POST_transaction(origin, {"type": "WITHDRAWAL", "amount": 100}, headers=maker)[0] == 201
 
-    # Calcula o somatório considerando créditos (+) e débitos (-)
-    total_calculated = sum(
-        t["amount"] if t.get("type") in credit_types or t.get("entry_type") == "credit" else -abs(t["amount"])
-        for t in transactions_list
-    )
-
-    assert total_calculated == current_balance, f"Saldo divergente: calculado {total_calculated} vs conta {current_balance}"
-    print("[OK] Soma do extrato confere com o saldo atual da conta.")
+        for key, expected in ((origin, 2422), (destination, 500)):
+            entries = full_statement(key)
+            assert sum(entry["amount"] for entry in entries) == expected
+            assert RequestGenerator.GET_account(key)[1]["balance"] == expected
+        assert len(full_statement(origin)) == 8  # Quatro páginas; inclui todas as tarifas.
+        assert RequestGenerator.PUT_account_block(origin, maker)[0] == 200
+        assert RequestGenerator.POST_transaction(origin, {"type": "DEPOSIT", "amount": 1}, headers=maker)[1]["code"] == "QIT001006"
+        assert RequestGenerator.PUT_account_cancel(origin, maker)[0] == 200
+        status, state = RequestGenerator.GET_account(origin, maker)
+        assert status == 200 and state["balance"] == 2422
+        assert [event["status"] for event in state["status_events"]] == ["PENDING", "APPROVED", "BLOCKED", "CANCELLED"]
+        status, audit = RequestGenerator.GET_audit_events()
+        assert status == 200
+        assert any(event["action"] == "POLICY_CHANGE_APPROVED" and event["resource_key"] == proposal["request_key"] for event in audit["data"])
+        assert any(event["action"] == "ACCOUNT_CANCELLED" and event["resource_key"] == origin for event in audit["data"])
+    finally:
+        reset()

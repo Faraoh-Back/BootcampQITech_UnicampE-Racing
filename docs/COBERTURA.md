@@ -1,5 +1,39 @@
 # Cobertura de Testes e Erros por Rota
 
+> Revisão de entrega: 2026-10-10. Esta é a fonte de contagem/evidência atual,
+> não uma alegação de cobertura de 100% de linhas ou de todas as combinações
+> possíveis. As rotas são de um serviço modular, com contratos de infraestrutura
+> executados separadamente dos testes estritamente HTTP.
+
+**Enquadramento aprovado: garantias verificadas e limitações conhecidas.**
+A regra de antecipação com líquido positivo foi aprovada após esta validação;
+está documentada em DECISOES 3.5.1 e aguarda implementação/testes em P0.4.
+Os resultados abaixo não demonstram uma recusa que ainda não foi implementada.
+
+## Resultado registrado nesta revisão
+
+Executado em 2026-10-10, com Python de `baas-pme-api/.venv`, API real no
+Compose e `NIGHT_TIME_OVERRIDE=21:00`. Partiu-se de 155 testes aprovados;
+foram acrescentados 47 casos líquidos e reescrita a jornada de ponta a ponta.
+
+| Execução | Resultado |
+|---|---|
+| Suíte completa final: `pytest tests -q` | **202 passed in 102.75s** |
+| API estritamente HTTP: `-m api_blackbox` | **170 passed**, 89.26 s |
+| Contratos de infraestrutura: `-m infrastructure_contract` | **26 passed**, 14.12 s |
+| Guardas estáticas: `-m static_guard` | **6 passed**, 0.26 s, após a revisão final dos documentos |
+| Carga canônica S7c | **5 passed in 11.48s**; 200 transferências, parede 12,381 s |
+| Compilação | `compileall -q src tests` concluído sem erro |
+| Compatibilidade de dependências | `pip check`: No broken requirements found |
+| Integridade do diff | `git diff --check` sem erro |
+| Containers finais | API/banco healthy, MockServer Up; API `uid=100(user)`, não-root; `pip check` da imagem sem incompatibilidade |
+
+As durações de execuções separadas não somam necessariamente a duração do
+conjunto. Cada categoria tem dependências/estado próprio; execute-as
+sequencialmente. HTTP inclui casos legados selecionáveis por `legacy`.
+O benchmark contém somente transferências cruzadas, não toda a concorrência
+S7c. Recursos/ambiente e artefatos estão em BENCHMARK.
+
 | Rota / Endpoint | Código QIT | Status HTTP | Descrição do Cenário | Arquivo de Teste |
 |---|---|---|---|---|
 | **Segurança / Global** | `Sucesso` | 204 | Healthcheck responde corretamente | `tests/integration/test_healthcheck.py` |
@@ -84,3 +118,94 @@
 | `/policy-change-request` | draft, submissão, outro OWNER aprova, autoaprovação `QIT001029` | `tests/integration/policy_change_request/test_maker_checker.py` |
 | Jornada PME | cobrança própria, antecipação única, crédito/tarifa no extrato | `tests/integration/credit_advance/test_receivables_flow.py`, `tests/test_pme_journey.py` |
 | Guarda R1 | testes de produto não importam módulos internos `src/` | `tests/test_r1_guard.py` |
+
+## Complemento do catálogo: códigos transversais e legado
+
+Cada código de `DECISOES.md` tem cenário que o provoca: o núcleo está na
+tabela inicial; os códigos restantes estão abaixo. A existência de um cenário
+por código **não** prova cada código em cada rota nem toda a matriz de papéis.
+
+| Código | HTTP | Rota / cenário | Teste que o provoca |
+|---|---|---|---|
+| `QIT001020` | 401 | JWT inválido; refresh reutilizado; proposta sem JWT | `auth/test_auth.py`, `policy_change_request/test_policy_contract.py` |
+| `QIT001021` | 401 | Login com senha incorreta ou maior que 72 bytes UTF-8 | `auth/test_auth.py`, `auth/test_password_contract.py` |
+| `QIT001022` | 403 | PME alheia/papel proibido em conta, cotação ou proposta | `auth/test_auth.py`, `quote/test_quote_authorization.py`, `policy_change_request/test_policy_contract.py` |
+| `QIT001023` | 409 | E-mail de usuário duplicado | `auth/test_auth.py` |
+| `QIT001024` | 503 | Transação com lock PostgreSQL retido por outra sessão | `timeouts/test_timeouts.py` (infraestrutura) |
+| `QIT001025` | 503 | Deadlock/serialização persistente por SQLSTATE sintético | `transaction/test_transient_retry.py` (infraestrutura) |
+| `QIT001026` | 409 | Produto desabilitado na política vigente | `risk_policy/test_risk_policy.py`, `policy_change_request/test_policy_governance.py` |
+| `QIT001027` | 422 | Teto de valor, quantidade ou consumo diário excedido | `risk_policy/test_risk_policy.py`, `risk_policy/test_risk_atomicity.py` |
+| `QIT001028` | 404 | Proposta inexistente na submissão/aprovação | `policy_change_request/test_policy_contract.py` |
+| `QIT001029` | 409 | Autoaprovação, estado inválido, submissão por outro criador ou segunda aprovação concorrente | `policy_change_request/test_maker_checker.py`, `policy_change_request/test_policy_governance.py` |
+| `QIT000500` | 500 | Falha inesperada injetada no INSERT de lançamento; corpo sanitizado, sem retry nem efeito financeiro | `transaction/test_transient_retry.py` (infraestrutura) |
+| `QIT000010` | 400 | Intervalo invertido de datas na listagem legada | `sample_entity/test_sample_entities.py` (infraestrutura/legado) |
+| `QIT002001` | 404 | Entidade legada inexistente | `sample_entity/test_sample_entity_get.py` |
+| `QIT002002` | 409 | Alteração de entidade legada em estado final | `sample_entity/test_sample_entity_update.py` |
+| `QIT002003` | 422 | Idade abaixo do mínimo no legado | `sample_entity/test_sample_entity_create.py` |
+| `QIT002004` | 422 | Data impossível no legado | `sample_entity/test_sample_entity_create.py` |
+
+Os caminhos abreviados nessa tabela são relativos a `tests/integration/`.
+Há 39 códigos catalogados: 29 do produto, seis globais e quatro do legado.
+`QIT000010` é um código global cujo cenário atual é do legado.
+
+## Features e pipelines: o que a evidência comprova
+
+| Feature / pipeline | Evidência e limite |
+|---|---|
+| S1–S2b: cadastro, conta e ciclo de vida | Sucesso/erros/UUID, eventos, bloqueio/cancelamento e impedimento de movimentação em conta não aprovada |
+| S3–S6: depósito, saque, transferência, extrato e idempotência | Sinais do ledger, tarifa separada, saldo, 404 sem revelar lançamento de outra conta, paginação, replay, conflito e rollback |
+| S7a–S7c: concorrência financeira | Saques disputando saldo, 40 transferências cruzadas, chave compartilhada, disputa entre saque/transferência e antecipação do mesmo lastro |
+| S8–S10/S18: recebíveis | Lote 1/2, calendário de fim de mês, índice Decimal, erros offline do MockServer, propriedade/eligibilidade e antecipação única; não liquidação ou empréstimo |
+| S11: identidade | Bcrypt, login, refresh rotativo, sessões múltiplas, logout, papéis e rejeição de senha acima de 72 bytes |
+| S12: auditoria | Cadeia SHA-256 reconstruída por HTTP/checkpoint; trigger de UPDATE/DELETE verificada em contrato SQL; não proteção contra administrador |
+| S13–S15: operação | Logs/métricas, isolamento de conta travada, timeout, interrupção do cliente, lease/retry de outbox; não stack de monitoramento instalado |
+| S16: retry transacional | SQLSTATE `40P01` e `40001` injetados; nova tentativa tem um efeito; esgotamento/falha inesperada não grava saldo/ledger; regra de negócio não é repetida |
+| S17/S19/S20: personalização | Precedência PME/padrão, versões/snapshots, tetos concorrentes, produto desabilitado, cotação informativa e autorização por PME |
+| S21: maker-checker | Contrato aninhado estrito de preço/risco, segregação criador/aprovador, estado pendente não aplicável, três corridas com dois aprovadores e uma versão publicada |
+| Jornada integrada T5.1 | Dois OWNERs publicam preço, emitem/reajustam, cotam/antecipam, transferem/sacam, percorrem quatro páginas, reconciliam oito lançamentos com saldo e bloqueiam/cancelam com trilha auditável |
+| Pipeline CI | Compose/build → liveness → compileall → static_guard → api_blackbox → infrastructure_contract → logs na falha → cleanup; validado localmente, não execução remota do Actions nesta revisão |
+| Consistência documental | Guardas estáticas de seções do modelo, todos os métodos/rotas registrados, códigos catalogados e 23 tabelas do produto no DER; não comparação completa de payloads/FKs nem validação visual de PDF |
+
+## Revisão: correções com regressão comprovada
+
+Foram reproduzidas dez falhas em 19 casos antes das correções de schema,
+cotação e senha. O mesmo conjunto passou após implementá-las. Não se atribui
+TDD retrospectivo ao histórico inteiro: o Red/Green aqui é da revisão.
+
+- O JSON Schema agora exige `int` nativo, inclusive em políticas aninhadas:
+  rejeita decimal JSON `10.0`, string e booleano antes de emissor/regra de negócio.
+- Propostas reutilizam os schemas estritos de preço/risco, incluindo UUID e
+  proibição de `customer_key` dentro da política.
+- Cotações com JWT exigem vínculo/papel sobre a conta; JWT inválido não é ignorado.
+- Bcrypt não recebe senha acima de 72 bytes UTF-8; não há truncamento silencioso.
+- Helpers HTTP têm timeout e não imprimem falha esperada ao interpretar 204.
+  O `.env` é carregado antes de helpers que capturam a credencial.
+- Parâmetros de retry foram ligados ao Compose; constantes/env de preço
+  obsoletos foram removidos. Tarifas continuam vindo do banco.
+- requests 2.32.4 corrige o aviso específico de credenciais `.netrc`
+  [do mantenedor](https://github.com/psf/requests/security/advisories/GHSA-9hjg-9r4m-mvj7).
+  Isso não certifica a ausência de outras vulnerabilidades.
+
+## Garantias verificadas e limitações conhecidas: lacunas pendentes
+
+| Prioridade | Achado / próxima prova necessária | Plano |
+|---|---|---|
+| P0 | Recusa de antecipação com tarifa >= bruto: regra aprovada, implementação/testes pendentes. Cotação de transferência, limites BIGINT e índices <= -100% ainda exigem especificação/validação segura | P0.3/P0.4 |
+| P0 | Ledger/eventos/snapshots ainda não têm proteção append-only SQL equivalente à auditoria; saldo é projeção sem rotina de reconciliação | P0.1/P0.2 |
+| P1 | Token interno tem autoridade ampla, JWT é opcional fora de propostas, cadastro de OWNER e políticas diretas podem contornar segregação | P1.4/P1.8 |
+| P1 | Faltam controles produtivos de abuso de login, rotação de chaves e gestão administrativa de sessões | P1.5 |
+| P1 | Emissão externa antes da validação final pode criar boleto órfão; billing não tem idempotência de cliente e lote 2 faz I/O com lock de plano | P1.2 |
+| P1 | Preço/risco contêm regras em repositories e auditoria executa SQL em utils | P1.7 |
+| P1 | Orçamento de 15 s não é deadline global; virada diária de risco usa data do runtime; timestamps sem offset e bootstrap sem migrations | P1.3/P1.9 |
+| P1 | Lease de lote de outbox pode vencer durante publicação; ack obsoleto não deve contar entrega; faltam dead-letter e operação de recuperação | P1.6 |
+| P1 | Exportação completa da auditoria, cadeia global serializada e paginação offset não são provas de escalabilidade/snapshot estável sob novas escritas | P1.10 |
+| P1 | Erros inesperados e exceções de bibliotecas podem escrever parâmetros SQL/URLs em traceback; logs normais sem body não equivalem a sanitização universal | P1.11 |
+| P1 | Backup/restore e retomada financeira após perda de dados não foram comprovados pela revisão | P1.12 |
+| P2 | PDF de 2–4 páginas, clone limpo independente e execução remota do CI não foram comprovados nesta revisão | T5.3/T5.5/P2.2 |
+| P2 | Combinações de papel/rota/estado, expiração/calendário e quedas não são exaustivas; faltam capacidade sustentada e alertas efetivamente exercitados | P2.3/P2.4 |
+
+Esses itens estão documentados como lacunas, não mascarados por testes verdes.
+Também faltam testes de todas as transições/papéis em cada rota, expiração
+temporal controlada de JWT/cotação, todos os modos de queda de worker/conector
+e capacidade sustentada. R1 é defendida pela suíte HTTP; os testes que injetam
+SQLSTATE são contratos de infraestrutura, não reprodução de um deadlock real.

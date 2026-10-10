@@ -11,26 +11,26 @@
 
 ---
 
-## 1. Decisões Arquiteturais e de Negócio (D1 a D13)
+## 1. Decisões Arquiteturais e de Negócio (D1 a D16)
 
-> **Estado RFC 3.0:** D1–D16 estão implementadas. S15 materializou a outbox, T4.5 entregou benchmark reproduzível e S16–S21 completaram retry transitório, preço, risco, cotação e maker-checker.
+> **Estado RFC 3.2:** D1–D16 têm implementação com os limites descritos abaixo. A regra de líquido positivo da D4 foi aprovada em 2026-10-10, mas sua validação na API ainda é pendência P0.4; aprovação documental não significa implementação. A revisão de entrega acrescentou contratos estritos, autorização de cotação e separação das evidências de teste. O checkpoint histórico não substitui esta especificação atual.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
-| **D1** | **Precificação comercial versionada** | `pricing_policy` mantém tarifa fixa em centavos e/ou percentual em pontos-base para `TRANSFER`, `CREDIT_ADVANCE` e `BANK_SLIP_ISSUANCE`. Há políticas padrão sem PME e políticas específicas; a precedência é **PME específica vigente > padrão vigente**. O seed preserva o comportamento-base: transferência `100` centavos, antecipação `300` bps e emissão `0`. | Dinheiro e tarifa são `BIGINT`; percentual usa `Decimal` e arredondamento half-up, sem `float`. `pricing_snapshot` congela política, versão, base e tarifa no fato financeiro. Publicar preço cria nova versão e encerra a vigência anterior, sem alterar seus termos. `NIGHT_LIMIT_CENTS=100000`, `NIGHT_START="20:00"`, `NIGHT_END="06:00"` e `TIMEZONE="America/Sao_Paulo"` continuam sendo parâmetros regulatórios, não preço comercial. Estados/dupla aprovação são evolução S21. |
+| **D1** | **Precificação comercial versionada** | `pricing_policy` mantém tarifa fixa em centavos e/ou percentual em pontos-base para `TRANSFER`, `CREDIT_ADVANCE` e `BANK_SLIP_ISSUANCE`. Há políticas padrão sem PME e políticas específicas; a precedência é **PME específica vigente > padrão vigente**. O seed preserva o comportamento-base: transferência `100` centavos, antecipação `300` bps e emissão `0`. | Dinheiro e tarifa são `BIGINT`; percentual usa `Decimal` e arredondamento half-up, sem `float`. `pricing_snapshot` congela política, versão, base e tarifa no fato financeiro. Publicar preço cria nova versão e encerra a vigência anterior, sem alterar seus termos. `NIGHT_LIMIT_CENTS=100000`, `NIGHT_START="20:00"`, `NIGHT_END="06:00"` e `TIMEZONE="America/Sao_Paulo"` continuam sendo parâmetros da regra noturna do produto, não preço comercial. S21 entrega dupla aprovação pelo fluxo de propostas; a publicação técnica direta permanece disponível e deve ser isolada na fronteira de serviço. |
 | **D2** | **Índices de Reajuste** | Aceitar exclusivamente **`IPCA`** e **`IGPM`**. | A Selic foi descartada porque é taxa básica de juros de política monetária, e não índice de inflação contratual para reajuste de cobrança/mensalidade. |
 | **D3** | **Ciclo de Vida da Conta** | Rotas `PUT /account/{account_key}/block` e `PUT /account/{account_key}/cancel` (S2b). Transições permitidas: `APPROVED → BLOCKED`, `APPROVED → CANCELLED` e `BLOCKED → CANCELLED`. `CANCELLED` é final e irreversível. | Cada transição gera evento auditável. Operações financeiras só aceitam conta `APPROVED`; transição não permitida devolve `409 QIT001019`. |
-| **D4** | **Modelo de Antecipação de Recebíveis** | Antecipação lastreada em **`bank_slip_keys`** (1 a 50 chaves por chamada). | Antecipação por valor arbitrário abre brecha para criar dinheiro sem lastro. Vincular às chaves dos boletos garante que cada boleto seja antecipado no máximo uma vez através do vínculo `bank_slip.credit_advance_id`. |
+| **D4** | **Modelo de Antecipação de Recebíveis** | Antecipação lastreada em **`bank_slip_keys`** (1 a 50 chaves por chamada). **Regra adicional aprovada, implementação pendente P0.4:** exigir `net_amount > 0`; recusar tarifa maior ou igual ao bruto. | Lastro evita crédito por valor arbitrário; o vínculo `bank_slip.credit_advance_id` impede nova antecipação do mesmo boleto nos fluxos protegidos. Líquido positivo preserva o propósito de dar liquidez à PME, sem consumir recebível para receber zero ou perder saldo. Exemplos e critérios em 3.5.1. |
 | **D5** | **Formato da Taxa do Banco Central** | Retornada em string percentual, ex: `"4.83"` (significa 4,83%). | O cálculo do novo valor utiliza `Decimal` com arredondamento *half-up* para centavos inteiros:<br>`fator = Decimal("1") + (Decimal(rate_str) / Decimal("100"))`<br>`novo_valor = int((Decimal(base_amount) * fator).quantize(Decimal("1"), rounding=ROUND_HALF_UP))` |
 | **D6** | **Contratos dos Mocks (MockServer)** | Contratos fixos para os conectores externos: | **BankSlip Mock (`POST /bank-slips`):**<br>Entrada: `{ external_reference: str, installments: [{ installment_number: int, amount: int, due_date: "AAAA-MM-DD" }] }`<br>Saída: `200 { bank_slips: [{ installment_number: int, barcode: str }] }`<br><br>**CentralBank Mock (`GET /index/{IPCA\|IGPM}`):**<br>Saída: `200 { index: str, accumulated_rate: "4.83" }` |
 | **D7** | **Histórico de Eventos Visível por HTTP (R4)** | `GET /account/{account_key}` expõe `status_events` da conta; `GET .../billing-plan/{plan_key}` expõe `status_events` dentro de cada boleto. | A regra R4 é verificável por HTTP porque os eventos são inspecionáveis. O formato atual é ISO 8601 sem offset, por exemplo `[{ "status": "APPROVED", "event_datetime": "2026-10-02T12:00:00.000000" }]`; consumidores não devem inferir fuso pelo texto. Evolução P1 prevê timestamps `TIMESTAMPTZ`/UTC explícitos. |
-| **D8** | **Janela e Limite Noturno** | Saques e transferências noturnos têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte; depósito não é limitado. | A regra segue o limite padrão de transferências noturnas (Pix e TED) para pessoa física. A aplicação usa `TIMEZONE=America/Sao_Paulo`; somente no ambiente de teste, `NIGHT_TIME_OVERRIDE` fixa a hora sem permitir que o cliente HTTP a escolha. |
+| **D8** | **Janela e Limite Noturno** | Saques e transferências noturnos têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte; depósito não é limitado. | É uma regra de negócio adotada para o desafio, inspirada no limite noturno para pessoa física; não representa implementação de Pix/TED nem certificação regulatória. A aplicação usa `TIMEZONE=America/Sao_Paulo`; somente no ambiente de teste, `NIGHT_TIME_OVERRIDE` fixa a hora sem permitir que o cliente HTTP a escolha. |
 | **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout separado de conexão (1 s) e leitura (5 s), limitado pelo orçamento da requisição, log padronizado de ida e volta e interpretação JSON com `Decimal`. O `INTERNAL-TOKEN` **não** é enviado automaticamente a APIs externas; somente um contrato explícito de serviço interno pode exigi-lo. |
 | **D10** | **Identidade e sessões** | Um `app_user` pertence a uma PME (`customer`) por `user_customer_access`; portanto seu vínculo alcança as contas da PME. A senha usa bcrypt. Login cria sessão persistida por dispositivo, JWT de acesso de 15 minutos (configurável) e refresh token opaco, rotativo e válido por no máximo 8 horas. Papéis: `OWNER`, `OPERATOR`, `VIEWER`. | `INTERNAL-TOKEN` permanece a credencial serviço-a-serviço e não é login nem API Gateway. Em rotas financeiras, a ausência de `Authorization` preserva a chamada técnica interna; se `Authorization: Bearer <JWT>` vier, a sessão ativa e o papel sobre a conta são obrigatórios. `OWNER` administra ciclo de vida; `OWNER`/`OPERATOR` movimentam e emitem cobrança; os três podem consultar. |
 | **D11** | **Auditoria verificável** | `audit_event` é uma cadeia global append-only: ator (`SERVICE` ou `USER`), ação, tipo/chave de recurso, `request_id`, IP de origem, resumo anterior/posterior, timestamp, `previous_hash` e `event_hash`. A cadeia começa em 64 zeros e usa SHA-256 sobre JSON canônico UTF-8. | A inserção adquire `pg_advisory_xact_lock`, evitando bifurcação sob concorrência; o evento entra na mesma transação do fato de negócio. Trigger PostgreSQL recusa `UPDATE`/`DELETE`; correção exige evento compensatório. `GET /audit-events` exporta os dados e `GET /audit-events/checkpoint` expõe a ponta para verificação externa. Isto não é blockchain: não há consenso distribuído nem imutabilidade contra um administrador do próprio banco. |
 | **D12** | **Observabilidade e limites de espera** | Logs JSON no stdout com `request_id`, método, rota-modelo, status, duração, conta mascarada e usuário mascarado quando o JWT é válido. `GET /metrics` expõe Prometheus: requisições/latência, QIT, falhas de conectores, replay idempotente, duração de aquisição de travas e sessões ativas. Conectores têm conexão de 1 s e leitura de 5 s; cada transação PostgreSQL recebe `lock_timeout` de 2 s e `statement_timeout` de 10 s, todos limitados pelo orçamento de requisição de 15 s. | Rótulos são somente método, rota-modelo, status, código QIT, conector, escopo e operação: **nunca** e-mail, CPF/CNPJ, token, `request_id`, IP, chave de conta ou query string. Falha externa devolve `502 QIT001009`; espera/execução PostgreSQL esgotada devolve `503 QIT001024`, sempre correlacionável por `X-Request-ID`. Uma interrupção ou timeout no cliente não informa se houve commit: operação financeira só pode ser repetida com a mesma `Idempotency-Key`. |
 | **D13** | **Alertas e notificações confiáveis** | Bloquear ou cancelar uma conta grava `outbox_event` na mesma transação do status e da auditoria. O worker separado reclama eventos por *lease*, faz `POST` ao webhook com `Idempotency-Key = event_key` e marca sucesso; falha preserva o evento, incrementa tentativa e agenda retentativa exponencial. | Não há chamada de e-mail/webhook dentro do controller antes do commit. A entrega é **pelo menos uma vez**: queda após o webhook aceitar pode reenviar a mesma chave, que o consumidor deve deduplicar. Métricas de outbox, HTTP 5xx, conector e lock alimentam regras Prometheus documentadas; CPU/memória dependem de coletor do runtime (ex.: cAdvisor), não da API. |
-| **D14** | **Risco e habilitação por PME** | `risk_policy` versão regras padrão ou específicas: habilitação de `TRANSFER`, `BILLING_PLAN` e `CREDIT_ADVANCE`; teto por transferência; teto diário de transferências; teto de valor e quantidade de boletos por antecipação. A regra específica vigente vence a padrão. | A decisão gera `risk_policy_snapshot` com versão e limites. Para transferência, `customer_daily_outgoing` é atualizado na mesma transação; uma trava advisory por PME/data serializa contas distintas da mesma PME. O consumo diário é o **valor principal transferido**, não a tarifa comercial, que é fato separado no ledger. Publicação encerra a vigência anterior e cria nova versão; aprovação maker-checker é S21. |
+| **D14** | **Risco e habilitação por PME** | `risk_policy` versão regras padrão ou específicas: habilitação de `TRANSFER`, `BILLING_PLAN` e `CREDIT_ADVANCE`; teto por transferência; teto diário de transferências; teto de valor e quantidade de boletos por antecipação. A regra específica vigente vence a padrão. | A decisão gera `risk_policy_snapshot` com versão e limites. Para transferência, `customer_daily_outgoing` é atualizado na mesma transação; uma trava advisory por PME/data serializa contas distintas da mesma PME. O consumo diário é o **valor principal transferido**, não a tarifa comercial, que é fato separado no ledger. Publicação encerra a vigência anterior e cria nova versão; S21 entrega aprovação maker-checker para propostas específicas de PME; as rotas técnicas diretas não exigem essa aprovação. |
 | **D15** | **Cotação informativa, execução autoritativa** | `POST /account/{account_key}/quote` persiste por 60 segundos uma prévia de `TRANSFER`, `BILLING_PLAN` ou `CREDIT_ADVANCE`: bruto, tarifa, líquido, versões de preço/risco e limites. | A cotação não reserva saldo, limite, boleto, preço ou capacidade externa. As rotas financeiras não aceitam `quote_key` nem tarifa no payload: no commit elas recalculam preço e risco vigentes. Isso evita usar uma cotação expirada, manipulada ou de payload distinto como fonte de verdade. |
 | **D16** | **Maker-checker de política por PME** | `policy_change_request` guarda a proposta de preço ou risco em `DRAFT`, depois `PENDING_APPROVAL`, e somente publica `ACTIVE` após outro `OWNER` da mesma PME aprovar. | A proposta pendente não cria nem altera `pricing_policy`/`risk_policy`, logo não pode afetar operação financeira. O criador não pode aprovar a própria proposta (`QIT001029`); `FOR UPDATE` na proposta faz duas aprovações concorrentes resultarem em uma publicação. Eventos de rascunho, submissão e aprovação entram na cadeia `audit_event` com ator JWT. |
 
@@ -38,9 +38,57 @@
 
 ### Limite entre contrato atual e evolução planejada
 
+**Enquadramento da entrega: garantias verificadas e limitações conhecidas.**
+Cada garantia é vinculada a mecanismo, cenário de teste e fronteira de confiança;
+não se afirma segurança absoluta, cobertura exaustiva ou proteção contra
+administrador do banco. Backlog e decisões aprovadas ainda sem implementação
+são identificados como pendentes, não garantias já aplicadas.
+
 O catálogo e os contratos de rota abaixo descrevem a API implementada, inclusive
-D10–D13. A outbox não expõe uma rota pública: é infraestrutura interna e seu
-contrato de integração é o webhook versionado por `topic`, documentado na RFC.
+D10–D16; a exceção planejada da D4 está explicitamente separada em 3.5.1.
+A outbox não expõe uma rota pública: seu webhook contém `event_key`,
+`topic`, `aggregate_type`, `aggregate_key` e `payload`; o único tópico entregue
+é `account.status_changed` (bloqueio/cancelamento). Não existe campo explícito
+de versão do envelope, nem infraestrutura Prometheus/Alertmanager instalada.
+
+O deploy contém **um serviço HTTP modular e um worker**, compartilhando banco
+e código; não há API Gateway implementado ou decomposição em microserviços.
+O `INTERNAL-TOKEN` concede autoridade técnica ampla, inclusive cadastro de
+OWNER e publicação direta de preço/risco. JWT restringe somente as rotas que
+executam autorização de conta e as propostas maker-checker; clientes remotos
+devem entrar por uma fronteira que imponha JWT e nunca divulgue o token interno.
+Esse gateway é dependência futura, não garantia desta entrega.
+
+Dinheiro usa centavos inteiros `BIGINT`; porcentagens comerciais usam pontos-base
+inteiros (`INTEGER`) e índices externos usam `Decimal`/`NUMERIC(12,8)` com
+half-up. A restrição financeira a `float` não se aplica a segundos/latências.
+O validador JSON exige `int` nativo para campos `integer`, inclusive aninhados.
+Limites de overflow em somas e resultados derivados continuam sendo hardening.
+
+A janela noturna D8 é uma **regra do produto deste desafio**, aplicada por
+operação a saques/transferências de todas as contas; não é uma afirmação de
+conformidade regulatória para Pix/TED. O consumo diário D14 inclui apenas o
+principal das transferências, usa atualmente `date.today()` do runtime e não
+inclui saques ou tarifas. Alinhar sua virada à configuração `TIMEZONE` é pendência.
+
+`audit_event` recusa UPDATE/DELETE por trigger; ledger, eventos de status e
+snapshots dependem de disciplina da aplicação. O usuário PostgreSQL local é
+privilegiado e pode alterar schema/triggers. `audit_event_id` é sequencial,
+exposto intencionalmente somente na exportação/checkpoint administrativo; os
+DTOs financeiros expõem UUID. UUID dificulta enumeração, mas a proteção contra
+IDOR vem de autorização e consultas vinculadas à conta.
+
+Preço e risco ainda têm cálculo/validação de negócio dentro de repositories;
+`utils/audit.py` executa SQL para encadear eventos. Separar essas responsabilidades
+é pendência arquitetural. Um commit financeiro confirma fato, saldo, snapshots,
+resposta idempotente e auditoria; o worker tem transações próprias de claim e ack.
+
+Logs normais não incluem body e mascaram conta/usuário; isso não prova
+sanitização universal. Tracebacks de erros inesperados (inclusive ASGI/Uvicorn)
+podem incluir mensagem/parametrização SQL, e exceções externas podem conter
+URLs. Hardening P1.11 exige uma allowlist de diagnóstico e testes de stdout/
+stderr com marcadores sensíveis sintéticos. Resposta HTTP de erro inesperado
+é sanitizada no cenário de infraestrutura já testado.
 
 ---
 
@@ -87,6 +135,8 @@ Todas as respostas de erro retornam payload JSON padronizado:
 | **QIT001025** | `503 Service Unavailable` | `DatabaseTransientFailure` | Deadlock (`40P01`) ou falha de serialização (`40001`) persistiu após retentativas transacionais seguras; repita a operação financeira com a mesma `Idempotency-Key`. |
 | **QIT001026** | `409 Conflict` | `ProductNotEnabled` | A política de risco vigente da PME desabilitou o produto solicitado (`TRANSFER`, `BILLING_PLAN` ou `CREDIT_ADVANCE`). |
 | **QIT001027** | `422 Unprocessable` | `RiskLimitExceeded` | Valor por transferência, teto diário de transferências, valor de antecipação ou quantidade de boletos excede a política de risco vigente. |
+| **QIT001028** | `404 Not Found` | `PolicyChangeRequestNotFound` | Proposta de alteração de política inexistente. |
+| **QIT001029** | `409 Conflict` | `MakerCheckerViolation` | Autoaprovação, aprovação sem submissão, submissão por outro criador ou nova aprovação de proposta já ativa. |
 
 ### Erros de infraestrutura HTTP
 
@@ -129,6 +179,14 @@ Authorization: Bearer <access_token_jwt>
 Papéis: `OWNER` pode tudo na própria PME; `OPERATOR` cria transações, planos,
 reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
 `401 QIT001020`; falta de vínculo ou papel insuficiente é `403 QIT001022`.
+
+A cotação permite os três papéis, pois é uma prévia informativa. Cadastro/
+consulta de cliente, abertura de conta, cadastro de usuário, políticas diretas,
+exportação de auditoria e métricas são operações técnicas com token interno,
+sem RBAC JWT próprio. `OWNER` não significa poder sobre outras PMEs.
+Todos os endpoints que usam PostgreSQL podem devolver `503 QIT001024`;
+transações e antecipações também podem devolver `503 QIT001025` após esgotar
+retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regra de negócio.
 
 ---
 
@@ -276,7 +334,7 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
     "transaction_key": "e3b0c442-98fc-1c14-9afb-4c8996fb9242",
     "account_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
     "type": "TRANSFER_OUT",
-    "amount": 20000,
+    "amount": -20000,
     "balance_after": 30000,
     "operation_key": "c9d1b5a0-5a1c-4be7-bd19-1e40f9552a79",
     "created_at": "2026-10-02T15:10:00.000000"
@@ -449,14 +507,103 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
   ```
 - **Erros Possíveis:** `400 QIT000001`, `400 QIT001018`, `403 QIT000002`, `404 QIT001002`, `404 QIT001015`, `409 QIT001006`, `409 QIT001008`, `409 QIT001016`.
 
+#### 3.5.1. Líquido positivo: regra aprovada e implementação pendente
+
+**Decisão aprovada pelo responsável pelo produto em 2026-10-10:** uma nova
+antecipação somente pode ser confirmada se entregar **pelo menos um centavo
+líquido** à PME. Antecipar um recebível não deve consumir esse lastro para
+entregar zero, nem reduzir um saldo que a PME já tinha.
+
+**Estado desta decisão:** documentada/aprovada; **não implementada nesta
+alteração documental**. P0.4 do plano contempla aplicação, restrições e testes.
+O catálogo acima continua descrevendo os erros implementados; não se declara
+que a API atual já recusa todos os casos desta regra.
+
+O cálculo usa a soma de todos os boletos selecionados e a política vigente:
+
+```text
+gross_amount = soma dos valores dos boletos, em centavos inteiros
+fee_amount = fixed_fee_cents
+             + half_up(gross_amount × percentage_basis_points / 10000)
+net_amount = gross_amount - fee_amount
+permitir somente net_amount > 0
+recusar se fee_amount >= gross_amount
+```
+
+O half-up é aplicado com Decimal ao componente percentual, produzindo
+centavos inteiros. A comparação acontece **depois do arredondamento**:
+comparar apenas o percentual não cobre tarifas fixas ou combinadas.
+O limite é o bruto total da seleção, não o valor isolado de cada boleto.
+
+**Exemplo prático: PME antecipa um boleto de R$ 100,00.** Os valores abaixo
+ilustram a regra aprovada; não são resultados de testes executados dos casos
+ainda pendentes.
+
+| Bruto | Tarifa calculada | Líquido calculado | Resultado exigido pela regra aprovada |
+|---|---|---|---|
+| R$ 100,00 (10000 centavos) | R$ 3,00 (300) | R$ 97,00 (9700) | Pode prosseguir, se lastro/risco/estado também forem válidos |
+| R$ 100,00 (10000) | R$ 99,99 (9999) | R$ 0,01 (1) | Pode prosseguir: líquido estritamente positivo |
+| R$ 100,00 (10000) | R$ 100,00 (10000) | R$ 0,00 (0) | Recusar: consome recebível sem dar liquidez |
+| R$ 100,00 (10000) | R$ 120,00 (12000) | −R$ 20,00 (−2000) | Recusar: a antecipação reduziria dinheiro já existente |
+
+**Por que o saldo disponível não resolve o último caso?** Com R$ 500,00
+anteriores, creditar R$ 100,00 e cobrar R$ 120,00 deixaria R$ 480,00, além de
+vincular o boleto como já antecipado. Os lançamentos poderiam ser matematicamente
+coerentes e o saldo continuar positivo, mas a operação contrariaria o propósito
+econômico do produto. Pela leitura do código atual, esse caminho é possível
+quando há saldo suficiente; não foi comprovado por execução nesta alteração.
+Sem saldo anterior, o CHECK de saldo não negativo pode impedir a escrita,
+com rollback e erro 500. Esse CHECK protege saldo, mas **não substitui**
+a recusa comercial explícita antes do lançamento.
+
+**A regra não proíbe personalização de preços.** Uma tarifa fixa de R$ 120,00
+pode ser economicamente válida para um bruto de R$ 1.000,00 (líquido R$ 880,00)
+e inválida para R$ 100,00. Portanto, sua publicação não deve ser rejeitada
+apenas por ultrapassar um boleto hipotético; cada operação deve validar o
+resultado da política efetivamente escolhida.
+
+**Comportamento a implementar em P0.4:**
+
+1. Após validar/proteger lastro e resolver preço/risco vigentes, calcular o
+   líquido e recusá-lo se não positivo, **antes** de criar a antecipação,
+   vincular boletos ou lançar crédito/tarifa.
+2. Aplicar a mesma recusa à cotação `CREDIT_ADVANCE`; uma cotação não deve
+   apresentar líquido zero/negativo como antecipação elegível. A execução
+   continua recalculando a regra vigente, sem confiar em cotação antiga.
+3. Responder **HTTP 422** com erro QIT próprio para líquido não positivo,
+   mantendo `{ title, description, translation, code }` e `X-Request-ID`.
+   Reservar/documentar o código estável ao implementar; não reutilizar
+   `InsufficientBalance`, pois a recusa vale mesmo com saldo disponível.
+4. Não confirmar efeito financeiro, consumo de lastro, snapshots ou reserva
+   idempotente da tentativa recusada; não registrar evento de antecipação
+   criada. Logs/métricas devem permitir correlacionar a recusa sem PII.
+5. Preservar o replay de uma operação já confirmada: a mesma chave/corpo
+   devolve a resposta original, sem recalcular para criar outro fato. Uma
+   tentativa recusada pode usar a mesma chave/corpo após uma política válida
+   entrar em vigor, pois não confirmou uma operação.
+6. Complementar a validação no banco com `CHECK (net_amount > 0)` de
+   antecipação, preservando `net_amount = gross_amount - fee_amount`.
+   Antes de alterar DDL, verificar registros existentes: não apagar,
+   reprificar ou corrigir silenciosamente fatos históricos; avaliar exceções
+   com reconciliação e procedimento autorizado.
+
+**Critérios de aceitação:** testar tarifa menor/igual/maior que bruto,
+líquido mínimo de um centavo, tarifa fixa/percentual/combinada, arredondamento,
+saldo anterior zero e suficiente, múltiplos boletos, cotação/execução e replay.
+Recusas devem deixar saldo/extrato/lastro inalterados; erro de negócio não deve
+disparar retry transitório. As condições válidas continuam exigindo as demais
+regras de propriedade, status e risco, não apenas líquido positivo.
+
 ---
 
 ### 3.6. Identidade e sessões (`/user`, `/auth`)
 
 #### `POST /user`
 - **Cabeçalhos:** `INTERNAL-TOKEN`
-- **Body de Entrada:** `customer_key`, `name`, `email`, `password` (8 a 72
-  caracteres) e `role` opcional (`OWNER` por padrão; `OPERATOR` ou `VIEWER`).
+- **Body de Entrada:** `customer_key`, `name`, `email`, `password` (mínimo 8
+  caracteres e máximo **72 bytes UTF-8**) e `role` opcional (`OWNER` por padrão;
+  `OPERATOR` ou `VIEWER`). Senha multibyte acima do limite retorna `400 QIT000001`
+  no cadastro; no login retorna `401 QIT001021`, sem truncamento silencioso.
 - **Resposta Sucesso (`201 Created`):** `user_key`, `customer_key`, `role` e
   `created_at`. Senha e seu hash nunca são retornados.
 - **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001001`,
@@ -493,7 +640,8 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
 - **Resposta Sucesso (`200 OK`):** `{ data, checkpoint }`, onde cada item de
   `data` contém ator, ação, recurso, `request_id`, origem, resumos,
   `previous_hash`, `event_hash` e `event_datetime`; `checkpoint` contém a
-  ponta atual (`audit_event_id`, `event_hash`). Não há rota de alteração ou
+  ponta atual (`audit_event_id` sequencial administrativo, `event_hash`). A
+  exportação atual não tem paginação e inclui todos os tenants. Não há rota de alteração ou
   remoção de eventos.
 - **Verificação externa:** comece com 64 caracteres `0`, confirme que o
   `previous_hash` de cada evento é o hash anterior e recalcule `event_hash`
@@ -517,7 +665,11 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
   Métricas: `baas_http_requests_total`,
   `baas_http_request_duration_seconds`, `baas_qit_errors_total`,
   `baas_external_connector_failures_total`, `baas_idempotency_replays_total`,
-  `baas_database_lock_wait_seconds` e `baas_active_user_sessions`.
+  `baas_database_lock_wait_seconds`, `baas_active_user_sessions`,
+  `baas_database_transient_retries_total`, `baas_outbox_pending_events`,
+  `baas_outbox_retrying_events` e `baas_outbox_delivery_attempts_total`.
+  O registry HTTP é por processo e reinicia com a API; gauges de sessões e
+  outbox são lidos do banco durante a coleta. Não há coletor CPU/RAM na API.
 - **Rótulos permitidos:** método, rota-modelo, status HTTP, código QIT,
   conector, escopo de idempotência e operação de lock. Não use dados pessoais,
   tokens, hashes, chaves UUID, IP ou query string como rótulo.
@@ -552,7 +704,9 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
   execução, a política específica vigente vence a padrão; cada operação grava
   um snapshot imutável, portanto uma alteração comercial não reprifica fatos
   anteriores. O endpoint é administrativo interno nesta etapa; estados e
-  aprovação maker-checker pertencem à S21.
+  aprovação maker-checker já foram entregues na S21. Esta rota direta continua
+  sendo bootstrap técnico e **permite contornar** a dupla aprovação; restringi-la
+  na fronteira de produção é requisito pendente.
 - **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001001`.
 
 ---
@@ -590,7 +744,8 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
 ### 3.11. Cotação informativa (`/quote`)
 
 #### `POST /account/{account_key}/quote`
-- **Cabeçalhos:** `INTERNAL-TOKEN`.
+- **Cabeçalhos:** `INTERNAL-TOKEN`; JWT opcional para ator técnico e obrigatório
+  para autorização quando enviado (`OWNER`, `OPERATOR`, `VIEWER` da PME).
 - **Body de Entrada:** para `TRANSFER`, `{ "operation": "TRANSFER",
   "amount": 20000 }`; para `BILLING_PLAN`, o mesmo formato com o valor de
   cada uma das 12 parcelas; para `CREDIT_ADVANCE`,
@@ -606,3 +761,70 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
   vigente no commit. O cliente nunca envia `fee_amount` como dado confiável.
 - **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001002`,
   `404 QIT001015`, `409 QIT001016`, `409 QIT001026`, `422 QIT001027`.
+
+---
+
+### 3.12. Governança comercial (`/policy-change-request`)
+
+#### `POST /policy-change-request`
+- **Cabeçalhos:** `INTERNAL-TOKEN` e JWT de `OWNER` da PME.
+- **Entrada:** `customer_key`, `policy_type` (`PRICING` ou `RISK`) e `policy`.
+  O objeto `policy` reutiliza o schema estrito da publicação correspondente,
+  sem `customer_key` aninhado: o tenant é determinado exclusivamente pela raiz.
+- **Saída `201`:** `request_key`, `policy_type`, `status: "DRAFT"`,
+  `published_policy_key: null`, `submitted_at: null`, `approved_at: null`.
+- **Erros:** `400 QIT000001`, `401 QIT001020`, `403 QIT000002/QIT001022`,
+  `404 QIT001001`. Não publica política nem altera tarifa/limite.
+
+#### `PUT /policy-change-request/{request_key}/submit`
+- **Entrada:** chave e JWT do criador OWNER; sem body de domínio.
+- **Saída `200`:** mesmo DTO, `PENDING_APPROVAL` e `submitted_at` preenchido.
+- **Erros:** `401 QIT001020`, `403 QIT000002/QIT001022`, `404 QIT001028`,
+  `409 QIT001029` se não for rascunho ou ator não for criador.
+
+#### `PUT /policy-change-request/{request_key}/approve`
+- **Entrada:** chave e JWT de outro OWNER da mesma PME.
+- **Saída `200`:** `ACTIVE`, `approved_at` e `published_policy_key` preenchidos;
+  publica uma nova versão de preço ou risco no mesmo commit da aprovação.
+- **Erros:** `401 QIT001020`, `403 QIT000002/QIT001022`, `404 QIT001028`,
+  `409 QIT001029` para autoaprovação/estado incompatível. Duas aprovações
+  concorrentes geram um `200` e um `409`, com uma única versão publicada.
+- **Limites:** não existem rotas de editar/rejeitar/retirar uma proposta.
+  `RETIRED` e `retired_at` existem no DDL, sem fluxo HTTP implementado. A
+  exportação de auditoria identifica criador e aprovador; o DTO da proposta
+  não retorna seus IDs internos. Sessão revogada nesse fluxo atualmente pode
+  devolver `403 QIT001022`, diferença a alinhar com as rotas de conta (`401`).
+
+## 4. Evidências, alternativas preservadas e referências técnicas
+
+Os resultados atuais e a matriz de testes estão em [COBERTURA.md](COBERTURA.md).
+O [CHECKPOINT_T3_1.md](CHECKPOINT_T3_1.md) é histórico, não catálogo vigente.
+
+**Reajuste sob demanda versus agendado:** o reajuste agendado foi descartado
+porque exigiria scheduler, política de execução/recuperação e controle temporal
+não pedidos pelo desafio; ganharia se o produto exigisse atualização automática
+em uma data contratual. O endpoint atual mantém o acionamento explícito,
+consultando o índice e emitindo o lote 2 uma única vez no estado local.
+Isso não garante exatamente uma emissão externa após queda entre conector e commit.
+
+**Erros transversais:** todas as rotas protegidas podem responder
+`403 QIT000002`; as rotas com JWT opcional validam-no quando fornecido,
+podendo responder `401 QIT001020` ou `403 QIT001022`. O fluxo maker-checker
+exige JWT. Operações de banco também podem retornar `503 QIT001024`
+e operações cobertas pelo retry transacional, `503 QIT001025` ao esgotá-lo.
+Cobrança/reajuste com emissão tarifada podem falhar por saldo insuficiente
+(`422 QIT001005`) ou conta não aprovada (`409 QIT001006`); habilitação e
+limites acrescentam `QIT001026`/`QIT001027` nos fluxos pertinentes.
+As listas históricas de erros por endpoint não excluem essas condições transversais.
+
+**Segurança de dependências:** requests foi atualizado de 2.32.3 para 2.32.4
+para corrigir o caso de vazamento de credenciais de `.netrc` por URL maliciosa
+[documentado pelo mantenedor](https://github.com/psf/requests/security/advisories/GHSA-9hjg-9r4m-mvj7).
+Isso corrige esse aviso específico, não substitui auditoria periódica de toda
+árvore de dependências. `pip check` verifica compatibilidade, não CVEs.
+
+Referências primárias para defender o contrato:
+
+- [PostgreSQL: locks explícitos e compatibilidade de modos](https://www.postgresql.org/docs/16/explicit-locking.html): a ordenação reduz deadlocks entre contas; não promete ausência universal de deadlocks.
+- [bcrypt: limite de senha](https://github.com/pyca/bcrypt#maximum-password-length): a API rejeita mais de 72 bytes UTF-8 antes do hash, em vez de truncar silenciosamente.
+- [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html): o formato QIT foi mantido por decisão do time; não implementa integralmente Problem Details.

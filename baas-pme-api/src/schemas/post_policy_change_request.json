@@ -1,1 +1,23 @@
-{"type":"object","additionalProperties":false,"required":["customer_key","policy_type","policy"],"properties":{"customer_key":{"type":"string","minLength":36,"maxLength":36},"policy_type":{"type":"string","enum":["PRICING","RISK"]},"policy":{"type":"object"}}}
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["customer_key", "policy_type", "policy"],
+  "properties": {
+    "customer_key": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "policy_type": {"type": "string", "enum": ["PRICING", "RISK"]},
+    "policy": {"type": "object", "not": {"required": ["customer_key"]}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"policy_type": {"const": "PRICING"}}},
+      "then": {"properties": {"policy": {"$ref": "post_pricing_policy.json"}}}
+    },
+    {
+      "if": {"properties": {"policy_type": {"const": "RISK"}}},
+      "then": {"properties": {"policy": {"$ref": "post_risk_policy.json"}}}
+    }
+  ]
+}

@@ -4,11 +4,34 @@ from os import path, environ
 import pytest
 import requests
 
-from tests.utils.requisition import ClientRequisition
-from tests.utils.payload_generator import PayloadGenerator
-from tests.utils.request_generator import RequestGenerator
-
 root = Path(__file__).resolve().parents[1]
+
+
+def pytest_collection_modifyitems(items):
+    """Mantém as evidências HTTP, de infraestrutura e estáticas distinguíveis.
+
+    A execução completa continua sendo pytest tests. Os contratos que
+    controlam PostgreSQL/worker são úteis, mas não são prova HTTP da R1.
+    """
+    infrastructure_modules = {
+        "tests/integration/timeouts/test_timeouts.py",
+        "tests/integration/transaction/test_transient_retry.py",
+        "tests/integration/outbox/test_outbox.py",
+        "tests/integration/sample_entity/test_sample_entities.py",
+    }
+    for item in items:
+        relative = Path(str(item.fspath)).relative_to(root).as_posix()
+        if "/sample_entity/" in relative:
+            item.add_marker(pytest.mark.legacy)
+        if relative in {"tests/test_r1_guard.py", "tests/test_documentation_contract.py"}:
+            item.add_marker(pytest.mark.static_guard)
+        elif relative in infrastructure_modules or (
+            relative == "tests/integration/audit/test_audit.py"
+            and item.originalname == "test_database_rejects_update_and_delete_of_audit_events"
+        ):
+            item.add_marker(pytest.mark.infrastructure_contract)
+        else:
+            item.add_marker(pytest.mark.api_blackbox)
 
 if not environ.get("APP_ENV") or environ.get("APP_ENV") == "local":
     from dotenv import load_dotenv
@@ -19,9 +42,17 @@ if not environ.get("APP_ENV") or environ.get("APP_ENV") == "local":
         environ["SERVER_LOCALHOST"] = "0.0.0.0"
 
 
+# Os helpers capturam INTERNAL_TOKEN na importação. O .env precisa ser
+# carregado antes deles, inclusive quando o time personaliza a credencial.
+from tests.utils.payload_generator import PayloadGenerator
+from tests.utils.request_generator import RequestGenerator
+
+
 @pytest.fixture(scope="session", autouse=True)
-def ensure_api_is_ready():
+def ensure_api_is_ready(request):
     """Garante que a API no Docker está respondendo antes de rodar os testes."""
+    if all(item.get_closest_marker("static_guard") for item in request.session.items):
+        return
     api_host = environ.get("SERVER_LOCALHOST", "0.0.0.0")
     api_port = environ.get("API_PORT", "3000")
     url = f"http://{api_host}:{api_port}/health_check"

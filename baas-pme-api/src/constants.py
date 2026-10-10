@@ -61,8 +61,6 @@ OUTBOX_LEASE_SECONDS = int(os.environ.get("OUTBOX_LEASE_SECONDS", "30"))
 OUTBOX_RETRY_BASE_SECONDS = int(os.environ.get("OUTBOX_RETRY_BASE_SECONDS", "5"))
 
 # Regras e parâmetros de negócio (D1 e D8)
-TRANSFER_FEE_CENTS = int(os.environ.get("TRANSFER_FEE_CENTS", "100"))
-ADVANCE_FEE_PERCENT = int(os.environ.get("ADVANCE_FEE_PERCENT", "3"))
 NIGHT_START = os.environ.get("NIGHT_START", "20:00")
 NIGHT_END = os.environ.get("NIGHT_END", "06:00")
 NIGHT_LIMIT_CENTS = int(os.environ.get("NIGHT_LIMIT_CENTS", "100000"))

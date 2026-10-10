@@ -36,7 +36,12 @@ jobs:
           docker compose logs
           exit 1
       - run: python -m compileall -q src
-      - run: python -m pytest -q
+      - name: Static R1 guard
+        run: python -m pytest tests -q -m static_guard
+      - name: API black-box via HTTP
+        run: python -m pytest tests -q -m api_blackbox
+      - name: Infrastructure contracts
+        run: python -m pytest tests -q -m infrastructure_contract
       - name: Print logs on failure
         if: failure()
         run: docker compose logs --no-color

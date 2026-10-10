@@ -21,6 +21,7 @@ class ClientRequisition:
         cert=None,
         query_params=None,
         verify=True,
+        timeout=30,
     ):
 
         if headers is None:
@@ -42,6 +43,7 @@ class ClientRequisition:
                 cert=cert,
                 verify=verify,
                 params=query_params,
+                timeout=timeout,
             )
         except RequestsConnectionError:
             raise RuntimeError(API_OFFLINE.format(base_url=base_url)) from None
@@ -77,7 +79,7 @@ class BaseConnectorResponse:
         self.response_json = None
         try:
             self.response_json = json.loads(self.response_content)
-        except Exception as ex:
-            print(ex)
-            ...
-            # logger warning
+        except (ValueError, UnicodeDecodeError):
+            # 204 é uma resposta válida sem JSON. As asserções de cada teste
+            # decidem se era esperado; o helper não imprime ruído.
+            pass

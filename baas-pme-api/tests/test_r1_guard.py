@@ -3,6 +3,15 @@ from pathlib import Path
 import pytest
 
 
+APPLICATION_ROOTS = {"src", "app", "constants", "database", "connectors", "controllers",
+                     "dtos", "errors", "middlewares", "models", "repositories", "resources",
+                     "schemas", "utils", "workers"}
+
+
+def _is_application_module(module):
+    return module.split(".", 1)[0] in APPLICATION_ROOTS
+
+
 def check_file_for_src_imports(file_path: Path):
     """Analisa a árvore sintática (AST) de um arquivo e retorna violações de imports de src."""
     violations = []
@@ -17,14 +26,14 @@ def check_file_for_src_imports(file_path: Path):
         # Caso 1: import src / import src.models
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == "src" or alias.name.startswith("src."):
+                if _is_application_module(alias.name):
                     violations.append(
                         (node.lineno, f"import {alias.name}")
                     )
 
         # Caso 2: from src import ... / from src.utils import ...
         elif isinstance(node, ast.ImportFrom):
-            if node.module == "src" or (node.module and node.module.startswith("src.")):
+            if node.module and _is_application_module(node.module):
                 imported_names = ", ".join(alias.name for alias in node.names)
                 violations.append(
                     (node.lineno, f"from {node.module} import {imported_names}")
@@ -34,7 +43,7 @@ def check_file_for_src_imports(file_path: Path):
         elif isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id == "__import__":
                 if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                    if node.args[0].value == "src" or node.args[0].value.startswith("src."):
+                    if _is_application_module(node.args[0].value):
                         violations.append(
                             (node.lineno, f"__import__('{node.args[0].value}')")
                         )
@@ -45,9 +54,9 @@ def check_file_for_src_imports(file_path: Path):
 class TestR1Guardian:
     """Guardião da Regra R1: Testes NUNCA podem importar nada de `src/`.
 
-    Os testes de integração são estritamente caixa-preta via HTTP. Nenhuma
-    classe, enum, model, schema ou constante pode ser importada do código
-    da aplicação para dentro da pasta tests/.
+    Nenhuma classe, enum, model, schema ou constante pode ser importada da
+    aplicação para tests/. Isso não transforma SQL/subprocesso em HTTP:
+    a classificação de evidências está nos marcadores do pytest.
     """
 
     def test_no_tests_import_from_src(self):

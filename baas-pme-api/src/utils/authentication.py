@@ -10,14 +10,21 @@ import jwt
 from jwt import InvalidTokenError
 
 from constants import JWT_ACCESS_TOKEN_MINUTES, JWT_SECRET
+from errors import InvalidSchema
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    encoded = password.encode("utf-8")
+    if len(encoded) > 72:
+        raise InvalidSchema("password must not exceed 72 UTF-8 bytes.")
+    return bcrypt.hashpw(encoded, bcrypt.gensalt()).decode("utf-8")
 
 
 def password_matches(password: str, password_hash: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    encoded = password.encode("utf-8")
+    if len(encoded) > 72:
+        return False
+    return bcrypt.checkpw(encoded, password_hash.encode("utf-8"))
 
 
 def new_refresh_token() -> str:

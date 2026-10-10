@@ -6,6 +6,12 @@ centavos e toda rota, exceto `/` e `/health_check`, exige `INTERNAL-TOKEN`.
 Usuários remotos também podem enviar JWT em `Authorization: Bearer`; nesse caso
 a sessão e o papel na PME são validados antes do acesso à conta.
 
+A arquitetura entregue é um serviço HTTP modular e um worker de outbox com
+código/banco compartilhados. O Compose é de desenvolvimento (reload, portas
+locais e credenciais demonstrativas); não inclui API Gateway. Serviços com
+`INTERNAL-TOKEN` têm autoridade ampla. A fronteira pública futura precisa impor
+JWT e restringir provisionamento/políticas diretas, sem revelar token interno.
+
 Os contratos são mantidos em [../docs/RFC.md](../docs/RFC.md) e
 [../docs/DECISOES.md](../docs/DECISOES.md). Eles são a referência para regras
 de negócio, payloads, códigos `QIT` e respostas de erro.
@@ -29,12 +35,20 @@ flowchart LR
   pendentes e ainda não antecipados. A API credita o valor bruto menos a
   tarifa e vincula os boletos ao registro de antecipação no mesmo commit.
 
+**Regra aprovada, implementação pendente P0.4:** uma nova antecipação deve ter
+líquido positivo; tarifa maior ou igual ao bruto deve ser recusada, mesmo
+com saldo disponível. Para bruto de R$ 100, tarifas de R$ 3/R$ 100/R$ 120
+resultam em R$ 97/R$ 0/−R$ 20; os dois últimos casos devem ser recusados.
+A API ainda não aplica essa validação em todos os caminhos. O exemplo completo,
+cálculo, cotação e critérios de teste estão em
+[DECISOES 3.5.1](../docs/DECISOES.md#351-líquido-positivo-regra-aprovada-e-implementação-pendente).
+
 Não existem nesta API contrato de empréstimo, principal sem lastro, juros
 parcelados, cronograma de amortização ou boleto para um devedor de crédito.
 
 ## Subir a aplicação
 
-Pré-requisitos: Docker Compose v2 e Python 3.11.
+Pré-requisitos: Git, Docker Engine/Compose v2+, Python 3.11 com venv e curl.
 
 ```bash
 cd baas-pme-api
@@ -49,6 +63,21 @@ Espere `api` e `db` ficarem `healthy`. A API estará em
 curl http://localhost:3000/health_check
 ```
 
+O retorno é exatamente `204 No Content`. O MockServer fica `Up`, sem healthcheck
+próprio. Saúde da API mede liveness e não consulta a disponibilidade do banco.
+O `.env` é opcional; personalize com `cp .env.example .env`.
+
+Prepare os testes no ambiente virtual da própria API:
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements-dev.txt
+```
+
+Se preferir ativar: `source .venv/bin/activate`; no Windows PowerShell,
+`.venv\Scripts\Activate.ps1` (e comandos com `.venv\Scripts\python.exe`).
+
 ## Executar os testes
 
 Os testes de produto são de integração HTTP e usam a API, PostgreSQL e
@@ -62,8 +91,31 @@ NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 ./.venv/bin/python -m pytest -q
 ```
 
-Esse é o mesmo perfil adotado pelo CI. A suíte atual tem 143 testes. Depois,
-restaure o relógio normal com `docker compose up -d`.
+Esse é o perfil adotado pelo CI. A contagem e resultados datados ficam em
+[COBERTURA.md](../docs/COBERTURA.md), evitando números desatualizados em guias.
+Depois, restaure o relógio normal com `docker compose up -d`.
+
+Apresentamos **garantias verificadas e limitações conhecidas**, não segurança
+absoluta. Cada teste sustenta o cenário que exercita; decisões aprovadas e
+tarefas planejadas não contam como garantias implementadas.
+
+As evidências também podem ser executadas separadamente:
+
+```bash
+./.venv/bin/python -m pytest tests -q -m static_guard
+./.venv/bin/python -m pytest tests -q -m api_blackbox
+./.venv/bin/python -m pytest tests -q -m infrastructure_contract
+./.venv/bin/python -m pytest tests -q -m 'api_blackbox and not legacy'
+```
+
+O CI executa as três primeiras seleções após build, liveness e compilação,
+em todo push/PR. `static_guard` protege imports e rastreabilidade de
+RFC/rotas/tabelas/erros; `api_blackbox` usa somente HTTP; `infrastructure_contract`
+inclui SQL, injeção de falhas e subprocesso do worker. Todos evitam importar
+módulos internos no processo de teste. Contratos de infraestrutura e testes
+legados de listagem recriam/modificam o schema: use **banco local descartável**
+e execução sequencial. Um worker contínuo deve estar parado durante esses
+testes, pois eles controlam manualmente as entregas.
 
 ## Benchmark de concorrência
 
@@ -120,6 +172,10 @@ usuário `OWNER` autenticado por JWT. Propostas pendentes não entram nos
 resolvedores de preço ou risco; ao aprovar, a API publica uma nova versão e
 registra criador, aprovador e evento na trilha auditável.
 
+As rotas `/pricing-policy` e `/risk-policy` continuam como bootstrap técnico
+e podem publicar diretamente, contornando aprovação. Nenhum gateway no Compose
+impõe a restrição de uso; o controle de quatro olhos vale para o fluxo de propostas.
+
 ## Cotação antes da confirmação
 
 `POST /account/{account_key}/quote` retorna uma prévia auditável, válida por
@@ -135,9 +191,11 @@ duplicar o ledger.
 
 ## Logs e métricas
 
-Os logs da API são JSON no stdout, correlacionados por `request_id` e sem corpo
-de requisição, token, e-mail ou documento. Chaves de conta e usuário aparecem
-somente mascaradas. Para consultar métricas Prometheus localmente:
+Logs normais da aplicação são JSON no stdout, correlacionados por `request_id`,
+sem corpo de requisição e com chaves de conta/usuário mascaradas. Erros
+inesperados podem incluir diagnóstico SQL/URLs em traceback da aplicação ou
+do Uvicorn; sanitização universal está pendente em P1.11 e não deve ser
+prometida como entregue. Para consultar métricas Prometheus localmente:
 
 ```bash
 curl -H 'INTERNAL-TOKEN: default_token' http://localhost:3000/metrics
@@ -145,6 +203,10 @@ curl -H 'INTERNAL-TOKEN: default_token' http://localhost:3000/metrics
 
 Os rótulos das métricas não incluem dados pessoais, UUIDs, IPs ou query
 strings; use a rota-modelo, status e código QIT para agregação.
+
+O registry HTTP é por processo e reinicia com a API; gauges de sessões/outbox
+são derivados do banco. Prometheus, Alertmanager e cAdvisor não são serviços
+deste Compose; `docker stats` fornece as amostras locais do benchmark.
 
 ## Notificações confiáveis
 
@@ -208,12 +270,12 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 | `BANKSLIP_API_READ_TIMEOUT_SECONDS`, `CENTRAL_BANK_API_READ_TIMEOUT_SECONDS` | `5` | Prazo de leitura dos conectores externos. |
 | `DATABASE_LOCK_TIMEOUT_MS` | `2000` | Espera máxima por trava PostgreSQL por transação. |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `10000` | Execução máxima de comando PostgreSQL por transação. |
-| `REQUEST_TIMEOUT_SECONDS` | `15` | Orçamento máximo aplicado aos pontos bloqueantes conhecidos. |
+| `REQUEST_TIMEOUT_SECONDS` | `15` | Orçamento aplicado a esperas conhecidas; não deadline global de cancelamento. |
 | `DATABASE_TRANSIENT_RETRY_MAX_ATTEMPTS` | `2` | Total de tentativas para `40P01`/`40001`. |
 | `DATABASE_TRANSIENT_RETRY_BASE_DELAY_MS` | `25` | Base do backoff com jitter entre tentativas transitórias. |
 | `NOTIFICATION_WEBHOOK_URL` | `http://mock:1080/notifications` | Webhook que recebe eventos da outbox; em produção, serviço de notificações. |
 | `OUTBOX_POLL_INTERVAL_SECONDS` | `1` | Intervalo de consulta do worker. |
-| `OUTBOX_LEASE_SECONDS` | `30` | Duração do lease que impede dois workers de publicar juntos. |
+| `OUTBOX_LEASE_SECONDS` | `30` | Duração do lease de claim; expiração permite retomada e pode causar reentrega. |
 | `OUTBOX_RETRY_BASE_SECONDS` | `5` | Base do backoff exponencial após falha de entrega. |
 
 ## Estrutura
@@ -229,3 +291,74 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 As rotas `sample_entity` e seus arquivos continuam no repositório apenas como
 legado do projeto-base. Não pertencem ao contrato BaaS PME e não devem ser
 usadas por integrações novas.
+
+## Arquitetura, garantias verificadas e limitações conhecidas
+
+```text
+HTTP → contexto/log/token/sessão → resource/schema → controller → repository → PostgreSQL
+                                              controller → connector → provedor (MockServer em testes)
+PostgreSQL outbox → worker → webhook, com transações independentes de claim e confirmação
+```
+
+| Tema / decisão | Implementação (dentro de `src/`) | Evidência |
+|---|---|---|
+| Contrato e erros | `resources/`, `schemas/`, `errors/`, `app.py` | `tests/integration/`, `tests/test_documentation_contract.py` |
+| Contexto/rollback/log | `middlewares/`, `database.py`, `utils/request_context.py`, `utils/logger.py` | fumaça, métricas e timeouts |
+| Saldo/ledger/locks, D3 | `controllers/transaction_controller.py`, `repositories/account_repository.py`, `repositories/transaction_repository.py` | transação, transferência, extrato, S7a/S7c |
+| Replay e retry | `controllers/idempotency_controller.py`, `repositories/idempotency_repository.py`, `utils/transient_retry.py` | idempotência simultânea, falha sintética PostgreSQL |
+| Cobrança/reajuste, D2/D5/D6/D9 | `controllers/billing_plan_controller.py`, `connectors/`, `dtos/billing_plan_dto.py` | plano, reajuste, jornada PME |
+| Recebíveis, D4 | `controllers/credit_advance_controller.py`, `repositories/credit_advance_repository.py` | antecipação, concorrência, jornada PME |
+| Identidade, D10 | `controllers/auth_controller.py`, `utils/authentication.py`, `utils/account_access.py` | auth, senha UTF-8, autorização de cotação |
+| Auditoria, D11 | `utils/audit.py`, `repositories/audit_repository.py`, `dtos/audit_event_dto.py` | cadeia HTTP; trigger por SQL em contrato de infraestrutura |
+| Observabilidade, D12 | `utils/metrics.py`, `controllers/metrics_controller.py` | métricas; benchmark de runtime |
+| Notificação, D13 | `repositories/outbox_repository.py`, `utils/outbox.py`, `workers/outbox_publisher.py` | outbox e MockServer; [alertas](../docs/ALERTAS.md) |
+| Preço/risco, D1/D14 | `repositories/pricing_repository.py`, `repositories/risk_policy_repository.py`, controllers correspondentes | precificação, limite diário compartilhado/rollback |
+| Cotação/aprovação, D15/D16 | `controllers/quote_controller.py`, `controllers/policy_change_request_controller.py` | quote, maker-checker, duas aprovações concorrentes |
+| Persistência | `models/` e `database/database.sql` na raiz da API | bootstrap SQL; DER e guarda documental |
+| Representação pública | `dtos/` e respostas dos controllers comerciais | contratos HTTP; UUID nos objetos financeiros |
+
+Regras de preço/risco atualmente residem parcialmente nos repositories e a
+auditoria executa SQL em `utils/audit.py`; a separação estrita dessas regras
+está no hardening. `session.commit()` é decisão do controller financeiro;
+repositories não confirmam transações. O publicador tem commits próprios.
+
+Valores monetários são BIGINT; tarifa percentual é bps inteiro; índices externos
+usam Decimal/NUMERIC, nunca float monetário. `audit_event` possui trigger contra
+UPDATE/DELETE; ledger, status e snapshots ainda não possuem essa proteção.
+SHA-256 torna a exportação verificável, mas a cadeia não resiste a administrador
+do banco e sua escrita usa uma trava global. Exportação administrativa inclui
+`audit_event_id` sequencial; UUID nos objetos financeiros não substitui RBAC.
+
+O extrato usa offset e não congela histórico entre páginas; reconciliar uma
+conta viva exige snapshot/corte consistente futuro. Emissão de boletos não tem
+replay persistido de requisição nem transação distribuída com o emissor; pode
+haver emissão externa seguida de rollback local. Consulte a revisão em
+[COBERTURA.md](../docs/COBERTURA.md) e as tarefas 9.5 do plano.
+
+## Operação diária e diagnóstico
+
+| Ação | Comando dentro de `baas-pme-api/` |
+|---|---|
+| Subir / conferir / parar | `docker compose up -d`, `docker compose ps`, `docker compose stop` |
+| Ver logs / encerrar serviços | `docker compose logs -f api`, `docker compose down` |
+| Conferir contrato do Compose | `docker compose config --quiet` |
+| Rodar arquivo / observar detalhes | `./.venv/bin/python -m pytest tests/integration/test_healthcheck.py -v` |
+| Conferir compilação | `./.venv/bin/python -m compileall -q src` |
+
+O SQL de bootstrap roda apenas no nascimento do banco. Antes de reconstruir
+volume/imagem, confirme que seus dados locais podem ser descartados. Para
+produção são necessárias migrations; apagar volume não é migração.
+
+Se porta 3000/5432/1080 estiver ocupada, configure `API_PORT`, `DB_PORT`,
+`MOCK_PORT` no `.env`; o teste usa o mesmo arquivo, mas `DATABASE_URL` do host
+deve refletir `DB_PORT`. Endereço interno do PostgreSQL no Compose continua
+`db:5432`. Um `Could not import module app` pede conferir diretório, extensão
+`.py`, `docker compose logs api` e, se necessário, `docker compose build --no-cache`.
+Healthcheck é consultado periodicamente e seus logs são suprimidos pela aplicação.
+
+Para evidência humana de setup/clone limpo, registre `docker compose ps` e
+a saída de pytest; outra pessoa deve repetir os comandos deste README numa
+máquina Linux limpa. Execução local bem-sucedida não conclui essa tarefa.
+
+O guia inicial e o guia de organização passaram a apontar para este README;
+a navegação e o papel dos documentos estão em [docs/README.md](../docs/README.md).

@@ -89,9 +89,10 @@ BENCHMARK_OUTPUT_DIR=/tmp/baas-benchmark ./scripts/benchmark_concurrency.sh
 | `pytest-s7c.txt` | resultado de correção | Deve conter cinco testes aprovados. |
 | `summary.txt` | saída do pytest e duração de parede em milissegundos | Número principal para série histórica local. |
 
-`docker stats` é intencionalmente amostrado uma vez por segundo para não
-concorrer de forma relevante com a carga. Por isso, picos curtos podem não ser
-vistos. Para investigação de produção, use Prometheus/cAdvisor com retenção e
+O loop espera um segundo **após** cada `docker stats --no-stream`; o comando
+também leva tempo. Não é amostragem garantida a 1 Hz: o intervalo real deve
+ser lido em `sampled_at_utc`, e picos curtos podem não ser vistos. A coleta
+também tem overhead não isolado experimentalmente. Para investigação de produção, use Prometheus/cAdvisor com retenção e
 resolução adequadas; não extrapole este snapshot para um limite de capacidade.
 
 ## 5. Linha de base registrada
@@ -193,3 +194,37 @@ GiB visíveis, Docker 29.5.3, Compose 5.1.4 e Python 3.11.2.
 Esta coleta continua sendo uma observação única e local, não comparação direta
 com a linha de base anterior nem SLO. Sua evidência importante é funcional: a
 carga inteira terminou verde com a invariância de saldo verificada pelo teste.
+
+## 10. Revisão completa de contratos e documentação
+
+Executada em **2026-10-10 06:07 UTC**, base Git
+`524c7608ba305978bae7c97ece7348b8961c8a6a` com **38 entradas locais modificadas/
+novas** registradas pelo script. O benchmark inclui as alterações de produto
+da revisão; não representa somente o código commitado. Ambiente: Linux
+`6.1.0-49-amd64`, x86_64, 16 CPUs lógicas, 15 GiB visíveis, Docker 29.5.3,
+Compose 5.1.4, Python 3.11.2.
+
+| Campo | Observação |
+|---|---|
+| Carga | 5 × 40 transferências cruzadas; 200 operações; pico de 40 concorrentes |
+| Correção | **5 passed in 11.48s**; `pytest_exit_code=0` |
+| Parede ao redor do pytest | **12,381 s** |
+| API ociosa | 0,35% CPU / 89,36 MiB |
+| PostgreSQL ocioso | 0,00% CPU / 54,48 MiB |
+| MockServer ocioso | 0,19% CPU / 259,9 MiB |
+| Maior CPU amostrada | API **105,28%**; PostgreSQL **62,16%**; MockServer **17,83%** |
+| Maior RAM amostrada | API **119,7 MiB**; PostgreSQL **137,5 MiB**; MockServer **259,9 MiB** |
+| Amostras completas | Quatro snapshots dos três containers, em 06:07:34, :36, :40 e :43 UTC |
+| Artefatos | `baas-pme-api/artifacts/benchmarks/20261010T060725Z/` |
+
+A configuração normal do Compose foi restaurada pelo script, sem apagar
+volumes. O percentual de CPU do runtime não é percentual normalizado da
+capacidade total do host; um container pode superar 100%. RAM/CPU são máximos
+observados, não picos garantidos.
+
+Esta execução é mais demorada que as referências históricas. Não se afirma
+ausência de regressão nem regressão confirmada por uma amostra: faltam
+execuções repetidas com cache/carga externa controlados e limites equivalentes.
+O resultado funcional comprovado é 200 operações corretas, sem deadlock no
+cenário testado. A suíte completa de features/pipelines está em COBERTURA;
+o benchmark não a substitui.

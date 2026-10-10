@@ -2,10 +2,20 @@ import functools
 import json
 import os
 
-from jsonschema import RefResolver, ValidationError, validate
+from jsonschema import Draft202012Validator, RefResolver, ValidationError, validators
 
 from constants import SCHEMA_PATH
 from errors import InvalidSchema
+
+
+# JSON Schema admite 10.0 como integer. O contrato financeiro exige o tipo
+# inteiro original do JSON, incluindo campos aninhados e schemas referenciados.
+StrictValidator = validators.extend(
+    Draft202012Validator,
+    type_checker=Draft202012Validator.TYPE_CHECKER.redefine(
+        "integer", lambda checker, value: type(value) is int
+    ),
+)
 
 
 class SchemaCache:
@@ -108,7 +118,7 @@ class SchemaHandler:
                 resolver = RefResolver(f"file://{SCHEMA_PATH}/", None)
 
                 try:
-                    validate(kwargs["payload"], schema, resolver=resolver)
+                    StrictValidator(schema, resolver=resolver).validate(kwargs["payload"])
                 except ValidationError as error:
                     raise InvalidSchema(describe_schema_error(error))
 
@@ -157,7 +167,7 @@ class SchemaHandler:
                 query_params = query_params_to_dict(request.query_params, schema)
 
                 try:
-                    validate(query_params, schema, resolver=resolver)
+                    StrictValidator(schema, resolver=resolver).validate(query_params)
                 except ValidationError as error:
                     raise InvalidSchema(describe_schema_error(error))
 

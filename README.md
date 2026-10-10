@@ -13,5 +13,12 @@ neste escopo.
 O serviço ativo está em [`baas-pme-api/`](baas-pme-api/). Entre nessa pasta e
 siga o [README da API](baas-pme-api/README.md) para subir e testar o projeto.
 
+O [índice da documentação](docs/README.md) separa contratos, evidências de
+testes/benchmark, histórico e pendências da entrega.
+
+A apresentação do produto é baseada em **garantias verificadas e limitações
+conhecidas**, não em segurança absoluta. A regra aprovada de líquido positivo
+na antecipação está documentada, com implementação pendente P0.4 do plano.
+
 `bootcamp-biblioteca-api/` é o projeto-base de outro exercício do Bootcamp; ele
 não faz parte do deploy, dos testes ou do contrato do BaaS PME.
