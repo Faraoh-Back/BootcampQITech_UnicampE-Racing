@@ -108,6 +108,7 @@ intencional.
 | `POST` | `/account/{account_key}/billing-plan/{plan_key}/adjustment` | Emissão do lote reajustado. |
 | `POST` | `/account/{account_key}/credit-advance` | Antecipação lastreada em boletos. |
 | `POST` | `/pricing-policy` | Publicação interna de tarifa padrão ou específica por PME. |
+| `POST` | `/risk-policy` | Publicação interna de habilitações e limites de risco por PME. |
 
 Depósito, saque, transferência e antecipação exigem `Idempotency-Key`. Uma
 repetição com o mesmo payload devolve `201` e `Idempotent-Replayed: true` sem

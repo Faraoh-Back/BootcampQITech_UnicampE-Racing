@@ -370,6 +370,7 @@ do pedido atual.
 - **Pronto quando:** um diagrama deixa claros PME, pagador do boleto e recebível que lastreia a liquidez.
 
 ### S19 Política de limites e habilitações por PME (A, 5h)
+- **Status:** concluída em 2026-10-09. `risk_policy` e `risk_policy_snapshot` aplicam fallback padrão ou regra específica por PME para produtos, valor por transferência, consumo diário, valor de antecipação e número de boletos. `POST /risk-policy` publica nova versão e encerra a anterior. `customer_daily_outgoing` é protegido por trava advisory PME/data no mesmo commit da transferência; o teste concorrente prova que duas contas não consomem a última capacidade duas vezes.
 - **Depende de:** S17. **Fazer:** criar política versionada por PME, com fallback padrão, para limite por transferência, teto diário de saída, teto de antecipação, máximo de boletos por antecipação e habilitação de produtos (`TRANSFER`, `BILLING_PLAN`, `CREDIT_ADVANCE`). Definir vigência, precedência e comportamento quando não houver política específica.
 - **Integridade:** o consumo diário e a decisão de limite devem ser apurados/travados na mesma transação que lança dinheiro; duas requisições concorrentes não podem ultrapassar o teto em conjunto. A decisão aplicada, versão da política e valor consumido precisam ser auditáveis.
 - **Não fazer:** controlar limite somente em cache, confiar em contador do cliente ou alterar retroativamente uma decisão passada. Limite noturno regulatório continua regra independente, não substituível por contrato comercial.

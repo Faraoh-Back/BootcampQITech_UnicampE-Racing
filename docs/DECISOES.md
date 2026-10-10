@@ -30,6 +30,7 @@
 | **D11** | **Auditoria verificável** | `audit_event` é uma cadeia global append-only: ator (`SERVICE` ou `USER`), ação, tipo/chave de recurso, `request_id`, IP de origem, resumo anterior/posterior, timestamp, `previous_hash` e `event_hash`. A cadeia começa em 64 zeros e usa SHA-256 sobre JSON canônico UTF-8. | A inserção adquire `pg_advisory_xact_lock`, evitando bifurcação sob concorrência; o evento entra na mesma transação do fato de negócio. Trigger PostgreSQL recusa `UPDATE`/`DELETE`; correção exige evento compensatório. `GET /audit-events` exporta os dados e `GET /audit-events/checkpoint` expõe a ponta para verificação externa. Isto não é blockchain: não há consenso distribuído nem imutabilidade contra um administrador do próprio banco. |
 | **D12** | **Observabilidade e limites de espera** | Logs JSON no stdout com `request_id`, método, rota-modelo, status, duração, conta mascarada e usuário mascarado quando o JWT é válido. `GET /metrics` expõe Prometheus: requisições/latência, QIT, falhas de conectores, replay idempotente, duração de aquisição de travas e sessões ativas. Conectores têm conexão de 1 s e leitura de 5 s; cada transação PostgreSQL recebe `lock_timeout` de 2 s e `statement_timeout` de 10 s, todos limitados pelo orçamento de requisição de 15 s. | Rótulos são somente método, rota-modelo, status, código QIT, conector, escopo e operação: **nunca** e-mail, CPF/CNPJ, token, `request_id`, IP, chave de conta ou query string. Falha externa devolve `502 QIT001009`; espera/execução PostgreSQL esgotada devolve `503 QIT001024`, sempre correlacionável por `X-Request-ID`. Uma interrupção ou timeout no cliente não informa se houve commit: operação financeira só pode ser repetida com a mesma `Idempotency-Key`. |
 | **D13** | **Alertas e notificações confiáveis** | Bloquear ou cancelar uma conta grava `outbox_event` na mesma transação do status e da auditoria. O worker separado reclama eventos por *lease*, faz `POST` ao webhook com `Idempotency-Key = event_key` e marca sucesso; falha preserva o evento, incrementa tentativa e agenda retentativa exponencial. | Não há chamada de e-mail/webhook dentro do controller antes do commit. A entrega é **pelo menos uma vez**: queda após o webhook aceitar pode reenviar a mesma chave, que o consumidor deve deduplicar. Métricas de outbox, HTTP 5xx, conector e lock alimentam regras Prometheus documentadas; CPU/memória dependem de coletor do runtime (ex.: cAdvisor), não da API. |
+| **D14** | **Risco e habilitação por PME** | `risk_policy` versão regras padrão ou específicas: habilitação de `TRANSFER`, `BILLING_PLAN` e `CREDIT_ADVANCE`; teto por transferência; teto diário de transferências; teto de valor e quantidade de boletos por antecipação. A regra específica vigente vence a padrão. | A decisão gera `risk_policy_snapshot` com versão e limites. Para transferência, `customer_daily_outgoing` é atualizado na mesma transação; uma trava advisory por PME/data serializa contas distintas da mesma PME. O consumo diário é o **valor principal transferido**, não a tarifa comercial, que é fato separado no ledger. Publicação encerra a vigência anterior e cria nova versão; aprovação maker-checker é S21. |
 
 ---
 
@@ -82,6 +83,8 @@ Todas as respostas de erro retornam payload JSON padronizado:
 | **QIT001023** | `409 Conflict` | `DuplicatedUserEmail` | E-mail já cadastrado em `app_user`. |
 | **QIT001024** | `503 Service Unavailable` | `DatabaseOperationTimeout` | `lock_timeout` ou `statement_timeout` do PostgreSQL esgotado; a tentativa foi desfeita e pode ser repetida com segurança, observada a mesma `Idempotency-Key` nas operações financeiras. |
 | **QIT001025** | `503 Service Unavailable` | `DatabaseTransientFailure` | Deadlock (`40P01`) ou falha de serialização (`40001`) persistiu após retentativas transacionais seguras; repita a operação financeira com a mesma `Idempotency-Key`. |
+| **QIT001026** | `409 Conflict` | `ProductNotEnabled` | A política de risco vigente da PME desabilitou o produto solicitado (`TRANSFER`, `BILLING_PLAN` ou `CREDIT_ADVANCE`). |
+| **QIT001027** | `422 Unprocessable` | `RiskLimitExceeded` | Valor por transferência, teto diário de transferências, valor de antecipação ou quantidade de boletos excede a política de risco vigente. |
 
 ### Erros de infraestrutura HTTP
 
@@ -548,4 +551,34 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
   um snapshot imutável, portanto uma alteração comercial não reprifica fatos
   anteriores. O endpoint é administrativo interno nesta etapa; estados e
   aprovação maker-checker pertencem à S21.
+- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001001`.
+
+---
+
+### 3.10. Política de risco e produto (`/risk-policy`)
+
+#### `POST /risk-policy`
+- **Cabeçalhos:** `INTERNAL-TOKEN`.
+- **Body de Entrada:**
+  ```json
+  {
+    "customer_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
+    "transfer_enabled": true,
+    "billing_plan_enabled": true,
+    "credit_advance_enabled": true,
+    "max_transfer_amount": 500000,
+    "daily_outgoing_limit": 1000000,
+    "max_credit_advance_amount": 2000000,
+    "max_advance_bank_slips": 20
+  }
+  ```
+  `customer_key` ausente ou `null` cria a regra padrão. Valores monetários são
+  centavos inteiros não negativos; `max_advance_bank_slips` está entre 1 e 50.
+- **Resposta Sucesso (`201 Created`):** `policy_key`, `customer_key`,
+  `version`, habilitações, quatro limites e `effective_from`.
+- **Semântica:** a regra específica vigente vence a padrão. Publicar uma nova
+  versão encerra a vigência anterior do mesmo escopo sem alterar seus termos.
+  Transferências atualizam o consumo diário por PME dentro do mesmo commit;
+  portanto duas contas da mesma PME não ultrapassam o teto em conjunto. A
+  decisão e seu consumo antes/depois ficam em snapshot e no `audit_event`.
 - **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001001`.
