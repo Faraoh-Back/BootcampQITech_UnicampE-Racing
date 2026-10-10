@@ -1,6 +1,6 @@
 # Checkpoint T3.1 — RFC 2.8
 
-Data da revisão original: 2026-10-03. Atualizações de S11, S12, S13, S14, S15 e T4.5: 2026-10-09.
+Data da revisão original: 2026-10-03. Atualizações de S11–S21 e T4.5/T4.75: 2026-10-10.
 
 ## Escopo conferido
 
@@ -23,7 +23,7 @@ Data da revisão original: 2026-10-03. Atualizações de S11, S12, S13, S14, S15
 ## Itens deliberadamente futuros
 
 - **T5.3:** PDF oficial da RFC. O plano já o posterga para a entrega final; não há template ou gerador no repositório neste momento.
-- **R4.5 remanescente:** nenhum item. O Gate 3 opcional está evidenciado; S11, S12, S13, S14, S15 e T4.5 foram concluídas.
+- **R4.5 e R4.75:** entregues. Além do Gate 3, preço/risco versionados, cotação informativa e propostas maker-checker possuem contratos, snapshots/auditoria e testes HTTP. O benchmark foi reexecutado no fechamento; seus artefatos e números contextualizados estão em `BENCHMARK.md`.
 
 O checkpoint confirma o escopo entregue na data indicada. As evoluções P0/P1
 posteriormente registradas na seção 9.5 do plano não são bugs escondidos deste

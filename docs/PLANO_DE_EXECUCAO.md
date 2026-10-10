@@ -108,7 +108,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 - **Fazer:**
   1. Adicionar o serviço `mock` (MockServer) ao `docker-compose.yml`. A imagem pode não ter `curl`; se o `healthcheck` for complicado, use `depends_on: condition: service_started` e faça os testes esperarem `PUT /mockserver/status`.
   2. Conferir `depends_on: db: condition: service_healthy` para a API e o multi-stage do `Dockerfile` com `USER` não-root (se já existir no base, não mexa).
-  3. `.env.example` e `.env` com: `INTERNAL_TOKEN`, `BANKSLIP_API_URL`, `CENTRAL_BANK_API_URL` (ambos apontando para `http://mock:1080`), `TRANSFER_FEE_CENTS=100`, `ADVANCE_FEE_PERCENT=3`, `NIGHT_START`, `NIGHT_END`, `NIGHT_LIMIT_CENTS` (valores da D8).
+  3. `.env.example` e `.env` com: `INTERNAL_TOKEN`, `BANKSLIP_API_URL`, `CENTRAL_BANK_API_URL` (ambos apontando para `http://mock:1080`), `NIGHT_START`, `NIGHT_END`, `NIGHT_LIMIT_CENTS` e `TIMEZONE`. Tarifas deixaram de ser variáveis de ambiente na S17: são políticas versionadas em banco.
 - **Pronto quando:** `docker compose up` sobe `api`, `db` e `mock`, e `curl localhost:<porta>/health_check` responde `204`.
 
 ### T0.5 Infra de testes de caixa-preta (C, 2h)
@@ -215,7 +215,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 ### S5 Transferência com tarifa (A, 5h)
 - **Depende de:** S3, S4 (para conferir pelo extrato).
 - **Vermelho:** `TRANSFER` 201; origem perde valor mais tarifa, destino ganha o valor; o extrato da origem tem `TRANSFER_OUT` e `TRANSFER_FEE`, o do destino `TRANSFER_IN`, as três com o mesmo `operation_key`; casos de borda: saldo igual ao valor (sem a tarifa) responde 422, saldo igual a valor mais tarifa responde 201 e deixa saldo 0; destino igual à origem 422 `QIT001012`; destino inexistente 404; destino ou origem bloqueados 409 `QIT001006`; **nenhuma escrita parcial** quando falha (saldos e extratos intactos).
-- **Verde:** uma única consulta trava as duas contas com `FOR NO KEY UPDATE ORDER BY id` (compatível com a FK da reserva de idempotência); tarifa de `TRANSFER_FEE_CENTS`; três linhas no ledger com `balance_after`; atualiza os dois saldos; `commit` único.
+- **Verde:** uma única consulta trava as duas contas com `FOR NO KEY UPDATE ORDER BY id` (compatível com a FK da reserva de idempotência); tarifa da `pricing_policy` vigente e snapshot aplicado; até três linhas no ledger com `balance_after`; atualiza os dois saldos; `commit` único.
 - **Pronto quando:** testes verdes e a invariante "soma do extrato igual ao saldo" vale para as duas contas.
 
 ### S9 Reajuste e lote 2 (B, 5h)
@@ -342,6 +342,7 @@ noturno, status inválido e boleto inelegível continuam sendo respostas finais
 do pedido atual.
 
 ### T4.75 Exemplos práticos para RFC e defesa (C, 2h)
+- **Status:** concluída em 2026-10-09. A RFC agora inclui exemplos de A→B/B→A como risco de ordem de travas, a diferença entre retry transitório e saldo insuficiente, os dois fluxos de boleto/antecipação, precificação/risco por PME, cotação informativa e maker-checker. A defesa deve dizer que lock é por ID interno crescente — nunca IP — e que mudança normal de saldo durante novas requisições não é deadlock.
 - **Fazer:** inserir na RFC exemplos curtos de deadlock potencial A→B/B→A e sua prevenção por **ID interno crescente**, nunca IP; serialização de uma requisição esperando a primeira conta; diferença entre falha de negócio e infraestrutura; e separação entre cobrança da PME e antecipação.
 - **Não fazer:** usar “A estava sem saldo, B transferiu e A passou depois” como exemplo de deadlock. Isso é mudança normal de estado, não ciclo de travas.
 - **Pronto quando:** o time explica deadlock em menos de um minuto e não promete retry automático de `422` nem chama antecipação de empréstimo sem lastro.
@@ -396,40 +397,45 @@ do pedido atual.
 ## 9. Rodada 5: Entrega (~9h)
 
 ### T5.1 Teste de pipeline da jornada da PME (C, 3h)
-- **Status:** existe uma primeira jornada em `tests/test_pme_journey.py`, mas ela ainda precisa de endurecimento antes de ser considerada evidência final: status exatos, variáveis padrão do MockServer, sem `print` e paginação que prove a soma de todo o extrato.
+- **Status:** **parcial**. A primeira jornada existe em `tests/test_pme_journey.py` e a suíte completa está verde (155 testes na última validação registrada), mas a jornada ainda não é evidência final: aceita status alternativos, usa `print`, tem padrão de host do MockServer diferente da infraestrutura de testes e consulta somente uma página sem provar a soma de **todo** o extrato.
 - **Fazer:** um teste de ponta a ponta: criar cliente, criar conta, depositar, emitir plano de boletos (expectativas no MockServer), antecipar, consultar extrato paginado, e conferir a soma do extrato contra o saldo.
 - **Pronto quando:** roda verde do zero, com `reset()` do mock no início.
 
 ### T5.2 Varredura de cobertura de erros (A, 3h)
-- **Status:** parcial. `COBERTURA.md` mapeia o núcleo financeiro; ainda faltam autenticação, auditoria, métricas, timeout, outbox e a reconciliação formal de todos os códigos publicados.
+- **Status:** **parcial**. `COBERTURA.md` documenta o núcleo financeiro e as entregas transversais (identidade, auditoria, métricas, timeout, outbox, precificação, risco, cotação e dupla aprovação), porém ainda falta a reconciliação formal de **cada** código publicado com rota e teste que o provoca.
 - **Fazer:** tabela em `docs/COBERTURA.md`: cada código `QIT` do catálogo e a rota, ligados ao teste que o provoca. Cada rota deve ter pelo menos um teste de sucesso e um de erro. Preencher o que faltar.
 - **Pronto quando:** nenhum código do catálogo sem teste (ou removido da RFC com justificativa).
 
 ### T5.3 RFC final e PDF (B, 3h)
-- **Status:** RFC Markdown consolidada no modelo oficial; geração e revisão do PDF final continuam pendentes.
+- **Status:** **parcial**. A RFC Markdown está consolidada no modelo oficial, versão 3.0, incluindo os fluxos e as evoluções S11--S21; geração, revisão visual e versionamento do PDF final continuam pendentes.
 - **Fazer:** atualizar a RFC (rotas, DER, fluxos, alternativas descartadas no formato "descartada porque X, ganharia se Y", principal desafio); cortar para o limite de 2 a 4 páginas (sugestão: reduzir a tabela de rotas ao essencial, cortar uma alternativa, enxugar fluxos secundários); gerar o PDF final; conferir que o diagrama está legível.
 - **Pronto quando:** PDF com as duas seções fixas, diagrama renderizado, tabela de rotas com erros e idempotência, e revisado pelos três.
 
 ### T5.4 README e `.env` (A, 1,5h)
+- **Status:** **parcial, substancialmente concluída**. O README da API explica pré-requisitos, Compose, testes, recriação do banco, variáveis e estrutura de camadas. Falta somente uma tabela explícita que rastreie as seções/decisões da RFC até os módulos e testes correspondentes.
 - **Fazer:** README com como subir (`docker compose up`), como testar (`pytest`), variáveis de ambiente e a decisão D8, estrutura de pastas e mapa da RFC para o código.
 - **Pronto quando:** alguém que não participou consegue seguir só o README.
 
 ### T5.5 Teste de clone limpo em Linux (A, 1,5h)
+- **Status:** **pendente**. A execução local e o benchmark foram registrados, mas não há evidência de clone novo executado por outra pessoa em ambiente Linux limpo.
 - **Fazer:** numa máquina ou VM Linux **limpa** (a do jurado é Linux): `git clone` do repositório, **sem editar nada**, `docker compose up --build`, esperar `healthy`, `pip install -r requirements-dev.txt`, `pytest`. Se o `.env` for necessário, ele precisa estar versionado ou ter padrões no compose.
 - **Pronto quando:** tudo verde sem nenhum passo manual além dos comandos do README. Quem executa **não** pode ser quem escreveu o compose.
 
 ### T5.6 Apresentação em PDF (B e C, 2h cada)
+- **Status:** **pendente**. Não há apresentação final em PDF versionada no repositório.
 - **Fazer:** a apresentação explica o sistema no lugar de vocês: o enredo da PME (cobra, recebe, antecipa, paga, audita), o ecossistema (API, banco, mock), a regra de negócio (o que o sistema permite, o que barra e por quê), o principal desafio com o diagrama de concorrência, e as decisões descartadas. Slides ou documento, em PDF.
 - **Pronto quando:** PDF final revisado pelos três.
 
 ### T5.7 Ensaio da defesa (A, B e C, 2h cada)
+- **Status:** **pendente**. Exige ensaio humano e registro objetivo de que o time consegue defender as decisões sem consultar o código.
 - **Fazer:** lista de perguntas prováveis e ensaio cruzado: por que lock pessimista? por que a ordem de travas por `id`? o que acontece se o commit falha depois de o conector emitir? por que 404 e não 403? por que centavos? por que o saldo é cache e o ledger é a verdade? como provam que o teste é caixa-preta? por que `ON CONFLICT`? o que cortaram e por quê? Cada pessoa deve saber explicar **qualquer** decisão.
 - **Pronto quando:** cada pessoa respondeu todas as perguntas da lista sem consultar o código.
 
 ### T5.8 Buffer de bugs (A, B e C, ~4h no total)
-- Reservado para o que o clone limpo e o ensaio acharem. Não gaste em funcionalidade nova.
+- **Status:** **aberto por definição**. Reservado para o que o clone limpo, a geração do PDF e o ensaio acharem; não deve ser convertido em funcionalidade nova.
 
 ### T5.9 Publicação (C, 0,25h)
+- **Status:** **pendente de confirmação externa**. Antes da entrega, verificar o repositório público em janela anônima e confirmar o commit e os artefatos finais visíveis.
 - Tornar o repositório **público**, abrir em janela anônima, conferir que o último commit é o esperado e que a RFC em PDF está no repositório ou anexada. O que estiver no repositório nessa data é o que a banca vê.
 
 ---
@@ -537,16 +543,16 @@ Pegue uma destas quando estiver bloqueado esperando outra trilha:
 
 ## 12. Checklist final de entrega
 
-- [ ] R1: nenhum arquivo de `tests/` importa `src/` (teste guardião verde).
-- [ ] R2: `docker compose up` sobe tudo sem passos manuais, em Linux limpo.
-- [ ] R3: cada falha tem código `QIT` específico, todos com teste.
-- [ ] R4: nada some; eventos de status visíveis por HTTP; sem `is_deleted`.
-- [ ] R5: nenhuma resposta traz `id` numérico do banco.
-- [ ] R6: nenhum `float` em dinheiro, nem no `0.03`, nem na taxa do índice.
-- [ ] R7: RFC com decisões tomadas e descartadas ("ganharia se ...").
-- [ ] R8: lançamento de outra conta responde 404 com o mesmo corpo do inexistente, com teste.
-- [ ] Concorrência: testes de saque, transferência cruzada, idempotência simultânea e antecipação dupla verdes em 5 repetições.
-- [ ] RFC em PDF com 2 seções fixas, 2 a 4 páginas, diagrama renderizado.
-- [ ] Apresentação em PDF.
-- [ ] Repositório público no dia da entrega, README completo.
-- [ ] Os três sabem defender qualquer decisão.
+- [x] R1: nenhum arquivo de `tests/` importa `src/` (teste guardião verde).
+- [ ] R2: `docker compose up` sobe tudo sem passos manuais, em Linux limpo. **Pendente:** clone limpo independente.
+- [ ] R3: cada falha tem código `QIT` específico, todos com teste. **Parcial:** falta matriz exaustiva código--rota--teste.
+- [x] R4: eventos de status e de auditoria são append-only na aplicação e visíveis pelos contratos previstos; não há `is_deleted` no domínio financeiro.
+- [x] R5: os DTOs públicos expõem chaves UUID, não IDs numéricos internos.
+- [ ] R6: nenhum `float` em dinheiro, nem no `0.03`, nem na taxa do índice. **Pendente de hardening P0.3:** provar rejeição em toda a fronteira HTTP.
+- [x] R7: RFC com decisões tomadas e descartadas ("ganharia se ...").
+- [x] R8: lançamento de outra conta responde 404 com o mesmo corpo do inexistente, com teste.
+- [x] Concorrência: saque, transferência cruzada, idempotência simultânea e antecipação dupla passaram no benchmark registrado (5 cenários, 5 repetições; 9,45 s).
+- [ ] RFC em PDF com 2 seções fixas, 2 a 4 páginas, diagrama renderizado. **Pendente:** gerar e revisar PDF.
+- [ ] Apresentação em PDF. **Pendente.**
+- [ ] Repositório público no dia da entrega, README completo. **Parcial:** README está disponível; publicação e checagem anônima pendentes.
+- [ ] Os três sabem defender qualquer decisão. **Pendente:** ensaio cruzado.

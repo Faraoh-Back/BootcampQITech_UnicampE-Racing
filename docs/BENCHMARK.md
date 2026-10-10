@@ -173,3 +173,23 @@ limitado ou Docker Desktop não é comparável por esse critério.
 - A T4.5 fornece método e evidência; benchmarking de produção e capacidade
   sustentada continuam exigindo observabilidade contínua e plano de carga
   próprio.
+
+## 9. Execução de fechamento S16–S21
+
+Uma nova execução local foi feita em **2026-10-10 01:24 UTC**, no commit
+`f640832963a13fd626ebd0b575378c49d01b3851`, com três alterações documentais
+locais no momento da coleta. O ambiente foi Linux x86_64, 16 CPUs lógicas, 15
+GiB visíveis, Docker 29.5.3, Compose 5.1.4 e Python 3.11.2.
+
+| Campo | Observação |
+|---|---|
+| Carga | 5 × 40 transferências cruzadas de 100 centavos; 200 operações |
+| Correção | `5 passed in 9.45s`; `pytest_exit_code=0` |
+| Duração de parede | **9,809 s** |
+| Ocioso | API 0,28% / 92,37 MiB; PostgreSQL 0,21% / 45,68 MiB; MockServer 0,10% / 225,5 MiB |
+| Pico amostrado | API 98,12% CPU / 111,7 MiB; PostgreSQL 58,70% CPU / 133 MiB; MockServer 9,73% CPU / 225,6 MiB |
+| Artefatos locais | `baas-pme-api/artifacts/benchmarks/20261010T012431Z/` |
+
+Esta coleta continua sendo uma observação única e local, não comparação direta
+com a linha de base anterior nem SLO. Sua evidência importante é funcional: a
+carga inteira terminou verde com a invariância de saldo verificada pelo teste.

@@ -4,7 +4,7 @@
 |---|---|
 | **Time** | Cairê Belo · Pedro Campanha |
 | **Data** | 09/10/2026 |
-| **Versão** | 2.8 — consolidação das entregas até T4.5 |
+| **Versão** | 3.0 — consolidação das entregas até S21 |
 
 ## Contextualização
 
@@ -12,7 +12,7 @@
 
 Uma PME cobra mensalidades, recebe boletos, paga fornecedores e pode antecipar recebíveis para preservar caixa. O BaaS cadastra a PME e conta, movimenta dinheiro, emite boletos reajustados, antecipa recebíveis e entrega extrato. Sistemas internos usam credencial de serviço; usuários remotos operam conforme o papel na própria PME.
 
-Dinheiro exige saldo não negativo, retentativa sem duplicação, boleto antecipado uma única vez e extrato que explique a projeção de saldo. Falhas violariam o caixa, duplicariam pagamento/crédito ou destruiriam rastreabilidade. Estão fora do escopo: baixa de boleto, estorno, múltiplas moedas, reajuste agendado, SLO/capacidade produtiva e instalação de Alertmanager/cAdvisor. Bloqueio/cancelamento, identidade, auditoria verificável, métricas, timeout, notificação pós-commit e precificação comercial versionada foram entregues.
+Dinheiro exige saldo não negativo, retentativa sem duplicação, boleto antecipado uma única vez e extrato que explique a projeção de saldo. Falhas violariam o caixa, duplicariam pagamento/crédito ou destruiriam rastreabilidade. Estão fora do escopo: baixa de boleto, estorno, múltiplas moedas, reajuste agendado, SLO/capacidade produtiva e instalação de Alertmanager/cAdvisor. Bloqueio/cancelamento, identidade, auditoria verificável, métricas, timeout, notificação pós-commit, precificação, risco, cotação e aprovação em duas etapas foram entregues.
 
 Saques e transferências entre 20h e 6h, em `America/Sao_Paulo`, limitam cada operação a 100000 centavos; depósito não limita. Valores financeiros são centavos inteiros. O fluxo transacional e os testes concorrentes protegem saldo/ledger; a imutabilidade protegida diretamente pelo banco existe para `audit_event`. Expandir essa proteção a todo o ledger e reconciliar saldo independentemente é evolução P0 no plano.
 
@@ -68,6 +68,9 @@ Exceto `/` e `/health_check`, as rotas exigem `INTERNAL-TOKEN`. Em rotas de cont
 ```mermaid
 erDiagram
  CUSTOMER ||--o{ ACCOUNT : possui
+ CUSTOMER ||--o{ PRICING_POLICY : precifica
+ CUSTOMER ||--o{ RISK_POLICY : limita
+ CUSTOMER ||--o{ POLICY_CHANGE_REQUEST : governa
  CUSTOMER ||--o{ USER_CUSTOMER_ACCESS : autoriza
  APP_USER ||--o{ USER_CUSTOMER_ACCESS : possui_papel
  APP_USER ||--o{ USER_SESSION : abre
@@ -77,6 +80,7 @@ erDiagram
  ACCOUNT ||--o{ BILLING_PLAN : contrata
  ACCOUNT ||--o{ CREDIT_ADVANCE : solicita
  ACCOUNT ||--o{ OUTBOX_EVENT : notifica
+ ACCOUNT ||--o{ QUOTE : recebe
  BILLING_PLAN ||--o{ BANK_SLIP : gera
  CREDIT_ADVANCE |o--o{ BANK_SLIP : antecipa
  BANK_SLIP ||--o{ BANK_SLIP_STATUS_EVENT : historiza
@@ -92,6 +96,13 @@ erDiagram
  USER_CUSTOMER_ACCESS { int user_id FK int customer_id FK varchar role }
  AUDIT_EVENT { varchar actor_type char64 previous_hash char64 event_hash UK timestamp event_datetime }
  OUTBOX_EVENT { char36 event_key UK varchar topic int delivery_attempts timestamp next_attempt_at timestamp published_at }
+ PRICING_POLICY { char36 policy_key UK int version bigint fixed_fee_cents int percentage_basis_points timestamp effective_from timestamp effective_until }
+ PRICING_SNAPSHOT { char36 policy_key int policy_version bigint base_amount bigint fee_amount timestamp applied_at }
+ RISK_POLICY { char36 policy_key UK int version boolean transfer_enabled bigint daily_outgoing_limit }
+ RISK_POLICY_SNAPSHOT { char36 policy_key int policy_version bigint requested_amount bigint daily_outgoing_before bigint daily_outgoing_after }
+ CUSTOMER_DAILY_OUTGOING { int customer_id date operation_date bigint consumed_amount }
+ QUOTE { char36 quote_key UK varchar operation bigint gross_amount bigint fee_amount timestamp expires_at }
+ POLICY_CHANGE_REQUEST { char36 request_key UK varchar policy_type varchar status int creator_user_id int approver_user_id char36 published_policy_key }
  ACCOUNT_STATUS_EVENT { int account_id FK timestamp event_datetime }
  BANK_SLIP_STATUS_EVENT { int bank_slip_id FK timestamp event_datetime }
 ```
@@ -122,6 +133,23 @@ erDiagram
 1. `POST /quote` lê as políticas de preço e risco vigentes, calcula a tarifa em centavos e registra uma prévia com expiração de 60 segundos. Para antecipação, os boletos ainda precisam ser próprios, pendentes e não antecipados na leitura.
 2. A cotação não reserva saldo, consumo diário, boleto ou tarifa. Ela apenas permite que o integrador apresente custo e limite observados naquele instante.
 3. Escritas financeiras não recebem `quote_key` nem `fee_amount`: na transação elas travam os recursos necessários e recalculam tudo. Logo, uma mudança de regra após a cotação é aplicada com segurança, sem divergência entre ledger e política atual.
+
+**Governança de preço e risco — maker-checker**
+
+1. Para uma PME, um `OWNER` autenticado cria `policy_change_request` em `DRAFT` e a submete para `PENDING_APPROVAL`.
+2. Outro `OWNER` da mesma PME aprova. A linha é travada, o criador é recusado como aprovador e somente então uma nova versão de preço ou risco é publicada como vigente.
+3. A proposta pendente fica fora de `pricing_policy` e `risk_policy`; portanto não influencia cotação nem escrita financeira. Rascunho, submissão, aprovação, criador, aprovador e chave publicada formam evidência no `audit_event`.
+
+As rotas diretas de publicação de preço e risco permanecem apenas como
+bootstrap técnico interno e compatibilidade de ambiente. Para uma condição
+comercial de PME, o fluxo suportado e defensável é a proposta maker-checker;
+em produção, a fronteira de API Gateway deve restringir as rotas de bootstrap.
+
+**Timeout, retry e fronteira externa**
+
+1. Conectores usam orçamento de conexão/leitura e MockServer nos testes; erro externo retorna `QIT001009` e não persiste fato local.
+2. Lock/statement timeout do PostgreSQL retorna `QIT001024`. Deadlock `40P01` ou serialização `40001` recebe no máximo uma nova tentativa de **toda a operação**, com sessão nova e a mesma `Idempotency-Key`; erro de negócio nunca é repetido esperando saldo.
+3. O aceite externo antes de falha local permanece uma janela de sistemas distribuídos; a referência externa determinística de plano+lote permite reconciliação. Não se simula atomicidade entre PostgreSQL e emissor HTTP.
 
 **Antecipação — caminho feliz e disputa**
 
@@ -158,6 +186,22 @@ cronograma de amortização ou boleto para devedor de crédito no escopo.
 1. Bloqueio/cancelamento grava evento de status, `audit_event` e `outbox_event` na mesma transação.
 2. Worker usa `FOR UPDATE SKIP LOCKED`, lease e backoff, e envia webhook com `Idempotency-Key = event_key`.
 3. Entrega é pelo menos uma vez; consumidor deduplica. A cadeia `audit_event` usa SHA-256, exportação/checkpoint e trigger contra `UPDATE`/`DELETE`; não é blockchain nem resiste a administrador do banco.
+
+### Evidências de qualidade e operação
+
+| Pilar | Evidência no repositório |
+|---|---|
+| Caixa-preta | `tests/` conversa com API/Compose/MockServer; `test_r1_guard.py` protege a regra de não importar `src/` nos testes de produto. |
+| Concorrência | Saque na última vaga, transferências cruzadas, idempotência simultânea, antecipação dupla e teto diário compartilhado são exercitados por HTTP. |
+| Integridade | Centavos `BIGINT`, `CHECK balance >= 0`, ledger, snapshots e um commit por controller financeiro. |
+| Auditoria | Cadeia SHA-256 append-only, checkpoint HTTP, eventos de domínio e propostas maker-checker. |
+| Métricas | `/metrics` expõe requisições/latência, erros QIT, conectores, replay, retry transitório, espera de lock, sessões e outbox, sem PII em rótulos. |
+| Benchmark | `scripts/benchmark_concurrency.sh` executa a carga S7c e registra ambiente, duração e `docker stats`; [BENCHMARK.md](BENCHMARK.md) explica limites da evidência. |
+
+O pipeline local é `docker compose up -d --build` seguido de
+`./.venv/bin/python -m pytest tests -q`. A mudança de `database.sql` exige
+recriação intencional do volume. A documentação operacional e os alertas estão
+em `COMO_INICIAR.md`, `ALERTAS.md`, `COBERTURA.md` e `BENCHMARK.md`.
 
 > ## Principal desafio
 >

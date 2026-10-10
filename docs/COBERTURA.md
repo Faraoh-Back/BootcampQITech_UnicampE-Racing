@@ -66,3 +66,21 @@
 ## Observações sobre Erros Legados (`sample_entity`)
 
 - **`QIT002001` a `QIT002004` e `QIT000010`**: Presentes nos arquivos de `tests/integration/sample_entity/`. São exclusivos das entidades de demonstração e não fazem parte das rotas e regras de negócio de produção do ecossistema BaaS PME.
+
+---
+
+## Entregas transversais e evolução comercial
+
+| Rota / comportamento | Código / resultado | Evidência de teste |
+|---|---|---|
+| `POST /user`, `/auth/login`, `/auth/refresh`, `/auth/logout` | sessão, rotação, revogação, `QIT001020`–`QIT001023` | `tests/integration/auth/test_auth.py` |
+| `GET /audit-events`, `/checkpoint` | cadeia SHA-256, append-only, checkpoint | `tests/integration/audit/test_audit.py` |
+| `GET /metrics` | métricas sem PII e erros/latência/locks | `tests/integration/metrics/test_metrics.py` |
+| Worker de outbox | lease, retry, entrega idempotente | `tests/integration/outbox/test_outbox.py` |
+| Timeout/retry PostgreSQL | `QIT001024`, `QIT001025`; não repetir `422` | `tests/integration/timeouts/test_timeouts.py`, `tests/integration/transaction/test_transient_retry.py` |
+| `POST /pricing-policy` | preço PME, fallback, nova versão, snapshots | `tests/integration/pricing/test_pricing_policy.py` |
+| `POST /risk-policy` | `QIT001026`, `QIT001027`, teto diário concorrente | `tests/integration/risk_policy/test_risk_policy.py` |
+| `POST /account/{key}/quote` | preço/risco vigente, expiração informativa e recálculo | `tests/integration/quote/test_quote.py` |
+| `/policy-change-request` | draft, submissão, outro OWNER aprova, autoaprovação `QIT001029` | `tests/integration/policy_change_request/test_maker_checker.py` |
+| Jornada PME | cobrança própria, antecipação única, crédito/tarifa no extrato | `tests/integration/credit_advance/test_receivables_flow.py`, `tests/test_pme_journey.py` |
+| Guarda R1 | testes de produto não importam módulos internos `src/` | `tests/test_r1_guard.py` |

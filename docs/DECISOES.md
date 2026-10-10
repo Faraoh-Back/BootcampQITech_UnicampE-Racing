@@ -13,7 +13,7 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D13)
 
-> **Estado RFC 2.8:** D1–D13 estão implementadas; S15 materializou a outbox, o publicador e as regras operacionais de alerta, e a T4.5 entregou a evidência de benchmark reproduzível.
+> **Estado RFC 3.0:** D1–D16 estão implementadas. S15 materializou a outbox, T4.5 entregou benchmark reproduzível e S16–S21 completaram retry transitório, preço, risco, cotação e maker-checker.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
