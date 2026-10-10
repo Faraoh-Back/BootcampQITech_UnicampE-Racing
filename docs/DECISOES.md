@@ -798,7 +798,7 @@ regras de propriedade, status e risco, não apenas líquido positivo.
 ## 4. Evidências, alternativas preservadas e referências técnicas
 
 Os resultados atuais e a matriz de testes estão em [COBERTURA.md](COBERTURA.md).
-O [CHECKPOINT_T3_1.md](CHECKPOINT_T3_1.md) é histórico, não catálogo vigente.
+O [checkpoint T3.1](PLANO_DE_EXECUCAO.md#13-checkpoint-histórico-t31), preservado na seção 13 do plano, é histórico, não catálogo vigente.
 
 **Reajuste sob demanda versus agendado:** o reajuste agendado foi descartado
 porque exigiria scheduler, política de execução/recuperação e controle temporal

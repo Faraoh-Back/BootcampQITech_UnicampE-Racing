@@ -17,11 +17,10 @@ documental com comportamento já validado na API.
 | [README da API](../baas-pme-api/README.md) | Guia único de instalação, execução, camadas e comandos de validação | Subir o serviço, executar testes e localizar código |
 | [COBERTURA](COBERTURA.md) | Matriz de features/erros/testes, resultados medidos e lacunas da revisão | Sustentar afirmações de qualidade com evidência |
 | [BENCHMARK](BENCHMARK.md) | Método, ambiente, resultados e limites da medição local de concorrência | Citar desempenho sem prometer capacidade/SLO |
-| [ALERTAS](ALERTAS.md) | Exemplos de regras operacionais, ainda sem stack coletor instalado | Planejar observabilidade produtiva, não provar alertas enviados |
+| [Regras de alerta — README da API](../baas-pme-api/README.md#regras-operacionais-de-alerta-s15) | Exemplos de regras operacionais, ainda sem stack coletor instalado | Planejar observabilidade produtiva, não provar alertas enviados |
 | [PLANO_DE_EXECUCAO](PLANO_DE_EXECUCAO.md) | Histórico de tarefas, estado de entrega e backlog 9.5 | Saber o que está concluído, parcial ou futuro |
-| [CHECKPOINT_T3_1](CHECKPOINT_T3_1.md) | Registro histórico da evolução, não especificação vigente | Entender marcos anteriores sem reutilizar contagens antigas |
-| [COMO_INICIAR](COMO_INICIAR.md) e guia de organização | Links de compatibilidade para o README único | Encontrar o guia atual a partir de caminhos antigos |
-| [Arquivo histórico](arquivo/) | Conteúdo anterior dos guias consolidados, preservado integralmente | Consulta histórica, não operação ou contrato atual |
+| [Checkpoint T3.1 — plano §13](PLANO_DE_EXECUCAO.md#13-checkpoint-histórico-t31) | Registro histórico da evolução, não especificação vigente | Entender marcos anteriores sem reutilizar contagens antigas |
+| [Arquivo histórico consolidado](arquivo/HISTORICO.md) | Conteúdo anterior dos guias consolidados, preservado integralmente | Consulta histórica, não operação ou contrato atual |
 
 ## Como montar a versão final da RFC
 
@@ -35,7 +34,8 @@ documental com comportamento já validado na API.
 4. Use `BENCHMARK.md` para carga/ambiente/data e recursos observados. Uma
    execução local verde não é capacidade garantida de produção.
 5. Consulte 9.5 do plano para não apresentar backlog como entregue; use
-   `ALERTAS.md` somente como proposta de monitoramento.
+   a [seção de alertas do README da API](../baas-pme-api/README.md#regras-operacionais-de-alerta-s15)
+   somente como proposta de monitoramento.
 6. A síntese [RFC_FINAL.md](entrega/RFC_FINAL.md) preserva as seções/rotas e os
    fluxos; seu PDF e DER vetorial são gerados pelas ferramentas de entrega.
    Guardas conferem entidades/relações, páginas e hashes, mas a legibilidade
@@ -46,3 +46,22 @@ antigos de 143/155 testes e benchmarks anteriores permanecem identificados
 como históricos. Não usar “100% seguro” como conclusão, mesmo após fechar
 backlog. Garantias de imutabilidade, formato de erro, gateway e entrega externa
 devem respeitar mecanismo, teste e fronteira realmente demonstrados.
+
+## Consolidação dos guias — 10/10/2026
+
+Foram reduzidos cinco arquivos Markdown, sem descarte de conteúdo. Os caminhos
+anteriores abaixo são referências históricas, não arquivos a manter em paralelo.
+Links e guardas documentais usam os destinos atuais; referências textuais antigas
+no backlog 9.5 devem ser interpretadas por este mapa, sem alterar seu escopo.
+
+| Caminho anterior | Destino atual |
+|---|---|
+| `entrega/DEFESA.md` | [ENTREGA §6 — defesa e ensaio](entrega/ENTREGA.md#6-defesa-técnica-e-ensaio) |
+| `CHECKPOINT_T3_1.md` | [PLANO §13 — checkpoint histórico](PLANO_DE_EXECUCAO.md#13-checkpoint-histórico-t31) |
+| `ALERTAS.md` | [README da API — regras de alerta](../baas-pme-api/README.md#regras-operacionais-de-alerta-s15) |
+| `arquivo/COMO_INICIAR_T0_1.md`, `arquivo/ORGANIZACAO_API_ANTERIOR.md` e `COMO_INICIAR.md` | [HISTORICO — textos anteriores](arquivo/HISTORICO.md); operação vigente no [README da API](../baas-pme-api/README.md) |
+
+RFC, DECISOES, PLANO, COBERTURA e BENCHMARK continuam separados porque mantêm
+arquitetura, contratos, tarefas e evidências de naturezas distintas. RFC_FINAL
+é síntese para a banca, não substituto da referência integral. PDFs, fontes,
+SVGs, manifesto e ferramentas são necessários para reprodução da entrega.

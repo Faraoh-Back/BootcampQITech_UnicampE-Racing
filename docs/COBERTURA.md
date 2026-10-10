@@ -10,6 +10,27 @@ A regra de antecipação com líquido positivo foi aprovada após esta validaç�
 está documentada em DECISOES 3.5.1 e aguarda implementação/testes em P0.4.
 Os resultados abaixo não demonstram uma recusa que ainda não foi implementada.
 
+## Consolidação documental — 10/10/2026
+
+Os guias foram reunidos nos destinos do [índice da documentação](README.md#consolidação-dos-guias--10102026),
+reduzindo cinco arquivos Markdown sem descartar conteúdo. Foram acrescentadas
+duas guardas: preservação das seções/históricos nos documentos canônicos e
+resolução dos links locais/âncoras Markdown. Ambas falharam antes da migração;
+a segunda também identificou dois links já quebrados no guia histórico de setup,
+corrigidos ao reuni-lo em HISTORICO.
+
+| Verificação desta rodada documental | Resultado |
+|---|---|
+| Guardas estáticas na `.venv` da API | **12 passed, 196 deselected**, 0.13 s |
+| Coleta da suíte, sem executar cenários HTTP/SQL | **208 testes coletados**: 12 estáticos + 170 HTTP + 26 de infraestrutura |
+| Artefatos regenerados | RFC com quatro páginas e apresentação com dez; sem overflow, DER e hashes conferidos pelas guardas |
+| Preservação | Textos migrados comparados com as fontes anteriores; seção 9.5 do plano mantida literalmente |
+
+Não houve mudança de código da API, DDL, regras financeiras, workflow ou carga
+de benchmark. A suíte HTTP/infraestrutura e o benchmark **não foram reexecutados
+nesta consolidação**: suas evidências permanecem na execução isolada abaixo.
+Não apresentar a coleta de 208 testes como uma nova execução completa aprovada.
+
 ## Validação final da entrega em snapshot isolado
 
 Executada em **2026-10-10 07:30:27–07:33:26 UTC**, por

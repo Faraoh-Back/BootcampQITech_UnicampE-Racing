@@ -2,9 +2,11 @@
 
 import ast
 import hashlib
+import html
 import json
 from pathlib import Path
 import re
+from urllib.parse import unquote, urlsplit
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -98,8 +100,95 @@ def test_delivery_pdfs_have_expected_pages_and_are_not_empty():
 
 
 def test_delivery_does_not_present_excluded_business_rule_as_implemented():
-    for name in ("RFC_FINAL.md", "APRESENTACAO.md", "DEFESA.md"):
+    for name in ("RFC_FINAL.md", "APRESENTACAO.md", "ENTREGA.md"):
         document = (DOCS / "entrega" / name).read_text()
         assert "P0.4" in document
         assert "não implementada" in document
         assert "garantias verificadas" in document.lower()
+
+
+def _without_fenced_code(document):
+    return re.sub(r"(?ms)^```[^\n]*\n.*?^```[ \t]*(?:\n|$)", "", document)
+
+
+def _markdown_anchors(document):
+    document = _without_fenced_code(document)
+    anchors = set(re.findall(r'<[^>]+\bid=[\"\']([^\"\']+)[\"\']', document))
+    seen = {}
+    for heading in re.findall(r"^#{1,6}\s+(.+)$", document, re.MULTILINE):
+        heading = re.sub(r"\s+#+\s*$", "", heading)
+        heading = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading)
+        heading = re.sub(r"<[^>]+>", "", html.unescape(heading))
+        slug = re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
+        occurrence = seen.get(slug, 0)
+        anchors.add(f"{slug}-{occurrence}" if occurrence else slug)
+        seen[slug] = occurrence + 1
+    return anchors
+
+
+def test_documentation_consolidation_keeps_canonical_sections_and_history():
+    expected = {
+        DOCS / "entrega/ENTREGA.md": (
+            "## 6. Defesa técnica e ensaio",
+            "### 6.1 Roteiro de 10 minutos",
+            "### 6.2 Perguntas e respostas sustentáveis",
+            "### 6.3 Registro de ensaio — preencher após realizar",
+        ),
+        DOCS / "PLANO_DE_EXECUCAO.md": (
+            "## 13. Checkpoint histórico T3.1",
+            "Data da revisão original: 2026-10-03.",
+            "O marco histórico após S15 foi `143 passed`; após S21, `155 passed`.",
+        ),
+        DOCS / "arquivo/HISTORICO.md": (
+            "## Guia de Inicialização e Setup do Ambiente (T0.1)",
+            "## Como o BaaS PME é organizado",
+            "## Inicialização — guia consolidado",
+            "Critério de Conclusão da Tarefa T0.1",
+            "não use suas instruções",
+        ),
+        PROJECT / "README.md": (
+            "## Regras operacionais de alerta (S15)",
+            "BaaSHighServerErrorRate",
+            "BaaSConnectorFailures",
+            "BaaSSlowDatabaseLock",
+            "BaaSOutboxBacklog",
+            "BaaSOutboxDeliveryFailures",
+            "estes exemplos não enviam alertas sozinhos.",
+        ),
+    }
+    for source, fragments in expected.items():
+        document = source.read_text()
+        for fragment in fragments:
+            assert fragment in document, f"Conteúdo consolidado ausente: {source}: {fragment}"
+    for relative in (
+        "entrega/DEFESA.md", "CHECKPOINT_T3_1.md", "ALERTAS.md", "COMO_INICIAR.md",
+        "arquivo/COMO_INICIAR_T0_1.md", "arquivo/ORGANIZACAO_API_ANTERIOR.md",
+    ):
+        assert not (DOCS / relative).exists(), f"Guia redundante reintroduzido: {relative}"
+
+
+def test_documentation_local_links_and_markdown_anchors_resolve():
+    sources = [
+        *DOCS.glob("*.md"),
+        *(DOCS / "arquivo").glob("*.md"),
+        *(DOCS / "entrega").glob("*.md"),
+        PROJECT.parent / "README.md",
+        PROJECT / "README.md",
+        *(PROJECT / "docs").glob("*.md"),
+    ]
+    missing = []
+    for source in sources:
+        document = _without_fenced_code(source.read_text())
+        document = re.sub(r"`[^`\n]+`", "", document)
+        for target in re.findall(r"!?\[[^\]\n]*\]\(([^)\n]+)\)", document):
+            target = target.strip().strip("<>")
+            if urlsplit(target).scheme or target.startswith("//"):
+                continue  # Somente links locais: não depende de internet nem do deploy.
+            path, _, fragment = target.partition("#")
+            resolved = (source.parent / unquote(path)).resolve() if path else source
+            if not resolved.exists():
+                missing.append(f"{source.relative_to(PROJECT.parent)} -> {target}")
+            elif fragment and resolved.suffix == ".md":
+                if unquote(fragment) not in _markdown_anchors(resolved.read_text()):
+                    missing.append(f"{source.relative_to(PROJECT.parent)} -> {target} (âncora)")
+    assert not missing, "Links documentais quebrados:\n" + "\n".join(missing)

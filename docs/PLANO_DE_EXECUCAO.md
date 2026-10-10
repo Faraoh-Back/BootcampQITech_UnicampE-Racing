@@ -233,6 +233,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 - **Pronto quando:** 5 repetições seguidas verdes; se instável, a causa foi achada, não escondida com `sleep`.
 
 ### T3.1 Checkpoint da RFC (C, 1,5h)
+- **Registro preservado:** [seção 13](#13-checkpoint-histórico-t31), reunida neste plano em 10/10/2026; não substitui contratos/evidências atuais.
 - **Status:** concluído no checkpoint original RFC 2.1 e consolidado na RFC 2.2 após S7c e o roadmap da R4.5.
 - **Feito:** releitura de `docs/RFC.md` contra código, `DECISOES.md`, DDL, schemas e testes; revisão de rotas, códigos de erro, DER e fluxos; versão da RFC elevada para 2.1. O checkpoint registrou explicitamente o que ainda era futuro naquele momento. As entregas posteriores S7b, S10 e S7c estão documentadas como concluídas nas respectivas seções abaixo.
 - **PDF:** adiado de propósito para T5.3, como já determina T0.3; ainda não existe template oficial nem gerador de PDF no repositório. Assim não há um PDF provisório a regenerar ou páginas a contar neste checkpoint.
@@ -321,7 +322,7 @@ com o Gate 2 verde.
 - **Fazer:** criar `outbox_event` na mesma transação do fato de negócio e um publicador separado. Alarmes operacionais cobrem aumento de `5xx`, falha de conector, lock lento e uso sustentado de recursos; notificações de domínio podem comunicar bloqueio/cancelamento ao responsável da PME.
 - **Não fazer:** enviar e-mail ou webhook dentro do controller antes do commit, pois uma falha externa não pode desfazer ou duplicar uma operação financeira.
 - **Pronto quando:** o commit cria o evento de saída junto com a mudança de domínio; repetição do publicador é idempotente; falha de entrega é retentável e observável.
-- **Evidência entregue:** `outbox_event` é criado junto de bloqueio/cancelamento e da auditoria; `workers/outbox_publisher.py` roda separado (ou no perfil Compose `workers`), usa `FOR UPDATE SKIP LOCKED`, lease e backoff exponencial. O webhook recebe `Idempotency-Key=event_key`; sucesso não volta à fila e falha mantém a linha para nova tentativa. `baas_outbox_pending_events`, `baas_outbox_retrying_events` e `baas_outbox_delivery_attempts_total` são derivados do estado persistido no `/metrics`, enquanto `docs/ALERTAS.md` fornece regras para 5xx, conectores, locks, outbox e recursos de container. Três testes HTTP/MockServer provam commit conjunto, não republicação e retentativa.
+- **Evidência entregue:** `outbox_event` é criado junto de bloqueio/cancelamento e da auditoria; `workers/outbox_publisher.py` roda separado (ou no perfil Compose `workers`), usa `FOR UPDATE SKIP LOCKED`, lease e backoff exponencial. O webhook recebe `Idempotency-Key=event_key`; sucesso não volta à fila e falha mantém a linha para nova tentativa. `baas_outbox_pending_events`, `baas_outbox_retrying_events` e `baas_outbox_delivery_attempts_total` são derivados do estado persistido no `/metrics`, enquanto a [seção de alertas do README da API](../baas-pme-api/README.md#regras-operacionais-de-alerta-s15) fornece regras para 5xx, conectores, locks, outbox e recursos de container. Três testes HTTP/MockServer provam commit conjunto, não republicação e retentativa.
 
 ### T4.5 Benchmark reproduzível de concorrência (C, 2h)
 - **Status:** concluída em 2026-10-09. A carga S7c canônica passou 5 vezes (40 transferências cruzadas por repetição) em 6,753 s de parede no ambiente de referência.
@@ -428,7 +429,7 @@ do pedido atual.
 - **Pronto quando:** PDF final revisado pelos três.
 
 ### T5.7 Ensaio da defesa (A, B e C, 2h cada)
-- **Status:** **roteiro concluído; ensaio humano pendente**. `docs/entrega/DEFESA.md` organiza roteiro de dez minutos, perguntas/respostas sustentadas pelos contratos e folha de registro. Cada integrante deve apresentar e responder sem consultar código; os campos de aceite não foram preenchidos pelo agente.
+- **Status:** **roteiro concluído; ensaio humano pendente**. a [seção de defesa do guia de entrega](entrega/ENTREGA.md#6-defesa-técnica-e-ensaio) organiza roteiro de dez minutos, perguntas/respostas sustentadas pelos contratos e folha de registro. Cada integrante deve apresentar e responder sem consultar código; os campos de aceite não foram preenchidos pelo agente.
 - **Fazer:** lista de perguntas prováveis e ensaio cruzado: por que lock pessimista? por que a ordem de travas por `id`? o que acontece se o commit falha depois de o conector emitir? por que 404 e não 403? por que centavos? por que o saldo é cache e o ledger é a verdade? como provam que o teste é caixa-preta? por que `ON CONFLICT`? o que cortaram e por quê? Cada pessoa deve saber explicar **qualquer** decisão.
 - **Pronto quando:** cada pessoa respondeu todas as perguntas da lista sem consultar o código.
 
@@ -645,3 +646,48 @@ Esses números são estimativas históricas de planejamento, não horas efetivam
 - [x] Apresentação em PDF, dez slides 16:9, fontes editáveis e guardas/hash. **Aceite do time pendente.**
 - [ ] Repositório público no dia da entrega, README completo. **Parcial:** README está disponível; publicação e checagem anônima pendentes.
 - [ ] Os três sabem defender qualquer decisão. **Pendente:** ensaio cruzado.
+
+## 13. Checkpoint histórico T3.1
+
+Conteúdo antes mantido em `CHECKPOINT_T3_1.md`, incorporado em 10/10/2026.
+Datas, resultados e ressalvas abaixo são preservados por marco; não atualizam
+retroativamente as evidências nem concluem o backlog da seção 9.5.
+
+### Checkpoint T3.1 — registro histórico e reconciliação atual
+
+Data da revisão original: 2026-10-03. Registro acumulado de S11–S21 e
+T4.5/T4.75: 2026-10-10. A RFC vigente é 3.2; este checkpoint não substitui
+os contratos de DECISOES nem as evidências datadas de COBERTURA.
+
+O enquadramento atual é **garantias verificadas e limitações conhecidas**.
+A regra de líquido positivo na antecipação foi aprovada, mas a validação
+permanece pendente P0.4; os marcos de testes abaixo não a comprovam.
+
+#### Escopo conferido
+
+| Área | Evidência revisada | Resultado |
+|---|---|---|
+| Rotas entregues | `src/app.py`, resources, schemas e testes HTTP | Cliente, conta, bloqueio/cancelamento, transações, extrato, plano de boletos, reajuste, antecipação, cadastro de usuário e sessões estão registrados na RFC com os caminhos e métodos existentes. |
+| Erros | `errors/`, handlers, `DECISOES.md` e testes | O marco até S15 tinha `QIT001001`–`QIT001024`; S16–S21 acrescentaram `QIT001025`–`QIT001029`. Todos preservam `{ title, description, translation, code }`; catálogo/matriz atuais em DECISOES/COBERTURA. |
+| DER e DDL | Models SQLAlchemy e `database/database.sql` | Chaves, FKs, restrições, lote 2, `adjustment_rate`, ledger, eventos e idempotência correspondem ao diagrama. |
+| Dinheiro e concorrência | Controller/repository de transação e S7a–S7c | O saldo é protegido por `FOR NO KEY UPDATE` com recarga da entidade; há provas repetidas cinco vezes para saques, 40 transferências cruzadas, idempotência em 10 threads, antecipação simultânea e disputa do último saldo. |
+| Conectores | Controllers de plano, conectores e MockServer | A referência deriva do UUID do plano/lote; uma nova chamada de criação gera UUID novo. Erros externos retornam `QIT001009` sem escrita local parcial nos casos testados; emissão externa antes de falha local não é compensada. |
+| Identidade e autorização | DDL, `AuthController`, RBAC e testes HTTP | S11 entrega bcrypt, JWT curto, refresh rotativo por até 8 horas, sessões múltiplas revogáveis e papéis por PME. O `INTERNAL-TOKEN` permanece como fronteira serviço-a-serviço; um JWT, quando fornecido, exige papel sobre a conta. |
+| Auditoria verificável | DDL, gatilho, exportação HTTP e testes | S12 grava `audit_event` na mesma transação do domínio, encadeia eventos por SHA-256 sob trava transacional, exporta a cadeia/checkpoint e recusa `UPDATE`/`DELETE` no banco. |
+| Observabilidade | Logs, registry Prometheus, rota e testes HTTP | S13 entrega logs JSON correlacionados, conta/usuário mascarados, `/metrics` interno e métricas seguras de HTTP, QIT, conectores, replay, locks e sessões. |
+| Timeouts e retentativa | Configuração, conectores, PostgreSQL, handlers e testes | S14 limita conexão/leitura/lock/comando, sem deadline global. S16 repete a operação idempotente inteira em nova sessão somente para deadlock/serialização; falhas de negócio não são repetidas. |
+| Outbox e alertas | DDL, worker, métricas, MockServer e testes | S15 grava outbox com bloqueio/cancelamento no mesmo commit; worker usa lease/backoff e chave de evento. Entrega é pelo menos uma vez. Regras de alerta são exemplos, não stack instalado; CPU/memória são amostras do runtime. |
+| Benchmark de concorrência | Script, S7c, `docker stats` e `BENCHMARK.md` | T4.5 reutiliza 5×40 transferências cruzadas da S7c, captura host/imagens/versões, amostra containers ociosos e sob carga e registra método de comparação. A referência de 6,753 s é contextual, não SLO. |
+| Testes | Suíte HTTP, infraestrutura e guardas estáticas | O marco histórico após S15 foi `143 passed`; após S21, `155 passed`. Contagens atuais e regressões da revisão ficam exclusivamente em COBERTURA. A guarda de imports não transforma testes SQL/worker em caixa-preta HTTP. |
+| Evolução e entrega | RFC 3.2, `DECISOES.md` e R5 | Jornada, matriz, README e separação da pipeline foram revisados; regra de líquido positivo está aprovada, com implementação pendente. RFC em PDF de quatro páginas e apresentação de dez slides possuem fontes/DER/hash e revisão visual pelo agente; aceite do time, clone remoto independente, ensaio e publicação continuam pendentes. |
+
+#### Itens deliberadamente futuros
+
+- **T5.3:** o [modelo oficial](bootcamp-rfc-modelo.md) existe e a RFC segue suas seções. A [síntese em PDF](entrega/RFC_FINAL.pdf) possui quatro páginas e DER vetorial, mantendo a RFC integral. Guardas/hash e revisão visual pelo agente foram executadas; aceite final dos integrantes ainda é necessário. Reprodução e demais confirmações em [ENTREGA](entrega/ENTREGA.md).
+- **R4.5 e R4.75:** entregues. Além do Gate 3, preço/risco versionados, cotação informativa e propostas maker-checker possuem contratos, snapshots/auditoria e testes HTTP. O benchmark foi reexecutado no fechamento; seus artefatos e números contextualizados estão em `BENCHMARK.md`.
+
+O checkpoint registra evidências por marco, não uma aprovação universal.
+9.5 do plano contém hardening e também lacunas concretas de economia,
+autorização e integração externa. Elas não são anuladas pelo resultado verde
+dos cenários já cobertos. Consulte COBERTURA para a avaliação atual e DECISOES
+para limites de imutabilidade, IDs administrativos, preços e JWT opcional.
