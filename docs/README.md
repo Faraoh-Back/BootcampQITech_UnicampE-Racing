@@ -18,11 +18,11 @@ revisão dos PDFs e ensaio serão realizados pelo grupo e continuam pendentes.
 
 | Assunto | Referência vigente / limite |
 |---|---|
-| Arquitetura e apresentação | RFC 3.3 integral e síntese de quatro páginas; apresentação de dez slides; seções do modelo oficial preservadas |
+| Arquitetura e apresentação | RFC 3.4 integral e síntese de quatro páginas; apresentação de dez slides; seções do modelo oficial preservadas |
 | Contrato de antecipação | [DECISOES §3.5.1](DECISOES.md#351-líquido-positivo-regra-implementada-e-validada): líquido > 0 na criação/cotação CREDIT_ADVANCE; validação antes do snapshot de preço; 422/QIT001030; replay preservado |
-| Resultado completo mais recente | [COBERTURA — fechamento final](COBERTURA.md#fechamento-final-snapshots-padrão-e-tarifa-extrema); execuções anteriores permanecem datadas, não substituem esse fechamento |
-| Medição de recursos mais recente | [BENCHMARK §13](BENCHMARK.md#13-fechamento-final-validação-anterior-ao-snapshot-de-preço); transferência cruzada local, não capacidade da antecipação ou SLO |
-| Reproduzir / atualizar banco existente | [README da API](../baas-pme-api/README.md); testes em banco descartável, upgrade pontual sem apagar histórico |
+| Resultado completo mais recente | [COBERTURA — relógio/bootstrap T5.10](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026); execuções anteriores permanecem datadas, não substituem esse fechamento |
+| Medição de recursos mais recente | [BENCHMARK §14](BENCHMARK.md#14-t510-bootstrap-determinístico-e-modo-externo); transferência cruzada local, não capacidade da antecipação ou SLO |
+| Reproduzir / atualizar banco existente | [README da API](../baas-pme-api/README.md); pytest prepara banco/portas/relógio isolados automaticamente; upgrade pontual sem apagar histórico |
 | Pendências | [Rodada 5](PLANO_DE_EXECUCAO.md#9-rodada-5-entrega-9h) para aceite/clone/ensaio/publicação da revisão final; [9.5](PLANO_DE_EXECUCAO.md#95-garantias-verificadas-e-limitações-conhecidas-correções-e-hardening) para limites e hardening ainda não entregues |
 
 Em caso de divergência, confira implementação/DDL e evidência datada; não

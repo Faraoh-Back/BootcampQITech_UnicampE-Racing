@@ -84,7 +84,8 @@ trap cleanup EXIT
 
 START_NS="$(date +%s%N)"
 set +e
-"$PYTHON_BIN" -m pytest -q "$TEST_TARGET" | tee "$PYTEST_OUTPUT"
+# Mede a API que docker stats observa, não o bootstrap automático de pytest.
+"$PYTHON_BIN" -m pytest -q --test-environment=external "$TEST_TARGET" | tee "$PYTEST_OUTPUT"
 PYTEST_STATUS=${PIPESTATUS[0]}
 set -e
 END_NS="$(date +%s%N)"

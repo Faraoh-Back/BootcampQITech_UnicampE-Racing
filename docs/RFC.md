@@ -4,7 +4,7 @@
 |---|---|
 | **Time** | Cairê Belo · Pedro Campanha |
 | **Data** | 10/10/2026 |
-| **Versão** | 3.3 — garantias verificadas, limitações conhecidas e líquido positivo implementado |
+| **Versão** | 3.4 — garantias verificadas, líquido positivo e testes com relógio isolado |
 
 ## Contextualização
 
@@ -155,6 +155,8 @@ erDiagram
 
 A regra noturna do produto aplica 100000 centavos por saque/transferência quando hora≥20h **ou** hora<6h em `America/Sao_Paulo`, para qualquer conta. Depósitos e tarifas não entram nesse teto. O teto diário comercial conta principal transferido; hoje sua data vem do runtime, pendência de alinhamento ao fuso.
 
+**Prova temporal determinística:** `pytest` prepara automaticamente um Compose exclusivo, banco novo e portas livres locais; a API principal usa 21:00 sem depender do relógio do avaliador. Uma segunda API da mesma imagem/banco testa 19:59/20:00, meia-noite, 05:59/06:00 e 12:00. Exemplo: R$ 1.000,01 pode sair às 19:59 com saldo/tarifa suficientes, mas uma nova operação às 20:00 retorna 422/QIT001007 sem débito; replay da operação diurna confirmada preserva sua resposta, sem cobrar de novo. É configuração do container de teste, nunca escolha por HTTP; não se altera a API/banco de desenvolvimento. Preparação Docker é infraestrutura, asserções de negócio são HTTP. Teardown recolhe métricas e remove somente recursos da sessão; SIGKILL pode deixar resíduos. [README](../baas-pme-api/README.md#relógio-determinístico-e-isolamento-automático) e [COBERTURA](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026) detalham método/evidência.
+
 **Idempotência, timeout e retry — caminho feliz**
 1. SHA-256 do JSON canônico e UNIQUE(conta,escopo,chave) fazem a repetição esperar a conclusão inicial. Mesmo corpo recupera 201 original e `Idempotent-Replayed: true`, sem novo fato.
 2. Somente transação e antecipação repetem a operação inteira em nova sessão para deadlock `40P01` ou serialização `40001`, até duas tentativas totais por padrão.
@@ -205,8 +207,8 @@ Com saldo anterior de R$ 500,00, o último caso reduziria o saldo para R$ 480,00
 **Falha:** lançamento alheio/inexistente tem mesmo 404. Webhook falho agenda backoff; queda após aceite ou expiração do lease pode reenviar. O consumidor deve deduplicar event_key: entrega é pelo menos uma vez, sem dead-letter ou versão explícita de envelope.
 
 **Pipelines e evidências**
-1. CI push/PR instala dependências, valida Compose, sobe containers, espera liveness e compila. Executa guarda estática, testes HTTP e contratos de infraestrutura separadamente; SQL/injeção de falha/worker não são prova estritamente HTTP, embora não importem módulos internos.
-2. A jornada PME prova quatro olhos, tarifas, emissão/reajuste, cotação/antecipação, transferência/replay, quatro páginas de extrato e estado/auditoria. Falha interrompe pipeline e coleta logs; [CI remoto e publicação foram confirmados](entrega/ENTREGA.md#51-evidência-remota-confirmada) para `1603118` em 10/10/2026. Novas revisões exigem novo CI; clone independente, aceite e ensaio do grupo continuam pendentes.
+1. CI push/PR instala dependências, valida Compose normal/de teste, compila e executa guardas estáticas e suíte completa com bootstrap automático. API/DB/mock são descartáveis, portas/horário controlados e saúde aguardada. Marcadores distinguem asserções HTTP, contratos SQL/worker e inspeção estática; o bootstrap Docker não é prova HTTP. Sem imports internos também em test_support. JUnit/métricas/metadados são preservados como artefato do job; teardown remove só o ambiente da sessão.
+2. A jornada PME prova quatro olhos, tarifas, emissão/reajuste, cotação/antecipação, transferência/replay, quatro páginas de extrato e estado/auditoria. Falha mantém status não zero e evidência, sem publicar tracebacks completos indiscriminadamente; [CI remoto e publicação foram confirmados](entrega/ENTREGA.md#51-evidência-remota-confirmada) para `1603118` em 10/10/2026. Novas revisões exigem novo CI; clone independente, aceite e ensaio do grupo continuam pendentes.
 3. Logs normais JSON correlacionam X-Request-ID sem body; tracebacks SQL/ASGI e URLs externas ainda exigem sanitização (P1.11). Prometheus interno mede HTTP, QIT tipados, replay, conectores, locks, retries, sessões e outbox. Registry é por processo; gauges de dados persistidos são recalculadas. Coletores/alertas não estão instalados.
 
 [COBERTURA.md](COBERTURA.md) registra resultados e lacunas; [BENCHMARK.md](BENCHMARK.md) mede 5×40 transferências cruzadas e CPU/RAM por docker stats: observação local, não SLO. README mapeia código/comandos; [PLANO_DE_EXECUCAO.md](PLANO_DE_EXECUCAO.md) distingue entrega/hardening. A [RFC de entrega em PDF](entrega/RFC_FINAL.pdf) sintetiza este conteúdo em quatro páginas no modelo oficial; [apresentação](entrega/APRESENTACAO.pdf), [roteiro de defesa](entrega/ENTREGA.md#6-defesa-técnica-e-ensaio) e [registro de entrega](entrega/ENTREGA.md) preservam fronteiras e pendências humanas/externas. Os contratos integrais acima permanecem a fonte detalhada; gerar os PDFs não implementa o backlog 9.5.

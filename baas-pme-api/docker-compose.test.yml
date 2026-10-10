@@ -1,0 +1,79 @@
+# Arquivo independente: NÃO combinar com docker-compose.yml.
+# O bootstrap do pytest atribui projeto único, descobre portas e remove só ele.
+services:
+  api:
+    image: ${BAAS_TEST_API_IMAGE:-baas-pytest-api-unmanaged}
+    build:
+      context: .
+      target: api
+    ports:
+      - "127.0.0.1::3000"
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
+      INTERNAL_TOKEN: ${BAAS_TEST_INTERNAL_TOKEN:-default_token}
+      JWT_SECRET: isolated-test-jwt-secret-not-for-production
+      JWT_ACCESS_TOKEN_MINUTES: 15
+      JWT_SESSION_MAX_HOURS: 8
+      BANKSLIP_API_URL: http://mock:1080
+      BANKSLIP_API_CONNECT_TIMEOUT_SECONDS: 1
+      BANKSLIP_API_READ_TIMEOUT_SECONDS: 5
+      CENTRAL_BANK_API_URL: http://mock:1080
+      CENTRAL_BANK_API_CONNECT_TIMEOUT_SECONDS: 1
+      CENTRAL_BANK_API_READ_TIMEOUT_SECONDS: 5
+      DATABASE_LOCK_TIMEOUT_MS: 2000
+      DATABASE_STATEMENT_TIMEOUT_MS: 10000
+      REQUEST_TIMEOUT_SECONDS: 15
+      DATABASE_TRANSIENT_RETRY_MAX_ATTEMPTS: 2
+      DATABASE_TRANSIENT_RETRY_BASE_DELAY_MS: 25
+      NOTIFICATION_WEBHOOK_URL: http://mock:1080/notifications
+      OUTBOX_POLL_INTERVAL_SECONDS: 1
+      OUTBOX_LEASE_SECONDS: 30
+      OUTBOX_RETRY_BASE_SECONDS: 5
+      NIGHT_START: "20:00"
+      NIGHT_END: "06:00"
+      NIGHT_LIMIT_CENTS: 100000
+      TIMEZONE: America/Sao_Paulo
+      NIGHT_TIME_OVERRIDE: "21:00"
+    command: uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header --no-access-log
+    depends_on:
+      db:
+        condition: service_healthy
+      mock:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/health_check')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 3s
+
+  # Só sobe quando uma fixture pede outro horário. Reutiliza a imagem e o
+  # banco descartável da sessão; nunca muda o relógio da API principal.
+  api-clock:
+    extends:
+      service: api
+    profiles: ["clock"]
+    image: ${BAAS_TEST_API_IMAGE:-unused-until-bootstrap}
+    environment:
+      NIGHT_TIME_OVERRIDE: ${BAAS_TEST_CLOCK_TIME:-21:00}
+
+  db:
+    build: ./database
+    environment:
+      POSTGRES_USER: bootcamp
+      POSTGRES_PASSWORD: bootcamp
+      POSTGRES_DB: bootcamp
+    ports:
+      - "127.0.0.1::5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bootcamp", "-d", "bootcamp"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mock:
+    image: mockserver/mockserver:mockserver-5.11.1
+    command: -logLevel ERROR -serverPort 1080 -proxyRemotePort 1080
+    ports:
+      - "127.0.0.1::1080"

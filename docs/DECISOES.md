@@ -14,7 +14,7 @@
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D16)
 
-> **Estado RFC 3.3:** D1–D16 têm implementação com os limites descritos abaixo. A regra de líquido positivo da D4, aprovada em 2026-10-10, agora é aplicada à antecipação e à cotação CREDIT_ADVANCE, com `422 QIT001030`, proteção SQL e testes. Isso conclui apenas essa parte de P0.4, não o restante da seção 9.5. O checkpoint histórico não substitui esta especificação atual.
+> **Estado RFC 3.4:** D1–D16 têm implementação com os limites descritos abaixo. A regra de líquido positivo da D4, aprovada em 2026-10-10, agora é aplicada à antecipação e à cotação CREDIT_ADVANCE, com `422 QIT001030`, proteção SQL e testes. A D8 passa a ser validada por relógios fixos em infraestrutura isolada iniciada automaticamente pelo pytest. Isso conclui apenas a subparte autorizada de P0.4, não o restante da seção 9.5. O checkpoint histórico não substitui esta especificação atual.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
@@ -25,7 +25,7 @@
 | **D5** | **Formato da Taxa do Banco Central** | Retornada em string percentual, ex: `"4.83"` (significa 4,83%). | O cálculo do novo valor utiliza `Decimal` com arredondamento *half-up* para centavos inteiros:<br>`fator = Decimal("1") + (Decimal(rate_str) / Decimal("100"))`<br>`novo_valor = int((Decimal(base_amount) * fator).quantize(Decimal("1"), rounding=ROUND_HALF_UP))` |
 | **D6** | **Contratos dos Mocks (MockServer)** | Contratos fixos para os conectores externos: | **BankSlip Mock (`POST /bank-slips`):**<br>Entrada: `{ external_reference: str, installments: [{ installment_number: int, amount: int, due_date: "AAAA-MM-DD" }] }`<br>Saída: `200 { bank_slips: [{ installment_number: int, barcode: str }] }`<br><br>**CentralBank Mock (`GET /index/{IPCA\|IGPM}`):**<br>Saída: `200 { index: str, accumulated_rate: "4.83" }` |
 | **D7** | **Histórico de Eventos Visível por HTTP (R4)** | `GET /account/{account_key}` expõe `status_events` da conta; `GET .../billing-plan/{plan_key}` expõe `status_events` dentro de cada boleto. | A regra R4 é verificável por HTTP porque os eventos são inspecionáveis. O formato atual é ISO 8601 sem offset, por exemplo `[{ "status": "APPROVED", "event_datetime": "2026-10-02T12:00:00.000000" }]`; consumidores não devem inferir fuso pelo texto. Evolução P1 prevê timestamps `TIMESTAMPTZ`/UTC explícitos. |
-| **D8** | **Janela e Limite Noturno** | Saques e transferências noturnos têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte; depósito não é limitado. | É uma regra de negócio adotada para o desafio, inspirada no limite noturno para pessoa física; não representa implementação de Pix/TED nem certificação regulatória. A aplicação usa `TIMEZONE=America/Sao_Paulo`; somente no ambiente de teste, `NIGHT_TIME_OVERRIDE` fixa a hora sem permitir que o cliente HTTP a escolha. |
+| **D8** | **Janela e Limite Noturno** | Saques e transferências noturnos têm limite de `100000` centavos (R$ 1.000,00), entre `20:00` e `06:00` do dia seguinte; depósito não é limitado. | É uma regra de negócio adotada para o desafio, inspirada no limite noturno para pessoa física; não representa implementação de Pix/TED nem certificação regulatória. A aplicação usa `TIMEZONE=America/Sao_Paulo`; somente no ambiente de teste, `NIGHT_TIME_OVERRIDE` fixa a hora sem permitir que o cliente HTTP a escolha. O pytest inicia Compose descartável com 21:00 e uma API secundária para fronteiras/horário diurno; o Compose normal mantém relógio real. |
 | **D9** | **Uso da classe base `RestConnector`** | Utilizar herança da classe existente em `src/connectors/rest_connector.py`. | Centraliza timeout separado de conexão (1 s) e leitura (5 s), limitado pelo orçamento da requisição, log padronizado de ida e volta e interpretação JSON com `Decimal`. O `INTERNAL-TOKEN` **não** é enviado automaticamente a APIs externas; somente um contrato explícito de serviço interno pode exigi-lo. |
 | **D10** | **Identidade e sessões** | Um `app_user` pertence a uma PME (`customer`) por `user_customer_access`; portanto seu vínculo alcança as contas da PME. A senha usa bcrypt. Login cria sessão persistida por dispositivo, JWT de acesso de 15 minutos (configurável) e refresh token opaco, rotativo e válido por no máximo 8 horas. Papéis: `OWNER`, `OPERATOR`, `VIEWER`. | `INTERNAL-TOKEN` permanece a credencial serviço-a-serviço e não é login nem API Gateway. Em rotas financeiras, a ausência de `Authorization` preserva a chamada técnica interna; se `Authorization: Bearer <JWT>` vier, a sessão ativa e o papel sobre a conta são obrigatórios. `OWNER` administra ciclo de vida; `OWNER`/`OPERATOR` movimentam e emitem cobrança; os três podem consultar. |
 | **D11** | **Auditoria verificável** | `audit_event` é uma cadeia global append-only: ator (`SERVICE` ou `USER`), ação, tipo/chave de recurso, `request_id`, IP de origem, resumo anterior/posterior, timestamp, `previous_hash` e `event_hash`. A cadeia começa em 64 zeros e usa SHA-256 sobre JSON canônico UTF-8. | A inserção adquire `pg_advisory_xact_lock`, evitando bifurcação sob concorrência; o evento entra na mesma transação do fato de negócio. Trigger PostgreSQL recusa `UPDATE`/`DELETE`; correção exige evento compensatório. `GET /audit-events` exporta os dados e `GET /audit-events/checkpoint` expõe a ponta para verificação externa. Isto não é blockchain: não há consenso distribuído nem imutabilidade contra um administrador do próprio banco. |
@@ -72,6 +72,26 @@ operação a saques/transferências de todas as contas; não é uma afirmação 
 conformidade regulatória para Pix/TED. O consumo diário D14 inclui apenas o
 principal das transferências, usa atualmente `date.today()` do runtime e não
 inclui saques ou tarifas. Alinhar sua virada à configuração `TIMEZONE` é pendência.
+
+**D8 — exemplo e prova sem depender do horário do avaliador:** com saldo
+suficiente para principal e tarifa, uma transferência de R$ 1.000,01 às 19:59
+pode ser confirmada; uma nova operação às 20:00 é recusada com QIT001007. Às
+05:59 o teto ainda vale, às 06:00 já não vale. R$ 1.000,00 é permitido à noite:
+a tarifa de transferência de R$ 1,00 não faz parte do principal limitado.
+Depósito acima do teto continua permitido. A rejeição não grava débito/tarifa
+nem consome a chave; replay confirmado de dia devolve a resposta original à
+noite, sem segunda movimentação. Esses são cenários HTTP efetivamente testados,
+não espera/retry de negócio para aguardar a virada do relógio.
+
+O `pytest` padrão inicia `docker-compose.test.yml` com projeto UUID, portas
+aleatórias locais e banco/MockServer novos; principal em 21:00 e `api-clock`
+para 19:59/20:00/00:00/05:59/06:00/12:00. Configuração automática ocorre na
+criação do container, não via parâmetro HTTP. O Compose de desenvolvimento
+permanece com relógio real e não é reiniciado. Bootstrap Docker é evidência de
+infraestrutura; testes do domínio continuam sem importar a aplicação e fazem
+asserções por HTTP. Limites de cleanup e opção externa avançada constam no
+[README](../baas-pme-api/README.md#relógio-determinístico-e-isolamento-automático);
+resultado datado em [COBERTURA](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026).
 
 `audit_event` recusa UPDATE/DELETE por trigger; ledger, eventos de status e
 snapshots dependem de disciplina da aplicação. O usuário PostgreSQL local é

@@ -6,7 +6,7 @@ from os import environ
 
 API_OFFLINE = (
     "Não consegui falar com a API em {base_url}.\n"
-    "Ela precisa estar de pé pros testes rodarem. Suba com:  docker compose up"
+    "O bootstrap gerido precisa concluir; no modo external, confira a API previamente preparada."
 )
 
 

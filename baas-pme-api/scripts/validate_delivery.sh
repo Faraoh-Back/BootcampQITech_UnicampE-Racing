@@ -120,9 +120,11 @@ curl --fail --silent "http://127.0.0.1:$API_PORT/health_check" >/dev/null
 docker compose exec -T api id | tee "$REPORT_DIR/api-user.txt"
 ./.venv/bin/python -m compileall -q src tests
 ./.venv/bin/python -m pytest tests -q -m static_guard --junitxml="$REPORT_DIR/static.xml" | tee "$REPORT_DIR/static.txt"
-./.venv/bin/python -m pytest tests -q -m api_blackbox --junitxml="$REPORT_DIR/http.xml" | tee "$REPORT_DIR/http.txt"
-./.venv/bin/python -m pytest tests -q -m infrastructure_contract --junitxml="$REPORT_DIR/infrastructure.xml" | tee "$REPORT_DIR/infrastructure.txt"
-./.venv/bin/python -m pytest tests -q --junitxml="$REPORT_DIR/full.xml" | tee "$REPORT_DIR/full.txt"
+# Este script já possui seu Compose descartável. O opt-in external evita
+# iniciar um segundo ambiente principal; fronteiras de relógio ainda são isoladas.
+./.venv/bin/python -m pytest tests -q --test-environment=external -m api_blackbox --junitxml="$REPORT_DIR/http.xml" | tee "$REPORT_DIR/http.txt"
+./.venv/bin/python -m pytest tests -q --test-environment=external -m infrastructure_contract --junitxml="$REPORT_DIR/infrastructure.xml" | tee "$REPORT_DIR/infrastructure.txt"
+./.venv/bin/python -m pytest tests -q --test-environment=external --junitxml="$REPORT_DIR/full.xml" | tee "$REPORT_DIR/full.txt"
 curl --fail --silent -H 'INTERNAL-TOKEN: default_token' "http://127.0.0.1:$API_PORT/metrics" > "$REPORT_DIR/metrics.prom"
 # A rotina existente já registra hardware, idle/load CPU/RAM e carga S7c.
 BENCHMARK_OUTPUT_DIR="$REPORT_DIR/benchmark" bash scripts/benchmark_concurrency.sh

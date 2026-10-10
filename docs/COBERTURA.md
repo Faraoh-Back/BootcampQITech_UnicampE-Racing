@@ -11,18 +11,100 @@ cotação CREDIT_ADVANCE, com 422/QIT001030. Foram acrescentados 52 cenários:
 36 HTTP e 16 contratos SQL/migração. Apenas esta subparte foi autorizada;
 as demais lacunas P0.4/9.5 permanecem pendentes. Resultados anteriores são
 preservados como históricos, sem atribuir-lhes cobertura da regra nova.
-Suíte vigente: **260 testes** — 206 HTTP, 42 contratos de infraestrutura e
-12 guardas estáticas; todos executados na regressão final abaixo.
+Suíte vigente após T5.10: **289 testes aprovados** — 220 HTTP, 42 contratos de
+infraestrutura e 27 guardas estáticas. A regressão desta revisão é registrada
+na seção de relógio abaixo; os 260 anteriores permanecem uma execução histórica.
 
-Leitura recomendada: [fechamento final](#fechamento-final-snapshots-padrão-e-tarifa-extrema)
+Leitura recomendada: [relógio/fechamento atual](#relógio-determinístico-e-bootstrap-automático--10102026)
 para o resultado completo mais recente; [features e pipelines](#features-e-pipelines-o-que-a-evidência-comprova)
 para a matriz vigente; [lacunas](#garantias-verificadas-e-limitações-conhecidas-lacunas-pendentes)
 para o que ainda não foi comprovado. Os marcos de 255/208/206/202 e anteriores
 não são resultados da mesma versão nem novas medições desta revisão documental.
 
+## Relógio determinístico e bootstrap automático — 10/10/2026
+
+**T5.10, RFC 3.4.** As duas falhas locais registradas eram os cenários noturnos
+executados sobre uma API com relógio real durante o dia. O CI anterior fixava
+21:00; preparar manualmente o ambiente não garantia a execução local.
+Não adaptamos as expectativas ao horário do host nem colocamos skips.
+
+O pytest padrão agora inicia um projeto UUID exclusivo com Compose de teste
+independente, portas livres locais, SQL atual, banco/MockServer novos e API em
+21:00. Fronteiras usam uma segunda API da mesma imagem/banco; não existe controle
+HTTP do relógio, import da aplicação ou mudança no Compose de desenvolvimento.
+Bootstrap é infraestrutura; asserções financeiras são HTTP, contratos SQL/worker
+e guardas estáticas continuam explicitamente classificados. Limite diário de
+risco continua com a pendência de fuso já documentada: não foi alterado.
+
+| Evidência | Resultado / alcance |
+|---|---|
+| Red do contrato de infraestrutura | 1 falha real: arquivo de Compose exclusivo ausente; sem executar operações no banco original |
+| Cenários HTTP do relógio | **16 passed in 36.49s** na `.venv` existente: 2 originais + 12 fronteiras/valores + 2 replays dia→noite |
+| Guardas novas do bootstrap | 15 casos: projeto/portas, comandos sem shell, falhas operacionais, segredo, restauração, cleanup mesmo se evidência falhar, proibição de reutilizar runtime encerrado e erro se restar container |
+| Regressão completa final | **289 passed in 114.35s**, zero falhas/erros/skips, 18:26:54–18:28:49 UTC; `.venv` existente, bootstrap automático e shell com horário/janela/limite conflitantes |
+| Contagem | 289 coletados; 220 `api_blackbox`, 42 `infrastructure_contract`, 27 `static_guard` |
+| Métricas e cleanup | `/metrics` principal/última API de fronteira capturados; cleanup com perfil explícito + ausência de containers/rede conferida; counters de processos diferentes não são volume único |
+
+Matriz temporal: 19:59 (dia), 20:00 (noite), 00:00 (noite), 05:59 (noite),
+06:00 (dia), 12:00 (dia), em saque e transferência; cada caso prova 100000 e
+100001 centavos, saldo incluindo tarifa, destino, extrato, depósito acima do
+teto e rejeição sem efeito parcial. O replay confirmou uma operação de
+100001 centavos de dia e recuperou-a à noite sem novo débito; nova chave à noite
+é rejeitada com QIT001007. As 15 guardas novas são testes de infraestrutura
+com dependências simuladas/inspeção estática, não evidência bancária HTTP.
+
+O alvo temporal usou `baas-pytest-f4d8c8c9f41948a1bfd26eaa0f9b5ff9`;
+JUnit local `artifacts/test-runs/night-clock.xml`. A regressão final usou
+`baas-pytest-e17f7ad40e0d43c98a5b5cde4ddea7fb`; relatório
+`artifacts/test-runs/full-final.xml`, métricas/metadados no diretório desse
+projeto. Base Git `6e605c9c0ae3cb2121c4d61b4fc5b5d06115486f` + alterações locais,
+não commit publicado. API/db/mock originais mantiveram IDs/uptime e relógio
+real vazio; não foram alvo da suíte. Relatórios são ignorados pelo
+Git; o CI novo os publica como artefato. Não há aprovação remota presumida:
+novo commit/push/CI ainda cabem ao grupo. R1 agora inspeciona `test_support`
+além de `tests/`. `--collect-only` e execução só de guardas não iniciam Docker.
+
+Procedimento vigente e limites: [README da API](../baas-pme-api/README.md#relógio-determinístico-e-isolamento-automático).
+Modo externo exige opt-in, banco descartável e relógio principal preparado;
+validador/benchmark usam-no porque já possuem o servidor que estão medindo.
+Teardown cobre conclusão/erros normais, não SIGKILL/queda do host. Nenhuma
+feature financeira, rota, DDL ou item restante de 9.5 foi implementado aqui.
+
+**Achado adicional do teardown:** uma primeira regressão passou com
+**288 testes/114.08 s**, em 18:20:13–18:22:07 UTC, com variáveis conflitantes
+no shell (`NIGHT_TIME_OVERRIDE=12:00`, `NIGHT_START=invalid`, limite `1`).
+A inspeção posterior identificou que `down` sem ativar o perfil opcional
+deixava `api-clock` e sua rede, apesar do retorno 0. O metadado `removed`
+dessas primeiras sessões não comprova cleanup completo. Uma nova guarda
+teve Red (não lançou erro com container remanescente) e Green após a correção:
+perfil `clock` explícito em toda chamada e `ps --all --quiet` vazio antes
+de registrar sucesso. Os três resíduos dessas sessões foram removidos por
+projeto UUID exato, sem atingir desenvolvimento; dados sintéticos já haviam
+sido descartados. O fechamento novo inclui essa 289ª guarda e verifica cleanup.
+
+Métricas finais do principal: QIT001030 = 41 recusas de execução/12 de quote;
+QIT001007 = 2 recusas; replay = 21 de antecipação/52 de transação; retries
+sintéticos = 2 deadlock/2 serialização. A API auxiliar reinicia nas mudanças de
+hora; seu último snapshot não resume todas as fronteiras. Esses counters
+complementam as asserções, não são contagem de clientes nem monitoramento contínuo.
+RFC 3.4/PDF de quatro páginas e apresentação de dez foram regenerados, com
+hashes/overflow e revisão visual do fluxo final/slide de testes conferidos.
+
+Compatibilidade externa também foi exercitada: **19 passed in 38.76s**
+(outbox/worker + relógio), e benchmark separado **5 passed in 7.77s**,
+200 transferências/parede **8,058 s**. CPU/RAM e diferença do perfil sem reload
+em [BENCHMARK §14](BENCHMARK.md#14-t510-bootstrap-determinístico-e-modo-externo).
+Isso não é execução integral do script de clone/venv nova nem aprovação remota.
+
+Reconferência externa **após** a correção do teardown: **5 passed in 15.81s**,
+worker/deduplicação, 2 testes originais e 2 replays dia→noite, com runtime novo
+`baas-pytest-0f603fc9cb484bc3bf3906718123a847` e ambiente de fronteiras separado;
+JUnit `artifacts/test-runs/external-final.xml`. Ambos foram removidos pelo
+teardown com perfil/checagem de remanescentes, sem modificar desenvolvimento.
+
 ## Alinhamento documental posterior ao fechamento — 10/10/2026
 
-Rodada somente de documentação: regra de líquido positivo e ordem anterior ao
+**Registro histórico anterior à T5.10/RFC 3.4.** Rodada somente de documentação: regra de líquido positivo e ordem anterior ao
 snapshot, contratos/exemplos, resultados atuais versus históricos, entrega/CI
 por commit e limites de outbox/migrations foram reconciliados. Sem mudanças de
 código da API, DDL, workflow ou implementação do restante de 9.5. Modelo oficial
@@ -365,7 +447,8 @@ Há 40 códigos catalogados: 30 do produto, seis globais e quatro do legado.
 | Regra posterior: antecipação com líquido positivo | Execução/cotação CREDIT_ADVANCE, QIT001030 antes do snapshot de preço/quote, rollback incluindo política padrão, um centavo líquido, preço vigente/replay; 36 HTTP + 16 SQL/migração. Não define cotação TRANSFER nem limites numéricos gerais |
 | S21: maker-checker | Contrato aninhado estrito de preço/risco, segregação criador/aprovador, estado pendente não aplicável, três corridas com dois aprovadores e uma versão publicada |
 | Jornada integrada T5.1 | Dois OWNERs publicam preço, emitem/reajustam, cotam/antecipam, transferem/sacam, percorrem quatro páginas, reconciliam oito lançamentos com saldo e bloqueiam/cancelam com trilha auditável |
-| Pipeline CI | Compose/build → liveness → compileall → static_guard → api_blackbox → infrastructure_contract → logs na falha → cleanup; evidência local preservada e execução remota confirmada para `1603118`, conforme a seção de evidência remota acima |
+| Relógio/bootstrap T5.10 | Projeto/banco/portas exclusivos, 21h no principal, fronteiras 20h/6h/meia-noite/dia, replay entre janelas, cleanup e restauração; sem alteração de desenvolvimento ou parâmetro de relógio por HTTP |
+| Pipeline CI | Dependências/Compose/compilação → static_guard → suíte completa gerida (HTTP + contratos SQL/worker + estáticos) → JUnit/métricas/metadados → cleanup da sessão; workflow novo validado localmente, remoto confirmado somente para `1603118` da versão anterior |
 | Consistência documental | Guardas estáticas de seções do modelo, todos os métodos/rotas registrados, códigos catalogados e 23 tabelas do produto no DER; não comparação completa de payloads/FKs nem validação visual de PDF |
 
 ## Revisão: correções com regressão comprovada

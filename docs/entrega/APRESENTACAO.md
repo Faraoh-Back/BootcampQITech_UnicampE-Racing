@@ -103,17 +103,17 @@ B→A: espera #10 ────────→ lock #10 → lock #20 → validar 
 ## 7. Como provamos: testes e pipelines
 
 ```text
-push / PR → build + saúde + compilação
-          → guardas estáticas
-          → API black-box: só HTTP
-          → contratos SQL / locks / worker
+push / PR → Compose + compilação → guardas
+          → pytest cria ambiente descartável
+          → HTTP + contratos SQL / locks / worker
+          → JUnit + métricas + cleanup da sessão
 ```
 
 Jornada real: quatro olhos → cobrança/reajuste → cotação/antecipação → transferência/saque → extrato → block/cancel/auditoria.
 
-Concorrência: último saldo, transferências cruzadas, mesma chave, último limite e lastro disputado. Falhas: rollback, conector, autorização, retry, líquido não positivo e resposta inesperada sanitizada.
+Concorrência: saldo, transferências cruzadas, mesma chave, limite e lastro. Relógio fixo: dia/noite, 20h/6h e replay entre janelas; não depende da hora do avaliador.
 
-<div class="small">Resultados datados em COBERTURA/ENTREGA. Não importar src não torna SQL/subprocesso black-box HTTP. Sem declaração retrospectiva de TDD: só o Red/Green realmente executado conta como evidência. CI remoto confirmado em 1603118; novas revisões exigem novo CI. Aceite humano pendente.</div>
+<div class="small">Falhas: rollback, conector, autorização, retry, líquido não positivo e erro sanitizado. Bootstrap Docker não é prova HTTP; testes não importam src. Red/Green só quando registrado. Resultados em COBERTURA/ENTREGA; CI remoto confirmado em 1603118, revisão nova exige novo CI. Aceite humano pendente.</div>
 
 <!-- page -->
 

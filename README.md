@@ -30,7 +30,13 @@ as demais fronteiras de P0.4 do plano permanecem pendentes.
 Regra, exemplos e limites estão em
 [DECISOES §3.5.1](docs/DECISOES.md#351-líquido-positivo-regra-implementada-e-validada).
 Para o resultado mais recente, use [COBERTURA](docs/COBERTURA.md); para recursos
-medidos, [BENCHMARK §13](docs/BENCHMARK.md#13-fechamento-final-validação-anterior-ao-snapshot-de-preço).
+medidos, [BENCHMARK §14](docs/BENCHMARK.md#14-t510-bootstrap-determinístico-e-modo-externo).
+
+Com Docker disponível e dependências na `.venv`, `cd baas-pme-api` e
+`./.venv/bin/python -m pytest -q` preparam automaticamente API/banco/mock
+descartáveis, portas livres e relógios de teste: não depende da hora do avaliador
+nem usa o banco de desenvolvimento. Método/limites no
+[README da API](baas-pme-api/README.md#relógio-determinístico-e-isolamento-automático).
 
 `bootcamp-biblioteca-api/` é o projeto-base de outro exercício do Bootcamp; ele
 não faz parte do deploy, dos testes ou do contrato do BaaS PME.

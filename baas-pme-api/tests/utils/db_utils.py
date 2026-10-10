@@ -27,9 +27,10 @@ DATABASE_OFFLINE = (
 class DbUtils:
     """Apaga o banco inteiro e o recria do zero — quando alguém chama.
 
-    Não existe limpeza automática neste projeto. O `rollback()` roda no
+    Não existe limpeza automática entre casos. O `rollback()` roda no
     teste que o chamar, na linha em que for chamado, e em mais lugar
-    nenhum. Todos os testes dividem o mesmo banco, e cada um enxerga o
+    nenhum. O bootstrap padrão cria um banco descartável por sessão e o remove
+    ao final. Durante a sessão, os testes dividem o banco, e cada um enxerga o
     que os anteriores deixaram pra trás.
 
     O nome engana um pouco: isto não desfaz uma transação. Ele derruba

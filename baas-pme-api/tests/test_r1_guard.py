@@ -61,7 +61,8 @@ class TestR1Guardian:
 
     def test_no_tests_import_from_src(self):
         tests_dir = Path(__file__).resolve().parent
-        python_files = list(tests_dir.rglob("*.py"))
+        python_files = [*tests_dir.rglob("*.py"),
+                        *(tests_dir.parent / "test_support").rglob("*.py")]
         assert len(python_files) > 0, "Nenhum arquivo de teste encontrado em tests/"
 
         all_violations = []

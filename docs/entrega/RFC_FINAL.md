@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Time / data / versão** | Cairê Belo · Pedro Campanha · 10/10/2026 · 3.3 · [RFC integral](../RFC.md) |
+| **Time / data / versão** | Cairê Belo · Pedro Campanha · 10/10/2026 · 3.4 · [RFC integral](../RFC.md) |
 
 ## Contextualização
 
@@ -133,7 +133,7 @@ Token interno obrigatório, exceto raiz/saúde; JWT presente valida PME/papel na
 **Falha:** webhook agenda backoff; queda após aceite/lease vencido pode duplicar entrega; consumidor deve deduplicar. At-least-once, sem dead-letter/envelope versionado; não exactly-once externo.
 
 **Pipelines e evidências**
-1. CI push/PR: dependências → Compose/build → saúde → compilação → static_guard → api_blackbox → infrastructure_contract; falha interrompe e coleta logs. R1 sem imports não torna SQL/worker estritamente HTTP. Jornada cobre preço/quatro olhos, cobrança/reajuste/cotação/antecipação, replay, transferência/saque, extrato e estado/auditoria.
+1. CI push/PR: dependências/Compose/compilação → guardas → suíte completa com bootstrap isolado; JUnit/métricas/metadados preservados. Pytest cria DB/mock/portas livres e API às 21h; segunda API prova 19:59/20h, meia-noite, 05:59/6h e 12h, mais replay dia→noite. Sem escolher relógio por HTTP ou reiniciar desenvolvimento; cleanup só da sessão. Bootstrap/SQL/worker não são prova HTTP. Jornada: quatro olhos, cobrança/reajuste/cotação/antecipação, replay, dinheiro/extrato/estado/auditoria.
 2. Logs JSON/X-Request-ID normais mascaram identificadores e não têm body; tracebacks podem conter SQL/URLs. Métricas internas: HTTP, QIT, replay, conectores, locks, retry, sessões/outbox; registry por processo, gauges persistidas. Regras de alertas são propostas, sem Prometheus/Alertmanager/cAdvisor instalado.
 3. Benchmark 5×40 transferências cruzadas amostra CPU/RAM; observação local, não SLO. Resultados/datas/comandos: [COBERTURA](../COBERTURA.md), [BENCHMARK](../BENCHMARK.md), [ENTREGA](ENTREGA.md). CI/publicação confirmados em `1603118`; novas revisões exigem novo CI. Clone, aceite e ensaio do grupo pendentes. Legado sample_entity segue ativo; biblioteca não participa do produto. Detalhes preservados na RFC integral/DECISOES; demais itens 9.5 ficam fora deste trabalho.
 

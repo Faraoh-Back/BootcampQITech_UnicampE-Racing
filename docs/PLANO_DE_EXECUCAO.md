@@ -9,11 +9,11 @@
 - **Gate** é um ponto de verificação. Só se passa para a rodada seguinte com o gate verde.
 - Fonte das restrições R1 a R8: os PDFs de estudo. Confira com o enunciado oficial.
 - **Estado de entrega (2026-10-10):** S1–S21 possuem implementação/testes, com limites em RFC/DECISOES/COBERTURA. Listas “Fazer” preservam a intenção original e não provam conclusão integral. O estado de cada tarefa e o backlog 9.5 prevalecem; resultados atuais ficam em COBERTURA.
-- **Referência vigente:** RFC 3.3; [fechamento completo de 260 testes](COBERTURA.md#fechamento-final-snapshots-padrão-e-tarifa-extrema) e [benchmark final](BENCHMARK.md#13-fechamento-final-validação-anterior-ao-snapshot-de-preço). A publicação/CI de `1603118` precede a regra de líquido positivo; a revisão final ainda precisa ser publicada/validada no remoto pelo grupo.
+- **Referência vigente:** RFC 3.4; [bootstrap/relógio T5.10 e regressão atual](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026) e [benchmark T5.10](BENCHMARK.md#14-t510-bootstrap-determinístico-e-modo-externo). A publicação/CI de `1603118` precede as revisões seguintes; a revisão final ainda precisa ser publicada/validada no remoto pelo grupo.
 
 ### Regras de trabalho do time (valem para todas as tarefas)
 
-1. `main` sempre verde: `NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build` e `./.venv/bin/python -m pytest tests -q` passando antes de qualquer merge. Use `down -v` somente em banco local descartável quando a recriação for intencional; apaga dados. O override reproduz o perfil determinístico do CI para a regra noturna.
+1. `main` sempre verde: `./.venv/bin/python -m pytest tests -q` passando antes de qualquer merge. O bootstrap T5.10 prepara containers/banco/portas/horários de teste automaticamente, como no CI. Não exige override nem `down -v` sobre desenvolvimento; descarte manual de dados continua exigindo intenção explícita.
 2. Branch curta por fatia (`feat/s3-deposito-saque`). Pull request pequeno, revisado por outra pessoa.
 3. Commits separados por cor do TDD: `test(S3): vermelho ...`, depois `feat(S3): verde ...`, depois `refactor(S3): ...`. Histórico Git e registros de execução são evidências; não afirmar que todas as features seguiram esse ciclo apenas porque a suíte atual passa.
 4. Arquivos compartilhados são onde nascem os conflitos. A recomendação inicial era separar erros por domínio (`errors/account_errors.py`, `errors/billing_errors.py`); a implementação mantém o catálogo em `errors/custom_errors.py` e os erros-base em `errors/base_error.py`. Coordenar alterações nesses arquivos e em `src/app.py`, DDL e models; eles evoluíram além de T1.1/T1.2 e não são arquivos congelados.
@@ -416,7 +416,7 @@ do pedido atual.
 - **Pronto quando:** nenhum código do catálogo sem teste (ou removido da RFC com justificativa).
 
 ### T5.3 RFC final e PDF (B, 3h)
-- **Status:** **artefatos concluídos em 2026-10-10; aceite do time pendente**. `docs/entrega/RFC_FINAL.md` e PDF de quatro páginas seguem o modelo oficial, versão 3.3, sem apagar a RFC integral/contratos. Conservam 28 rotas, 23 entidades, relações/cardinalidades e todos os fluxos S1–S21/pipelines, incluindo líquido positivo da antecipação/cotação e `QIT001030`. DER vetorial gerado da RFC integral; revisão visual pelo agente e validação automática de overflow, páginas e hashes. O restante de P0.4/9.5 permanece pendente. Revisão dos integrantes não foi inventada.
+- **Status:** **artefatos concluídos em 2026-10-10; aceite do time pendente**. `docs/entrega/RFC_FINAL.md` e PDF de quatro páginas seguem o modelo oficial, versão 3.4, sem apagar a RFC integral/contratos. Conservam 28 rotas, 23 entidades, relações/cardinalidades e todos os fluxos S1–S21/pipelines, incluindo líquido positivo da antecipação/cotação, `QIT001030` e bootstrap/relógio de testes da T5.10. DER vetorial gerado da RFC integral; revisão visual pelo agente e validação automática de overflow, páginas e hashes. O restante de P0.4/9.5 permanece pendente. Revisão dos integrantes não foi inventada.
 - **Fazer:** atualizar a RFC (rotas, DER, fluxos, alternativas descartadas no formato "descartada porque X, ganharia se Y", principal desafio); cortar para o limite de 2 a 4 páginas (sugestão: reduzir a tabela de rotas ao essencial, cortar uma alternativa, enxugar fluxos secundários); gerar o PDF final; conferir que o diagrama está legível.
 - **Pronto quando:** PDF com as duas seções fixas, diagrama renderizado, tabela de rotas com erros e idempotência, e revisado por todos os integrantes.
 
@@ -427,7 +427,7 @@ do pedido atual.
 
 ### T5.5 Teste de clone limpo em Linux (A, 1,5h)
 - **Status:** **validação isolada concluída; critério independente parcial**. Snapshot `20261010T083920Z` comprovou venv/DDL/banco novos, seleções independentes e 255 testes. Após o ajuste de ordem do snapshot/tarifa extrema, fechamento em banco novo com a `.venv` existente: **260 passed, 75.43 s** (206 HTTP + 42 infraestrutura + 12 estáticos, todos na execução completa); métricas consultadas, benchmark 5×40 verde (parede 8,255 s). Históricos/limites preservados em COBERTURA/ENTREGA. Só projetos descartáveis removidos; banco original não foi alvo das suítes e recebeu somente o upgrade não destrutivo dos CHECKs. Não substitui clone remoto do commit final, VM virgem ou pessoa independente: essa confirmação continua pendente. `--head` poderá validar somente o conteúdo commitado após publicação.
-- **Fazer:** numa máquina ou VM Linux **limpa** (a do jurado é Linux): `git clone` do repositório, **sem editar nada**, `docker compose up --build`, esperar API/banco `healthy` e mock `Up`, preparar `.venv` e executar os comandos de testes do README com relógio noturno fixo. O Compose tem padrões demonstrativos e `.env.example`; nunca versionar segredos reais. Use banco de teste descartável.
+- **Fazer:** numa máquina ou VM Linux **limpa** (a do jurado é Linux): `git clone` do repositório, **sem editar nada**, preparar `.venv` e executar `pytest`; T5.10 prepara automaticamente containers/banco/horário de teste. Para uso manual, `docker compose up --build` e esperar API/banco `healthy` e mock `Up`. O Compose tem padrões demonstrativos e `.env.example`; nunca versionar segredos reais. O aceite independente continua necessário.
 - **Pronto quando:** tudo verde sem nenhum passo manual além dos comandos do README. Quem executa **não** pode ser quem escreveu o compose.
 
 ### T5.6 Apresentação em PDF (B e C, 2h cada)
@@ -447,6 +447,36 @@ do pedido atual.
 ### T5.9 Publicação (C, 0,25h)
 - **Status:** **publicação/CI confirmados para `1603118` em 2026-10-10**. A `main` pública correspondeu ao HEAD local; o [BaaS PME CI](https://github.com/Faraoh-Back/BootcampQITech_UnicampE-Racing/actions/runs/38036090796) concluiu com sucesso nesse SHA. Ambos os PDFs retornaram HTTP 200 sem autenticação, com blobs iguais aos arquivos locais da versão verificada. [Evidência datada](entrega/ENTREGA.md#51-evidência-remota-confirmada). O agente não publicou mudanças nem alterou visibilidade. Novas revisões de código/documentos/PDFs precisam de novo commit/push, CI e verificação de acesso; o sucesso anterior não as cobre automaticamente. Clone, aceite e ensaio do grupo permanecem pendentes.
 - Tornar o repositório **público**, abrir em janela anônima, conferir que o último commit é o esperado e que a RFC em PDF está no repositório ou anexada. O que estiver no repositório nessa data é o que a banca vê.
+
+### T5.10 Infraestrutura automática e relógio determinístico (ajuste de entrega)
+
+- **Status:** **implementada e validada localmente em 2026-10-10**: regressão
+  final 289/114.35 s, métricas e cleanup real conferidos; benchmark 5×40
+  verde/8,058 s, modo externo exercitado e reconferido depois do ajuste de
+  cleanup. Publicação/CI remoto e aceite do grupo não presumidos.
+- **Motivação:** execução local às 14h49 registrou duas falhas em testes que
+  pressupunham noite. O CI antigo fixava 21:00, mas o pytest local dependia de
+  preparação manual. Adaptar a expectativa ao relógio real ou dar skip
+  esconderia a falta de prova noturna; fixar o Compose normal afetaria o produto.
+- **Implementação:** `docker-compose.test.yml` independente, projeto UUID,
+  portas locais livres e DB/mock novos; bootstrap gerido é padrão do pytest.
+  API principal em 21:00; `api-clock` reutiliza imagem/banco da sessão para
+  fronteiras/horário diurno. Nenhuma rota, regra de negócio ou DDL foi alterada.
+- **Validação:** 14 cenários HTTP novos (12 fronteiras/valores e 2 replays
+  dia→noite), além dos 2 originais; 15 guardas do bootstrap (portas, projeto,
+  falhas, cleanup, restauração e segredo, inclusive perfil auxiliar remanescente). R1 passa a inspecionar `test_support`
+  também. Prova Red do arquivo de infraestrutura ausente, seguida de Green;
+  contagem/regressão/evidência atual em [COBERTURA](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026).
+- **Pipeline/documentos:** CI usa static_guard + suíte completa gerida e salva
+  JUnit/métricas/metadados; validador/benchmark já preparados usam opt-in
+  `--test-environment=external` para não medir outro servidor. README, D8,
+  RFC integral/síntese/slides e entrega atualizados, sem apagar históricos.
+- **Pronto quando:** `.venv/bin/python -m pytest -q` passa sem API prévia nem
+  variável de horário, incluindo fronteiras, sobre banco próprio; desenvolvimento
+  preservado e cleanup confirmado. Publicação/CI remoto continuam em T5.9.
+- **Limites:** Docker/permissão e dependências/imagens são pré-requisitos; execução
+  sequencial. SIGKILL pode deixar recursos; imagens/cache permanecem. Não conclui
+  hardening 9.5 nem a pendência de fuso do consumo diário de risco.
 
 ---
 

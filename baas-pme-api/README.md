@@ -85,20 +85,75 @@ Se preferir ativar: `source .venv/bin/activate`; no Windows PowerShell,
 
 ## Executar os testes
 
-Os testes de produto são de integração HTTP e usam a API, PostgreSQL e
-MockServer do Compose. A suíte também contém contratos de infraestrutura para
-triggers, locks e worker, que podem acessar PostgreSQL de forma controlada. A
-execução completa inclui a regra noturna, portanto precisa
-fixar a hora de teste antes do `pytest`:
+Com Docker Engine/Compose disponíveis e as dependências na `.venv`, basta:
 
 ```bash
-NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 ./.venv/bin/python -m pytest -q
 ```
 
-Esse é o perfil adotado pelo CI. A contagem e resultados datados ficam em
+Não precisa subir/reconfigurar a API antes, escolher portas nem fixar a hora
+manualmente. O CI usa o mesmo bootstrap. A contagem e resultados datados ficam em
 [COBERTURA.md](../docs/COBERTURA.md), evitando números desatualizados em guias.
-Depois, restaure o relógio normal com `docker compose up -d`.
+
+### Relógio determinístico e isolamento automático
+
+O padrão é `--test-environment=managed`. A preparação de infraestrutura em
+`tests/conftest.py`/`test_support/runtime.py`:
+
+1. Usa **somente** `docker-compose.test.yml`, com projeto UUID exclusivo
+   `baas-pytest-…`; o Compose de desenvolvimento não é combinado com ele.
+2. Constrói a API com usuário não-root e SQL atual; inicia PostgreSQL e
+   MockServer novos. Não monta `src/` nem ativa reload/worker contínuo.
+3. Publica portas livres escolhidas pelo Docker **apenas em 127.0.0.1**,
+   descobre-as e direciona os clientes HTTP/SQL para o banco descartável.
+4. Fixa a API principal em **21:00**, janela 20:00–06:00 e limite 100000
+   centavos. `.env` local, horário do host e `NIGHT_TIME_OVERRIDE` do shell
+   não alteram esse perfil; nenhuma variável precisa ser exportada pelo avaliador.
+5. Aguarda saúde da API e disponibilidade administrativa do MockServer.
+6. Após a execução, captura `/metrics` e metadados sem credenciais em
+   `artifacts/test-runs/<projeto>/`, e remove **somente** containers, rede e
+   volumes dessa sessão; imagens/cache de build permanecem. O perfil opcional
+   `clock` é incluído explicitamente; `ps --all --quiet` deve ficar vazio antes
+   de registrar cleanup bem-sucedido (retorno 0 de `down` sozinho não basta).
+
+Os cenários temporais usam `api_at_time`: uma segunda API (`api-clock`) da
+mesma imagem e banco descartável, com hora definida **na criação do container**.
+São verificados 19:59, 20:00, 00:00, 05:59, 06:00 e 12:00; saque/transferência
+de 100000/100001 centavos, depósito acima do teto, tarifa fora do principal,
+rollback e replay diurno durante a noite. O contexto muda/restaura o destino
+HTTP do cliente; não existe payload/header/endpoint para escolher o relógio.
+Definir `os.environ`/`monkeypatch` só no processo do teste não mudaria a API remota.
+
+Os testes de produto fazem asserções via HTTP real, sem importar `src/`; a
+orquestração Docker é **infraestrutura compartilhada**, não prova HTTP. Guardas
+estáticas verificam também o bootstrap. Os contratos SQL/worker continuam
+identificados separadamente. `--collect-only` e seleção somente de
+`static_guard` não iniciam containers. Execute sequencialmente, sem `pytest-xdist`.
+Docker inacessível gera erro de preparação, não skip/sucesso artificial.
+
+Limites: o primeiro build pode baixar imagens/dependências; o I/O de conectores
+continua local/offline no MockServer. Teardown cobre conclusão e exceções normais,
+mas SIGKILL/queda da máquina podem deixar recursos. Nesse caso use o nome exato
+`baas-pytest-<UUID>` registrado e `docker compose --project-name <nome-exato>
+--file docker-compose.test.yml --profile clock down --volumes`; nunca limpe o projeto de
+desenvolvimento indiscriminadamente. Os relatórios ignorados pelo Git devem ser
+preservados externamente se forem evidência de entrega.
+
+### Infraestrutura previamente preparada — opção avançada
+
+`--test-environment=external` é opt-in para scripts que **já possuem** um
+ambiente descartável. Usa os destinos do shell/`.env` sem reiniciar esse Compose:
+
+```bash
+# Apenas sobre banco intencionalmente descartável, já com API em 21:00:
+./.venv/bin/python -m pytest tests -q --test-environment=external
+```
+
+Nesse modo, o operador garante relógio principal/configuração/limpeza; os
+cenários `api_at_time` ainda criam seu próprio ambiente isolado para não mudar
+o servidor externo. O validador de entrega usa essa opção por já possuir um
+clone/Compose exclusivo. O benchmark também a usa para medir precisamente os
+containers observados por `docker stats`, e não uma API diferente.
 
 Apresentamos **garantias verificadas e limitações conhecidas**, não segurança
 absoluta. Cada teste sustenta o cenário que exercita; decisões aprovadas e
@@ -113,14 +168,17 @@ As evidências também podem ser executadas separadamente:
 ./.venv/bin/python -m pytest tests -q -m 'api_blackbox and not legacy'
 ```
 
-O CI executa as três primeiras seleções após build, liveness e compilação,
-em todo push/PR. A [execução remota confirmada](../docs/entrega/ENTREGA.md#51-evidência-remota-confirmada)
+O CI atual valida ambos os arquivos Compose, compila, executa `static_guard` e
+a suíte completa (todos os marcadores) com bootstrap gerido, em todo push/PR.
+Publica JUnit, métricas e metadados via artefato do job, inclusive em falha.
+A [execução remota confirmada](../docs/entrega/ENTREGA.md#51-evidência-remota-confirmada)
 é a de `1603118`; cada revisão seguinte precisa de novo CI. `static_guard` protege imports e rastreabilidade de
-RFC/rotas/tabelas/erros; `api_blackbox` usa somente HTTP; `infrastructure_contract`
+RFC/rotas/tabelas/erros; as asserções `api_blackbox` usam somente HTTP; `infrastructure_contract`
 inclui SQL, injeção de falhas e subprocesso do worker. Todos evitam importar
 módulos internos no processo de teste. Contratos de infraestrutura e testes
-legados de listagem recriam/modificam o schema: use **banco local descartável**
-e execução sequencial. Um worker contínuo deve estar parado durante esses
+legados de listagem recriam/modificam o schema: o modo padrão já fornece
+**banco descartável**. No modo externo essa garantia é do operador.
+Um worker contínuo deve estar parado durante esses
 testes, pois eles controlam manualmente as entregas.
 
 ## Benchmark de concorrência
@@ -398,6 +456,9 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 - `src/models`: mapeamento SQLAlchemy;
 - `src/schemas`: contratos JSON de entrada;
 - `tests/integration`: testes de produto por HTTP e contratos de infraestrutura;
+- `test_support/runtime.py` e `tests/conftest.py`: bootstrap de infraestrutura,
+  isolamento de destinos/relógios, prontidão, métricas e teardown;
+- `docker-compose.test.yml`: perfil descartável independente do Compose normal;
 - `database/database.sql`: DDL inicial.
 
 As rotas `sample_entity` e seus arquivos continuam no repositório apenas como

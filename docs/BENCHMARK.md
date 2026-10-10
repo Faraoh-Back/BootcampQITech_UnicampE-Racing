@@ -1,11 +1,11 @@
 # Benchmark reproduzível de concorrência — T4.5
 
-**Referência mais recente:** [seção 13](#13-fechamento-final-validação-anterior-ao-snapshot-de-preço),
-10/10/2026, 09:07 UTC: 200 transferências corretas, parede **8,255 s**.
+**Referência mais recente:** [seção 14](#14-t510-bootstrap-determinístico-e-modo-externo),
+10/10/2026, 18:23 UTC: 200 transferências corretas, parede **8,058 s**.
 CPU/RAM, ambiente e limites estão junto dessa coleta. A linha de base da seção
 5 e os registros 9–12 são históricos preservados, não resultados do código
-final. A suíte de features e seus 260 testes pertencem a
-[COBERTURA](COBERTURA.md#fechamento-final-snapshots-padrão-e-tarifa-extrema);
+final. A suíte de features e a contagem vigente pertencem a
+[COBERTURA](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026);
 o benchmark é uma execução separada de cinco casos, não cinco features novas.
 
 ## 1. Objetivo e limite da evidência
@@ -68,8 +68,18 @@ O script faz, nesta ordem:
    `/health_check`;
 5. salva `docker stats --no-stream` ocioso para API, PostgreSQL e MockServer;
 6. amostra os mesmos três containers em NDJSON durante a carga;
-7. executa a carga S7c, mede a parede ao redor do `pytest` e salva sua saída;
+7. executa a carga S7c com `--test-environment=external`, mede a parede ao redor do `pytest` e salva sua saída;
 8. restaura o Compose sem `NIGHT_TIME_OVERRIDE`.
+
+**Compatibilidade T5.10:** pytest agora inicia infraestrutura própria por
+padrão. O benchmark faz opt-in `external` porque já preparou o Compose que
+`docker stats` observa; sem isso a carga seria aplicada a outra API e a coleta
+mediria os containers errados. Só esse alvo é executado (cinco casos); não há
+fixture de fronteiras nem novo ambiente principal nessa chamada. Na validação
+isolada, COMPOSE_FILE/COMPOSE_PROJECT_NAME e portas apontam para o projeto
+descartável do validador. A configuração abaixo permanece a do benchmark,
+não é uma exigência para `pytest` normal. Resultados das seções históricas não
+foram recalculados por essa alteração de preparação.
 
 O script não executa `docker compose down -v`: não apaga dados locais. Se a
 mudança alterou `database/database.sql`, um volume existente não é atualizado
@@ -351,3 +361,42 @@ do benchmark. Pré-carga não é repouso estabilizado; máximos não são picos
 garantidos. Os resultados intermediários de §12/anteriores permanecem
 preservados; diferenças de tempo/CPU/RAM não provam melhoria ou regressão
 sem repetições equivalentes. Não há SLO ou coletores/alarmes instalados.
+
+## 14. T5.10: bootstrap determinístico e modo externo
+
+Após adicionar bootstrap automático ao pytest, o benchmark foi executado
+novamente para verificar que `--test-environment=external` mede a mesma API
+observada pelo amostrador. Projeto novo `baas-pytest-5e9e1f46829441e7820331779ef09bfe`,
+criado pelo runtime de testes antes de chamar o script; COMPOSE_FILE/PROJECT
+e portas foram direcionados explicitamente para ele. Não se usou o Compose
+de desenvolvimento. Coleta **2026-10-10 18:23:17–18:23:28 UTC**.
+
+Base Git `6e605c9c0ae3cb2121c4d61b4fc5b5d06115486f`, **28 entradas dirty**:
+snapshot de trabalho, não commit/CI publicado. `.venv` existente, banco novo,
+Docker/imagens/cache/host compartilhados. Linux 6.1.0-49-amd64 x86_64, 16 CPUs,
+15 GiB, Docker 29.5.3, Compose 5.1.4, Python 3.11.2.
+
+| Campo | Observação |
+|---|---|
+| Correção | **5 passed in 7.77s**, saída 0; 5×40 = 200 transferências |
+| Parede ao redor de pytest | **8,058 s**, não inclui bootstrap/build/cleanup |
+| Pré-carga API / PostgreSQL / MockServer | 0,16%/67,12 MiB; 4,97%/35,46 MiB; 0,11%/71,74 MiB |
+| Maior CPU amostrada API / PostgreSQL / MockServer | **78,98% / 55,93% / 9,43%** |
+| Maior RAM amostrada API / PostgreSQL / MockServer | **87,99 / 68,60 / 141,4 MiB** |
+| Amostras completas | Três snapshots dos três containers: 18:23:20, :23, :26 UTC |
+| Artefatos | `baas-pme-api/artifacts/test-runs/baas-pytest-5e9e1f46829441e7820331779ef09bfe/benchmark/` |
+| Escopo | Transferência cruzada local; não capacidade/SLO, antecipação, internet ou gateway |
+
+**Comparabilidade:** a configuração de teste não monta src nem usa reload;
+21h e banco/mock são fixos. Isso difere do Compose de desenvolvimento usado
+por parte dos registros anteriores. Pré-carga ainda inclui inicialização
+recente de banco/JVM; não é repouso estabilizado. Uma diferença de RAM/tempo
+não prova otimização. Máximos de três amostras não são picos garantidos.
+
+Depois da carga, outbox/worker e fronteiras foram testados separadamente
+(19 casos/38.76 s); esses casos **não** integram a duração ou os snapshots
+do benchmark. A coleta `/metrics` do projeto veio após essa verificação, não
+é série contínua de CPU/RAM da carga. O projeto da carga foi descartado; o
+achado de perfil auxiliar remanescente ocorreu no ambiente separado das
+fronteiras, teve Red/Green e limpeza pontual, conforme [COBERTURA](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026).
+O código financeiro não mudou; os históricos foram preservados.

@@ -16,10 +16,12 @@ Evidência da nova regra em [COBERTURA](../COBERTURA.md#líquido-positivo-implem
 upgrade de banco existente no [README da API](../../baas-pme-api/README.md#atualizar-banco-existente-líquido-positivo-da-antecipação).
 As execuções anteriores abaixo são históricas; não comprovam a nova revisão.
 
-O fechamento completo mais recente está na [seção 3.2](#32-fechamento-final-da-regra-aprovada):
-260 testes/75.43 s, além do benchmark separado de 200 transferências/8,255 s.
-Uma atualização posterior somente de documentação deve reconferir guardas,
-links e artefatos; não apresentar esses números como nova execução financeira.
+O fechamento atual de infraestrutura/relógio está na [seção 3.3](#33-t510-relógio-determinístico-e-bootstrap-automático)
+e [COBERTURA — T5.10](../COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026):
+289 testes/114.35 s, benchmark separado de 200 transferências/8,058 s.
+A [seção 3.2](#32-fechamento-final-da-regra-aprovada) conserva o fechamento
+anterior: 260 testes/75.43 s e benchmark separado de 200 transferências/8,255 s.
+Esses números não são uma nova execução da RFC 3.4 nem CI da revisão atual.
 
 Navegação: [artefatos](#1-o-que-entregar), [geração de PDFs](#2-gerar-novamente-os-pdfs),
 [validação isolada](#3-validar-sem-apagar-o-banco-em-desenvolvimento),
@@ -227,6 +229,45 @@ descartados; ambiente original preservado com CHECKs validados. Fontes/RFC
 3.3/PDFs estão alinhados; publicação/CI da revisão nova e confirmações humanas
 continuam pendentes, sem commit/push pelo agente.
 
+### 3.3 T5.10: relógio determinístico e bootstrap automático
+
+**2026-10-10 18:26:54–18:28:49 UTC:** **289 passed in 114.35s**, zero
+falhas/erros/skips, na `.venv` existente. 220 asserções de produto HTTP,
+42 contratos SQL/worker e 27 guardas estáticas; bootstrap Docker é preparação
+de infraestrutura, não prova HTTP. Executou-se o comando pytest padrão com
+variáveis conflitantes no shell; API principal em 21h e API auxiliar para
+fronteiras/dia/replay. Nenhuma rota/regra/DDL financeira foi alterada.
+
+Projeto `baas-pytest-e17f7ad40e0d43c98a5b5cde4ddea7fb`; base
+`6e605c9c0ae3cb2121c4d61b4fc5b5d06115486f` + trabalho local, não commit
+publicado. JUnit `artifacts/test-runs/full-final.xml`; diretório por UUID com
+expositions de métricas principal/auxiliar e metadados sem credenciais.
+Remoção foi conferida por `ps --all --quiet` e consulta ao Docker/rede;
+containers originais conservaram IDs/uptime/relógio. Só dados sintéticos
+descartáveis foram removidos; não houve reset do banco de desenvolvimento.
+
+Uma primeira regressão passou 288/114.08 s, mas inspeção posterior encontrou
+perfil opcional remanescente. Red/Green adicional motivou a 289ª guarda e
+inclusão explícita do perfil em todo comando. Esses resíduos foram removidos
+por seus UUIDs, e os metadados anteriores de cleanup não são prova completa.
+Históricos permanecem em [COBERTURA](../COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026).
+
+Benchmark separado: 5×40, **5 passed/7.77 s**, parede **8,058 s**, três
+snapshots CPU/RAM. Compose de teste sem reload: não comparar diretamente
+com medições do perfil de desenvolvimento. Método/limites em
+[BENCHMARK §14](../BENCHMARK.md#14-t510-bootstrap-determinístico-e-modo-externo).
+Modo externo foi exercitado com outbox/worker e relógio (19/38.76 s, antes
+da guarda adicional); após a correção, mais **5 passed/15.81 s** de worker,
+testes originais e replay entre janelas, com cleanup de ambos os ambientes.
+
+RFC 3.4/PDF de quatro páginas e apresentação de dez foram regenerados;
+seções oficiais, rotas/DER, hashes, overflow e revisão visual conservados.
+CI novo usa a mesma preparação padrão e publica JUnit/métricas/metadados;
+a aprovação remota ainda depende de commit/push do grupo. Validador de
+clone/venv nova **não** foi executado integralmente nesta rodada; aceite,
+clone independente e ensaio continuam pendentes. Nenhum item restante de 9.5
+foi implementado ou marcado como concluído.
+
 ## 4. Clone remoto por outra pessoa — ainda necessário
 
 Após publicar o commit/artefatos finais, um integrante que não escreveu o
@@ -239,14 +280,24 @@ docker compose up -d --build
 docker compose ps
 python3 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements-dev.txt
-NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build
 ./.venv/bin/python -m pytest tests -q -m static_guard
 ./.venv/bin/python -m pytest tests -q -m api_blackbox
 ./.venv/bin/python -m pytest tests -q -m infrastructure_contract
 ./.venv/bin/python -m pytest tests -q
 ```
 
-Use banco descartável: suíte de infraestrutura/legado recria schema. Guardar
+Desde T5.10 os comandos pytest acima preparam automaticamente seus projetos
+descartáveis, relógio fixo, portas livres, saúde e cleanup; não precisam de
+`NIGHT_TIME_OVERRIDE` manual nem de `down -v` no projeto de desenvolvimento.
+As seleções são execuções independentes sobre bancos novos. CI atual roda
+guardas + suíte completa e preserva JUnit/métricas/metadados. Scripts de entrega
+e benchmark, que já possuem Compose próprio, usam `--test-environment=external`;
+fronteiras de relógio continuam isoladas, inclusive nesse modo. O setup manual
+do produto permanece com relógio real. Referências:
+[README](../../baas-pme-api/README.md#relógio-determinístico-e-isolamento-automático),
+[T5.10](../PLANO_DE_EXECUCAO.md#t510-infraestrutura-automática-e-relógio-determinístico-ajuste-de-entrega).
+
+O banco gerido é descartável: infraestrutura/legado recria schema. Guardar
 data, commit, máquina, versões, saídas e quem executou; concluir T5.5 só depois.
 Não copiar segredos de desenvolvimento nem solicitar override financeiro em
 produção. O relógio fixo pertence exclusivamente ao perfil de teste.
