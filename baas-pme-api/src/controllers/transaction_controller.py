@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import time
 from uuid import uuid4
 
-from constants import NIGHT_LIMIT_CENTS, TRANSFER_FEE_CENTS
+from constants import NIGHT_LIMIT_CENTS
 from controllers.base_controller import BaseController
 from controllers.idempotency_controller import IdempotencyController
 from dtos import TransactionDTO
@@ -15,7 +15,7 @@ from errors import (
     SameAccountTransfer,
     TransactionNotFound,
 )
-from repositories import AccountRepository, TransactionRepository
+from repositories import AccountRepository, PricingRepository, TransactionRepository
 from utils.night_limit import is_night_window
 from utils.metrics import observe_lock_wait, record_idempotency_replay
 from utils.transient_retry import execute_with_transient_retry
@@ -39,6 +39,7 @@ class TransactionController(BaseController):
         self.account_repository = AccountRepository(self.context)
         self.transaction_repository = TransactionRepository(self.context)
         self.idempotency_controller = IdempotencyController(self.context)
+        self.pricing_repository = PricingRepository(self.context)
 
     @classmethod
     def create_with_transient_retry(
@@ -151,7 +152,8 @@ class TransactionController(BaseController):
         if destination.status.enumerator != "APPROVED":
             raise AccountNotApproved(destination_account_key)
 
-        total_debit = amount + TRANSFER_FEE_CENTS
+        pricing = self.pricing_repository.resolve(origin.customer_id, "TRANSFER", amount)
+        total_debit = amount + pricing.fee_amount
         if origin.balance < total_debit:
             raise InsufficientBalance(origin_account_key)
 
@@ -163,9 +165,11 @@ class TransactionController(BaseController):
             operation_key,
             destination.id,
         )
-        self.transaction_repository.create_entry(
-            origin, "TRANSFER_FEE", -TRANSFER_FEE_CENTS, operation_key
-        )
+        if pricing.fee_amount > 0:
+            self.transaction_repository.create_entry(
+                origin, "TRANSFER_FEE", -pricing.fee_amount, operation_key,
+                pricing_snapshot_id=pricing.id,
+            )
         self.transaction_repository.create_entry(
             destination,
             "TRANSFER_IN",
@@ -173,10 +177,23 @@ class TransactionController(BaseController):
             operation_key,
             origin.id,
         )
+        self.audit.record(
+            "TRANSFER_CREATED",
+            "TRANSFER",
+            operation_key,
+            current_summary={
+                "origin_account_key": origin_account_key,
+                "destination_account_key": destination_account_key,
+                "amount": amount,
+                "fee_amount": pricing.fee_amount,
+                "pricing_policy_key": pricing.policy_key,
+                "pricing_policy_version": pricing.policy_version,
+            },
+        )
         return {
             **TransactionDTO.obj_to_created_dict(transfer_out),
             "type": "TRANSFER",
-            "fee_amount": TRANSFER_FEE_CENTS,
+            "fee_amount": pricing.fee_amount,
             "balance": origin.balance,
         }
 

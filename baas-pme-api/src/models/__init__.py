@@ -12,6 +12,7 @@ from models.bank_slip import BankSlip, BankSlipStatus, BankSlipStatusEvent
 from models.user import User, UserCustomerAccess, UserSession
 from models.audit_event import AuditEvent
 from models.outbox_event import OutboxEvent
+from models.pricing import PricingPolicy, PricingSnapshot
 
 __all__ = [
     "Base",
@@ -34,4 +35,6 @@ __all__ = [
     "UserSession",
     "AuditEvent",
     "OutboxEvent",
+    "PricingPolicy",
+    "PricingSnapshot",
 ]

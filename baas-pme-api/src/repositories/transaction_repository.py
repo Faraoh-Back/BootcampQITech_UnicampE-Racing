@@ -15,6 +15,7 @@ class TransactionRepository:
         signed_amount: int,
         operation_key: str | None = None,
         counterparty_account_id: int | None = None,
+        pricing_snapshot_id: int | None = None,
     ) -> Transaction:
         """Acrescenta uma linha imutável ao ledger e atualiza o cache de saldo.
 
@@ -31,6 +32,7 @@ class TransactionRepository:
             type=transaction_type,
             amount=signed_amount,
             balance_after=balance_after,
+            pricing_snapshot_id=pricing_snapshot_id,
         )
         account.balance = balance_after
         self.session.add(transaction)

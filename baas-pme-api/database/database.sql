@@ -177,6 +177,51 @@ CREATE TABLE account (
     CONSTRAINT chk_account_balance_non_negative CHECK (balance >= 0)
 );
 
+-- Política comercial: customer_id nulo é a tabela padrão; política específica
+-- prevalece sobre padrão. Versões publicadas nunca são atualizadas.
+CREATE TABLE pricing_policy (
+    id                       SERIAL PRIMARY KEY,
+    policy_key               CHAR(36) NOT NULL UNIQUE,
+    customer_id              INTEGER REFERENCES customer(id),
+    operation                VARCHAR(40) NOT NULL,
+    version                  INTEGER NOT NULL,
+    fixed_fee_cents          BIGINT NOT NULL DEFAULT 0,
+    percentage_basis_points  INTEGER NOT NULL DEFAULT 0,
+    effective_from           TIMESTAMP NOT NULL DEFAULT NOW(),
+    effective_until          TIMESTAMP,
+    created_at               TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_pricing_operation CHECK (operation IN ('TRANSFER', 'CREDIT_ADVANCE', 'BANK_SLIP_ISSUANCE')),
+    CONSTRAINT chk_pricing_version CHECK (version > 0),
+    CONSTRAINT chk_pricing_fixed_fee CHECK (fixed_fee_cents >= 0),
+    CONSTRAINT chk_pricing_basis_points CHECK (percentage_basis_points >= 0 AND percentage_basis_points <= 10000),
+    CONSTRAINT chk_pricing_period CHECK (effective_until IS NULL OR effective_until > effective_from),
+    CONSTRAINT unq_pricing_customer_operation_version UNIQUE NULLS NOT DISTINCT (customer_id, operation, version)
+);
+
+CREATE INDEX idx_pricing_policy_resolution
+ON pricing_policy (customer_id, operation, effective_from DESC, version DESC);
+
+INSERT INTO pricing_policy (policy_key, customer_id, operation, version, fixed_fee_cents, percentage_basis_points) VALUES
+('00000000-0000-0000-0000-000000000101', NULL, 'TRANSFER', 1, 100, 0),
+('00000000-0000-0000-0000-000000000102', NULL, 'CREDIT_ADVANCE', 1, 0, 300),
+('00000000-0000-0000-0000-000000000103', NULL, 'BANK_SLIP_ISSUANCE', 1, 0, 0);
+
+CREATE TABLE pricing_snapshot (
+    id                       SERIAL PRIMARY KEY,
+    policy_key               CHAR(36) NOT NULL,
+    policy_version           INTEGER NOT NULL,
+    customer_id              INTEGER REFERENCES customer(id),
+    operation                VARCHAR(40) NOT NULL,
+    fixed_fee_cents          BIGINT NOT NULL,
+    percentage_basis_points  INTEGER NOT NULL,
+    base_amount              BIGINT NOT NULL,
+    fee_amount               BIGINT NOT NULL,
+    applied_at               TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_pricing_snapshot_values CHECK (
+        fixed_fee_cents >= 0 AND percentage_basis_points >= 0 AND base_amount >= 0 AND fee_amount >= 0
+    )
+);
+
 CREATE TABLE account_status_event (
     id             SERIAL PRIMARY KEY,
     account_id     INTEGER NOT NULL REFERENCES account(id),
@@ -206,11 +251,12 @@ CREATE TABLE transaction (
     type                    VARCHAR(20) NOT NULL,
     amount                  BIGINT NOT NULL,
     balance_after           BIGINT NOT NULL,
+    pricing_snapshot_id     INTEGER REFERENCES pricing_snapshot(id),
     created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_transaction_amount_not_zero CHECK (amount <> 0),
     CONSTRAINT chk_transaction_type CHECK (type IN (
         'DEPOSIT', 'WITHDRAWAL', 'TRANSFER_OUT', 'TRANSFER_IN', 
-        'TRANSFER_FEE', 'ADVANCE_CREDIT', 'ADVANCE_FEE'
+        'TRANSFER_FEE', 'ADVANCE_CREDIT', 'ADVANCE_FEE', 'BANK_SLIP_ISSUANCE_FEE'
     ))
 );
 
@@ -223,6 +269,7 @@ CREATE TABLE credit_advance (
     gross_amount       BIGINT NOT NULL,
     fee_amount         BIGINT NOT NULL,
     net_amount         BIGINT NOT NULL,
+    pricing_snapshot_id INTEGER REFERENCES pricing_snapshot(id),
     created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_credit_advance_net_amount CHECK (net_amount = gross_amount - fee_amount)
 );
@@ -233,6 +280,8 @@ CREATE TABLE billing_plan (
     account_id       INTEGER NOT NULL REFERENCES account(id),
     base_amount      BIGINT NOT NULL,
     first_due_date   DATE NOT NULL,
+    issuance_fee_amount BIGINT NOT NULL DEFAULT 0,
+    issuance_pricing_snapshot_id INTEGER REFERENCES pricing_snapshot(id),
     created_at       TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -241,6 +290,7 @@ CREATE TABLE bank_slip (
     slip_key           CHAR(36) NOT NULL UNIQUE,
     billing_plan_id    INTEGER NOT NULL REFERENCES billing_plan(id),
     credit_advance_id  INTEGER REFERENCES credit_advance(id),
+    pricing_snapshot_id INTEGER REFERENCES pricing_snapshot(id),
     status_id          INTEGER NOT NULL REFERENCES bank_slip_status(id),
     installment_number INTEGER NOT NULL,
     batch_number       INTEGER NOT NULL DEFAULT 1,

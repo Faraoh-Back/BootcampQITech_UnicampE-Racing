@@ -5,6 +5,7 @@ from controllers.billing_plan_controller import BillingPlanController
 from controllers.idempotency_controller import IdempotencyController, IdempotencyResult
 from controllers.transaction_controller import TransactionController
 from controllers.credit_advance_controller import CreditAdvanceController
+from controllers.pricing_policy_controller import PricingPolicyController
 from controllers.auth_controller import AuthController
 from controllers.audit_controller import AuditController
 from controllers.metrics_controller import MetricsController

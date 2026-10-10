@@ -20,6 +20,7 @@ from resources import (
     HealthCheckResource,
     SampleEntityResource,
     TransactionResource,
+    PricingPolicyResource,
 )
 from utils.logger import setup_logging
 
@@ -143,6 +144,7 @@ def create_app() -> FastAPI:
     auth_resource = AuthResource()
     audit_resource = AuditResource()
     metrics_resource = MetricsResource()
+    pricing_policy_resource = PricingPolicyResource()
 
     application.add_api_route("/", health_check_resource.on_get_home, methods=["GET"])
     application.add_api_route(
@@ -188,6 +190,7 @@ def create_app() -> FastAPI:
         "/audit-events/checkpoint", audit_resource.on_get_checkpoint, methods=["GET"]
     )
     application.add_api_route("/metrics", metrics_resource.on_get, methods=["GET"])
+    application.add_api_route("/pricing-policy", pricing_policy_resource.on_post, methods=["POST"])
     application.add_api_route("/account/{account_key}", account_resource.on_get_by_key, methods=["GET"])
     application.add_api_route(
         "/account/{account_key}/block",

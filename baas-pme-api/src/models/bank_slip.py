@@ -20,6 +20,7 @@ class BankSlip(Base):
     bank_slip_key = Column("slip_key", CHAR(36), nullable=False, unique=True)
     billing_plan_id = Column(Integer, ForeignKey("billing_plan.id"), nullable=False)
     credit_advance_id = Column(Integer, ForeignKey("credit_advance.id"), nullable=True)
+    pricing_snapshot_id = Column(Integer, ForeignKey("pricing_snapshot.id"), nullable=True)
     status_id = Column(Integer, ForeignKey("bank_slip_status.id"), nullable=False)
     installment_number = Column(Integer, nullable=False)
     batch_number = Column(Integer, nullable=False, server_default=text("1"))

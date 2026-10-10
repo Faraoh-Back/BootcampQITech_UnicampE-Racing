@@ -42,6 +42,12 @@ class RequestGenerator:
         res = ClientRequisition.send("POST", "/account", payload=payload, headers=h)
         return res.response_status, res.response_json
 
+    @staticmethod
+    def POST_pricing_policy(payload: dict, headers: Optional[dict] = None) -> Tuple[int, dict]:
+        h = RequestGenerator._default_headers(headers)
+        res = ClientRequisition.send("POST", "/pricing-policy", payload=payload, headers=h)
+        return res.response_status, res.response_json
+
     # ── IDENTIDADE (/user e /auth) ────────────────────────────────
     @staticmethod
     def POST_user(payload: dict, headers: Optional[dict] = None) -> Tuple[int, dict]:

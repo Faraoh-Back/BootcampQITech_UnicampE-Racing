@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operation", "fixed_fee_cents", "percentage_basis_points"],
+  "properties": {
+    "customer_key": {"type": ["string", "null"], "minLength": 36, "maxLength": 36},
+    "operation": {"type": "string", "enum": ["TRANSFER", "CREDIT_ADVANCE", "BANK_SLIP_ISSUANCE"]},
+    "fixed_fee_cents": {"type": "integer", "minimum": 0},
+    "percentage_basis_points": {"type": "integer", "minimum": 0, "maximum": 10000}
+  }
+}

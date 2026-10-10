@@ -8,7 +8,7 @@ class Transaction(Base):
         CheckConstraint("amount <> 0", name="chk_transaction_amount_not_zero"),
         CheckConstraint(
             "type IN ('DEPOSIT', 'WITHDRAWAL', 'TRANSFER_OUT', 'TRANSFER_IN', "
-            "'TRANSFER_FEE', 'ADVANCE_CREDIT', 'ADVANCE_FEE')",
+            "'TRANSFER_FEE', 'ADVANCE_CREDIT', 'ADVANCE_FEE', 'BANK_SLIP_ISSUANCE_FEE')",
             name="chk_transaction_type",
         ),
     )
@@ -21,6 +21,7 @@ class Transaction(Base):
     type = Column(String(20), nullable=False)
     amount = Column(BigInteger, nullable=False)
     balance_after = Column(BigInteger, nullable=False)
+    pricing_snapshot_id = Column(Integer, ForeignKey("pricing_snapshot.id"), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=text("NOW()"))
 
     account = relationship("Account", foreign_keys=[account_id])

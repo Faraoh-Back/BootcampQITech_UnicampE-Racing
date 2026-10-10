@@ -35,10 +35,12 @@ class TestBillingPlan:
 
         assert status == 201
         assert set(created) == {
-            "plan_key", "account_key", "base_amount", "installments_count", "bank_slips", "created_at"
+            "plan_key", "account_key", "base_amount", "issuance_fee_amount",
+            "installments_count", "bank_slips", "created_at"
         }
         assert created["account_key"] == account["response"]["account_key"]
         assert created["base_amount"] == 15000
+        assert created["issuance_fee_amount"] == 0
         assert created["installments_count"] == 12
         assert len(created["bank_slips"]) == 12
         assert [slip["installment_number"] for slip in created["bank_slips"]] == list(range(1, 13))

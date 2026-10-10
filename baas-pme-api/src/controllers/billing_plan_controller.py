@@ -14,8 +14,9 @@ from errors import (
     ExternalConnectorError,
     InvalidFirstDueDate,
     InvalidSchema,
+    InsufficientBalance,
 )
-from repositories import BillingPlanRepository
+from repositories import AccountRepository, BillingPlanRepository, PricingRepository, TransactionRepository
 from utils.date import add_months
 from utils.metrics import observe_lock_wait
 
@@ -24,6 +25,9 @@ class BillingPlanController(BaseController):
     def __init__(self) -> None:
         super().__init__(__name__)
         self.billing_plan_repository = BillingPlanRepository(self.context)
+        self.account_repository = AccountRepository(self.context)
+        self.pricing_repository = PricingRepository(self.context)
+        self.transaction_repository = TransactionRepository(self.context)
 
     def create(self, account_key: str, payload: dict) -> dict:
         account = self.billing_plan_repository.get_account_by_key(account_key)
@@ -47,9 +51,34 @@ class BillingPlanController(BaseController):
             for installment in installments
         ]
 
-        plan = self.billing_plan_repository.create(
-            account, plan_key, payload["base_amount"], first_due_date, issued_slips
+        # O emissor externo já confirmou o lote. A cobrança de serviço é
+        # separada do valor que o pagador deve no boleto e só entra no ledger
+        # depois de travar/reler o saldo atual da PME.
+        account = self.account_repository.get_by_key_for_update(account_key)
+        if account is None:
+            raise AccountNotFound(account_key)
+        if account.status.enumerator != "APPROVED":
+            raise AccountNotApproved(account_key)
+        pricing = self.pricing_repository.resolve(
+            account.customer_id, "BANK_SLIP_ISSUANCE", payload["base_amount"] * len(installments)
         )
+        if account.balance < pricing.fee_amount:
+            raise InsufficientBalance(account_key)
+
+        plan = self.billing_plan_repository.create(
+            account, plan_key, payload["base_amount"], first_due_date, issued_slips,
+            pricing_snapshot_id=pricing.id,
+        )
+        plan.issuance_fee_amount = pricing.fee_amount
+        plan.issuance_pricing_snapshot_id = pricing.id
+        if pricing.fee_amount:
+            self.transaction_repository.create_entry(
+                account,
+                "BANK_SLIP_ISSUANCE_FEE",
+                -pricing.fee_amount,
+                str(uuid4()),
+                pricing_snapshot_id=pricing.id,
+            )
         plan_dto = BillingPlanDTO.obj_to_created_dict(plan)
         self.audit.record(
             "BILLING_PLAN_CREATED",
@@ -59,6 +88,9 @@ class BillingPlanController(BaseController):
                 "account_key": account_key,
                 "base_amount": plan.base_amount,
                 "batch_number": 1,
+                "issuance_fee_amount": pricing.fee_amount,
+                "pricing_policy_key": pricing.policy_key,
+                "pricing_policy_version": pricing.policy_version,
             },
         )
         self.session.commit()
@@ -102,7 +134,27 @@ class BillingPlanController(BaseController):
             {**installment, "barcode": issued_by_installment[installment["installment_number"]]}
             for installment in installments
         ]
-        bank_slips = self.billing_plan_repository.create_adjustment_batch(plan, rate, issued_slips)
+        # O lote reajustado também é uma emissão de boleto e, portanto, usa
+        # a política vigente no momento da operação, não a tarifa histórica
+        # do lote inicial.
+        account = self.account_repository.get_by_key_for_update(account_key)
+        if account is None:
+            raise AccountNotFound(account_key)
+        if account.status.enumerator != "APPROVED":
+            raise AccountNotApproved(account_key)
+        pricing = self.pricing_repository.resolve(
+            account.customer_id, "BANK_SLIP_ISSUANCE", adjusted_amount * len(installments)
+        )
+        if account.balance < pricing.fee_amount:
+            raise InsufficientBalance(account_key)
+        bank_slips = self.billing_plan_repository.create_adjustment_batch(
+            plan, rate, issued_slips, pricing_snapshot_id=pricing.id
+        )
+        if pricing.fee_amount:
+            self.transaction_repository.create_entry(
+                account, "BANK_SLIP_ISSUANCE_FEE", -pricing.fee_amount, str(uuid4()),
+                pricing_snapshot_id=pricing.id,
+            )
         self.audit.record(
             "BILLING_PLAN_ADJUSTED",
             "BILLING_PLAN",
@@ -113,6 +165,9 @@ class BillingPlanController(BaseController):
                 "batch_number": 2,
                 "index_code": payload["index_code"],
                 "rate": str(rate),
+                "issuance_fee_amount": pricing.fee_amount,
+                "pricing_policy_key": pricing.policy_key,
+                "pricing_policy_version": pricing.policy_version,
             },
         )
         self.session.commit()

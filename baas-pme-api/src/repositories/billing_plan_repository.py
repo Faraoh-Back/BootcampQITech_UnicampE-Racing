@@ -47,6 +47,7 @@ class BillingPlanRepository:
         base_amount: int,
         first_due_date,
         issued_slips: list[dict],
+        pricing_snapshot_id: int | None = None,
     ) -> BillingPlan:
         """Monta o lote inicial depois que o emissor externo já confirmou tudo."""
         pending_status = self.get_bank_slip_status("PENDING")
@@ -68,6 +69,7 @@ class BillingPlanRepository:
                 amount=issued_slip["amount"],
                 due_date=issued_slip["due_date"],
                 barcode=issued_slip["barcode"],
+                pricing_snapshot_id=pricing_snapshot_id,
             )
             self.session.add(bank_slip)
             self.session.flush()
@@ -79,7 +81,8 @@ class BillingPlanRepository:
         return plan
 
     def create_adjustment_batch(
-        self, plan: BillingPlan, adjustment_rate, issued_slips: list[dict]
+        self, plan: BillingPlan, adjustment_rate, issued_slips: list[dict],
+        pricing_snapshot_id: int | None = None,
     ) -> list[BankSlip]:
         """Persiste o lote 2 e seus eventos depois da emissão externa."""
         pending_status = self.get_bank_slip_status("PENDING")
@@ -95,6 +98,7 @@ class BillingPlanRepository:
                 amount=issued_slip["amount"],
                 due_date=issued_slip["due_date"],
                 barcode=issued_slip["barcode"],
+                pricing_snapshot_id=pricing_snapshot_id,
             )
             self.session.add(bank_slip)
             self.session.flush()

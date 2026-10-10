@@ -1,7 +1,6 @@
 from uuid import uuid4
 import time
 
-from constants import ADVANCE_FEE_PERCENT
 from controllers.base_controller import BaseController
 from controllers.idempotency_controller import IdempotencyController
 from dtos import CreditAdvanceDTO
@@ -11,7 +10,7 @@ from errors import (
     BankSlipNotEligible,
     BankSlipNotFound,
 )
-from repositories import AccountRepository, CreditAdvanceRepository, TransactionRepository
+from repositories import AccountRepository, CreditAdvanceRepository, PricingRepository, TransactionRepository
 from utils.metrics import observe_lock_wait, record_idempotency_replay
 from utils.transient_retry import execute_with_transient_retry
 
@@ -25,6 +24,7 @@ class CreditAdvanceController(BaseController):
         self.credit_advance_repository = CreditAdvanceRepository(self.context)
         self.transaction_repository = TransactionRepository(self.context)
         self.idempotency_controller = IdempotencyController(self.context)
+        self.pricing_repository = PricingRepository(self.context)
 
     @classmethod
     def create_with_transient_retry(
@@ -70,8 +70,10 @@ class CreditAdvanceController(BaseController):
             raise BankSlipNotEligible()
 
         gross_amount = sum(bank_slip.amount for bank_slip in bank_slips)
-        fee_amount = (gross_amount * ADVANCE_FEE_PERCENT + 50) // 100
+        pricing = self.pricing_repository.resolve(account.customer_id, "CREDIT_ADVANCE", gross_amount)
+        fee_amount = pricing.fee_amount
         credit_advance = self.credit_advance_repository.create(account.id, gross_amount, fee_amount)
+        credit_advance.pricing_snapshot_id = pricing.id
         for bank_slip in bank_slips:
             bank_slip.credit_advance_id = credit_advance.id
 
@@ -81,7 +83,8 @@ class CreditAdvanceController(BaseController):
         )
         if fee_amount > 0:
             self.transaction_repository.create_entry(
-                account, "ADVANCE_FEE", -fee_amount, operation_key
+                account, "ADVANCE_FEE", -fee_amount, operation_key,
+                pricing_snapshot_id=pricing.id,
             )
 
         response = CreditAdvanceDTO.obj_to_created_dict(
@@ -97,6 +100,8 @@ class CreditAdvanceController(BaseController):
                 "fee_amount": fee_amount,
                 "gross_amount": gross_amount,
                 "net_amount": response["net_amount"],
+                "pricing_policy_key": pricing.policy_key,
+                "pricing_policy_version": pricing.policy_version,
             },
         )
         self.session.commit()

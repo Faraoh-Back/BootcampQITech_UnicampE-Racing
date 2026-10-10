@@ -8,6 +8,7 @@ class BillingPlanDTO:
             "plan_key": plan.plan_key,
             "account_key": plan.account.account_key,
             "base_amount": plan.base_amount,
+            "issuance_fee_amount": plan.issuance_fee_amount,
             "installments_count": len(plan.bank_slips),
             "bank_slips": [BillingPlanDTO._bank_slip_to_dict(slip) for slip in plan.bank_slips],
             "created_at": plan.created_at.isoformat(),
@@ -19,6 +20,7 @@ class BillingPlanDTO:
             "plan_key": plan.plan_key,
             "account_key": plan.account.account_key,
             "base_amount": plan.base_amount,
+            "issuance_fee_amount": plan.issuance_fee_amount,
             "first_due_date": plan.first_due_date.isoformat(),
             "created_at": plan.created_at.isoformat(),
             "bank_slips": [

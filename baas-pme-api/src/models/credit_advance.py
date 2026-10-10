@@ -14,6 +14,7 @@ class CreditAdvance(Base):
     gross_amount = Column(BigInteger, nullable=False)
     fee_amount = Column(BigInteger, nullable=False)
     net_amount = Column(BigInteger, nullable=False)
+    pricing_snapshot_id = Column(Integer, ForeignKey("pricing_snapshot.id"), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=text("NOW()"))
 
     account = relationship("Account")

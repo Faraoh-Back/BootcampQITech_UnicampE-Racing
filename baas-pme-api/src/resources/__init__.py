@@ -8,3 +8,4 @@ from resources.credit_advance import CreditAdvanceResource
 from resources.auth import AuthResource
 from resources.audit import AuditResource
 from resources.metrics import MetricsResource
+from resources.pricing_policy import PricingPolicyResource
