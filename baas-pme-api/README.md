@@ -109,6 +109,16 @@ intencional.
 | `POST` | `/account/{account_key}/credit-advance` | Antecipação lastreada em boletos. |
 | `POST` | `/pricing-policy` | Publicação interna de tarifa padrão ou específica por PME. |
 | `POST` | `/risk-policy` | Publicação interna de habilitações e limites de risco por PME. |
+| `POST` | `/account/{account_key}/quote` | Prévia de tarifa, líquido e limites para transferência, cobrança ou antecipação. |
+
+## Cotação antes da confirmação
+
+`POST /account/{account_key}/quote` retorna uma prévia auditável, válida por
+60 segundos, de preço e risco para `TRANSFER`, `BILLING_PLAN` ou
+`CREDIT_ADVANCE`. Ela não reserva saldo, limite, boleto nem tarifa. Por isso,
+as rotas financeiras não aceitam `quote_key` ou `fee_amount`: elas recalculam
+as políticas vigentes no commit. Essa escolha mantém o ledger autoritativo
+mesmo quando a regra comercial muda entre a tela de confirmação e o envio.
 
 Depósito, saque, transferência e antecipação exigem `Idempotency-Key`. Uma
 repetição com o mesmo payload devolve `201` e `Idempotent-Replayed: true` sem

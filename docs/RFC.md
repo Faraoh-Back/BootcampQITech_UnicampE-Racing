@@ -58,6 +58,7 @@ Exceto `/` e `/health_check`, as rotas exigem `INTERNAL-TOKEN`. Em rotas de cont
 | `POST` | `/account/{key}/credit-advance` | Antecipa 1–50 boletos | chaves, chave idempotente | Idempotente: `201`; `400`, `404`, `409` |
 | `POST` | `/pricing-policy` | Publica tarifa padrão ou por PME | operação, centavos, bps, PME opcional | `201`; `400`, `403`, `404` |
 | `POST` | `/risk-policy` | Publica regra de risco/produto padrão ou por PME | habilitações e limites em centavos | `201`; `400`, `403`, `404` |
+| `POST` | `/account/{key}/quote` | Calcula prévia informativa de custo e limite | operação, valor ou boletos | `201`; `400`, `404`, `409`, `422` |
 | `POST` | `/user`, `/auth/login|refresh|logout` | Usuário e sessões | PME, credenciais, refresh/JWT | `201/204`; `400`, `401`, `403`, `409` |
 | `GET` | `/audit-events[/checkpoint]`, `/metrics` | Auditoria e métricas internas | n/a | `200`; `403` sem token |
 
@@ -114,6 +115,12 @@ erDiagram
 1. Antes da emissão externa de boleto, a API rejeita `BILLING_PLAN` desabilitado. Antes de antecipar, valida produto, valor bruto e quantidade de boletos depois de travar os recebíveis. Antes de transferir, valida produto e teto por operação.
 2. Para a transferência, depois das travas de conta em ordem de ID, uma trava transacional por `PME + data` serializa a atualização de `customer_daily_outgoing`. O limite diário conta o valor principal enviado; a tarifa comercial tem snapshot e lançamento próprios.
 3. `risk_policy_snapshot` copia política, versão, pedido e, quando aplicável, consumo diário antes/depois. O mesmo snapshot é ligado ao fato financeiro e a auditoria registra a decisão. Nova política não altera fatos confirmados.
+
+**Cotação e execução**
+
+1. `POST /quote` lê as políticas de preço e risco vigentes, calcula a tarifa em centavos e registra uma prévia com expiração de 60 segundos. Para antecipação, os boletos ainda precisam ser próprios, pendentes e não antecipados na leitura.
+2. A cotação não reserva saldo, consumo diário, boleto ou tarifa. Ela apenas permite que o integrador apresente custo e limite observados naquele instante.
+3. Escritas financeiras não recebem `quote_key` nem `fee_amount`: na transação elas travam os recursos necessários e recalculam tudo. Logo, uma mudança de regra após a cotação é aplicada com segurança, sem divergência entre ledger e política atual.
 
 **Antecipação — caminho feliz e disputa**
 

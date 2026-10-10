@@ -31,6 +31,7 @@
 | **D12** | **Observabilidade e limites de espera** | Logs JSON no stdout com `request_id`, método, rota-modelo, status, duração, conta mascarada e usuário mascarado quando o JWT é válido. `GET /metrics` expõe Prometheus: requisições/latência, QIT, falhas de conectores, replay idempotente, duração de aquisição de travas e sessões ativas. Conectores têm conexão de 1 s e leitura de 5 s; cada transação PostgreSQL recebe `lock_timeout` de 2 s e `statement_timeout` de 10 s, todos limitados pelo orçamento de requisição de 15 s. | Rótulos são somente método, rota-modelo, status, código QIT, conector, escopo e operação: **nunca** e-mail, CPF/CNPJ, token, `request_id`, IP, chave de conta ou query string. Falha externa devolve `502 QIT001009`; espera/execução PostgreSQL esgotada devolve `503 QIT001024`, sempre correlacionável por `X-Request-ID`. Uma interrupção ou timeout no cliente não informa se houve commit: operação financeira só pode ser repetida com a mesma `Idempotency-Key`. |
 | **D13** | **Alertas e notificações confiáveis** | Bloquear ou cancelar uma conta grava `outbox_event` na mesma transação do status e da auditoria. O worker separado reclama eventos por *lease*, faz `POST` ao webhook com `Idempotency-Key = event_key` e marca sucesso; falha preserva o evento, incrementa tentativa e agenda retentativa exponencial. | Não há chamada de e-mail/webhook dentro do controller antes do commit. A entrega é **pelo menos uma vez**: queda após o webhook aceitar pode reenviar a mesma chave, que o consumidor deve deduplicar. Métricas de outbox, HTTP 5xx, conector e lock alimentam regras Prometheus documentadas; CPU/memória dependem de coletor do runtime (ex.: cAdvisor), não da API. |
 | **D14** | **Risco e habilitação por PME** | `risk_policy` versão regras padrão ou específicas: habilitação de `TRANSFER`, `BILLING_PLAN` e `CREDIT_ADVANCE`; teto por transferência; teto diário de transferências; teto de valor e quantidade de boletos por antecipação. A regra específica vigente vence a padrão. | A decisão gera `risk_policy_snapshot` com versão e limites. Para transferência, `customer_daily_outgoing` é atualizado na mesma transação; uma trava advisory por PME/data serializa contas distintas da mesma PME. O consumo diário é o **valor principal transferido**, não a tarifa comercial, que é fato separado no ledger. Publicação encerra a vigência anterior e cria nova versão; aprovação maker-checker é S21. |
+| **D15** | **Cotação informativa, execução autoritativa** | `POST /account/{account_key}/quote` persiste por 60 segundos uma prévia de `TRANSFER`, `BILLING_PLAN` ou `CREDIT_ADVANCE`: bruto, tarifa, líquido, versões de preço/risco e limites. | A cotação não reserva saldo, limite, boleto, preço ou capacidade externa. As rotas financeiras não aceitam `quote_key` nem tarifa no payload: no commit elas recalculam preço e risco vigentes. Isso evita usar uma cotação expirada, manipulada ou de payload distinto como fonte de verdade. |
 
 ---
 
@@ -582,3 +583,25 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
   portanto duas contas da mesma PME não ultrapassam o teto em conjunto. A
   decisão e seu consumo antes/depois ficam em snapshot e no `audit_event`.
 - **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001001`.
+
+---
+
+### 3.11. Cotação informativa (`/quote`)
+
+#### `POST /account/{account_key}/quote`
+- **Cabeçalhos:** `INTERNAL-TOKEN`.
+- **Body de Entrada:** para `TRANSFER`, `{ "operation": "TRANSFER",
+  "amount": 20000 }`; para `BILLING_PLAN`, o mesmo formato com o valor de
+  cada uma das 12 parcelas; para `CREDIT_ADVANCE`,
+  `{ "operation": "CREDIT_ADVANCE", "bank_slip_keys": ["..."] }`.
+- **Resposta Sucesso (`201 Created`):** `quote_key`, `operation`,
+  `gross_amount`, `fee_amount`, `net_amount`, chave/versão de política de
+  preço e risco, `expires_at` e `informative: true`. Transferência inclui
+  consumo/restante diário; cobrança inclui `installments_count`; antecipação,
+  `bank_slips_count`.
+- **Semântica de segurança:** expira 60 segundos após criação e existe para
+  rastreabilidade e interface do integrador. Não é reserva nem autorização:
+  os endpoints de escrita não recebem `quote_key` e recalculam a decisão
+  vigente no commit. O cliente nunca envia `fee_amount` como dado confiável.
+- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001002`,
+  `404 QIT001015`, `409 QIT001016`, `409 QIT001026`, `422 QIT001027`.
