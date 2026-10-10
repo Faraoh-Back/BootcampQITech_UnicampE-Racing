@@ -142,7 +142,7 @@ try {
   for (const source of sources) hashes[source] = createHash('sha256')
     .update(await readFile(resolve(delivery, source))).digest('hex');
   await writeFile(resolve(delivery, 'artefatos.json'), JSON.stringify({
-    source_version: '3.2', rfc_pages: 4, presentation_pages: 10, sha256: hashes,
+    source_version: '3.3', rfc_pages: 4, presentation_pages: 10, sha256: hashes,
     note: 'Conteúdo e integridade rastreáveis; bytes de PDF podem variar com data/Chromium/fontes.',
   }, null, 2)+'\n');
 } finally {

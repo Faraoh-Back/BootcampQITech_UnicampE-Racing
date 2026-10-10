@@ -14,8 +14,14 @@ class PricingRepository:
     def resolve(self, customer_id: int, operation: str, base_amount: int) -> PricingSnapshot:
         policy = self.get_policy(customer_id, operation)
         fee_amount = self.calculate_fee(policy, base_amount)
+        return self.create_snapshot(policy, base_amount, fee_amount)
+
+    def create_snapshot(
+        self, policy: PricingPolicy, base_amount: int, fee_amount: int
+    ) -> PricingSnapshot:
+        """Persiste a escolha já calculada, sem resolver outra versão de preço."""
         snapshot = PricingSnapshot(policy_key=policy.policy_key, policy_version=policy.version,
-            customer_id=policy.customer_id, operation=operation, fixed_fee_cents=policy.fixed_fee_cents,
+            customer_id=policy.customer_id, operation=policy.operation, fixed_fee_cents=policy.fixed_fee_cents,
             percentage_basis_points=policy.percentage_basis_points, base_amount=base_amount,
             fee_amount=fee_amount)
         self.session.add(snapshot)

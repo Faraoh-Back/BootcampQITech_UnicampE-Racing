@@ -4,7 +4,7 @@
 |---|---|
 | **Time** | Cairê Belo · Pedro Campanha |
 | **Data** | 10/10/2026 |
-| **Versão** | 3.2 — garantias verificadas, limitações conhecidas e regra de líquido positivo aprovada |
+| **Versão** | 3.3 — garantias verificadas, limitações conhecidas e líquido positivo implementado |
 
 ## Contextualização
 
@@ -14,7 +14,7 @@ Uma PME precisa cobrar mensalidades, movimentar caixa, pagar fornecedores e ante
 
 Uma duplicação de débito/crédito ou um recebível antecipado duas vezes prejudica o caixa; um saldo que o extrato não explica impede a auditoria. O compromisso é preservar essas invariantes nas operações confirmadas, inclusive sob concorrência e reenvio. O projeto também entrega histórico de estado, auditoria verificável, logs, métricas, notificações e limites de espera. Ficam fora: empréstimo, baixa/pagamento automático de boleto, estorno, múltiplas moedas, reajuste agendado e capacidade/SLO produtivo. Gateway, deploy produtivo e coletores de alerta/CPU/memória ainda são evolução.
 
-Apresentamos **garantias verificadas e limitações conhecidas**: testes sustentam os cenários exercitados dentro das fronteiras descritas, não segurança absoluta nem cobertura de todas as falhas. A aprovação de uma regra não a torna implementada; líquido positivo na antecipação é decisão aprovada com implementação pendente P0.4.
+Apresentamos **garantias verificadas e limitações conhecidas**: testes sustentam os cenários exercitados dentro das fronteiras descritas, não segurança absoluta nem cobertura de todas as falhas. Líquido positivo na antecipação/cotação CREDIT_ADVANCE foi implementado e testado mediante autorização específica; as demais lacunas P0.4/9.5 permanecem abertas.
 
 ### Explicando a solução de forma macro
 
@@ -49,10 +49,10 @@ Erros seguem contrato próprio QIT `{title, description, translation, code}`, n�
 | POST | `/account/{account_key}/billing-plan` | Lote 1; sem replay persistido | centavos por parcela, vencimento | `201`; `400` contrato; `404` conta; `409` estado/produto; `422` vencimento/saldo de tarifa; `502` emissor |
 | GET | `/account/{account_key}/billing-plan/{plan_key}` | Plano/boletos/eventos; leitura | chaves | `200`; `404` ausente ou alheio |
 | POST | `/account/{account_key}/billing-plan/{plan_key}/adjustment` | Lote 2 uma vez; repetição é conflito | IPCA/IGPM | `201`; `400` contrato; `404` conta/plano; `409` lote/estado/produto; `422` saldo de tarifa; `502` conector |
-| POST | `/account/{account_key}/credit-advance` | Antecipa; chave+hash+UNIQUE | 1–50 boletos, `Idempotency-Key` | `201`/replay; `400` contrato/chave; `404` conta/boleto; `409` estado/chave/lastro/produto; `422` risco; `503` retry esgotado |
+| POST | `/account/{account_key}/credit-advance` | Antecipa; chave+hash+UNIQUE | 1–50 boletos, `Idempotency-Key` | `201`/replay; `400` contrato/chave; `404` conta/boleto; `409` estado/chave/lastro/produto; `422` risco/líquido não positivo; `503` retry esgotado |
 | POST | `/pricing-policy` | Bootstrap de preço; nova versão por chamada | operação, tarifa fixa, bps, PME opcional | `201`; `400` contrato; `404` PME |
 | POST | `/risk-policy` | Bootstrap de risco; nova versão por chamada | habilitações, limites, PME opcional | `201`; `400` contrato; `404` PME |
-| POST | `/account/{account_key}/quote` | Prévia persistida; nova cotação por chamada | operação, centavos ou boletos | `201`; `400` contrato; `404` conta/lastro; `409` lastro/produto; `422` risco |
+| POST | `/account/{account_key}/quote` | Prévia persistida; nova cotação por chamada | operação, centavos ou boletos | `201`; `400` contrato; `404` conta/lastro; `409` lastro/produto; `422` risco/líquido não positivo (CREDIT_ADVANCE) |
 | POST | `/policy-change-request` | Rascunho; sem replay | PME, tipo, política, JWT OWNER | `201`; `400` contrato; `401` JWT; `403` vínculo; `404` PME |
 | PUT | `/policy-change-request/{request_key}/submit` | Submete; repetição é conflito | chave, JWT criador | `200`; `401` JWT; `403` vínculo; `404` proposta; `409` ator/estado |
 | PUT | `/policy-change-request/{request_key}/approve` | Publica uma vez sob lock; repetição é conflito | chave, JWT outro OWNER | `200`; `401` JWT; `403` vínculo; `404` proposta; `409` autoaprovação/estado |
@@ -112,7 +112,7 @@ erDiagram
  BANK_SLIP { int id PK char36 slip_key UK "API bank_slip_key" int billing_plan_id FK int credit_advance_id FK int installment_number "UNIQUE plano+parcela" int batch_number numeric adjustment_rate bigint amount date due_date }
  BANK_SLIP_STATUS { int id PK varchar enumerator UK }
  BANK_SLIP_STATUS_EVENT { int id PK int bank_slip_id FK int status_id FK timestamp event_datetime }
- CREDIT_ADVANCE { int id PK char36 credit_advance_key UK int account_id FK bigint gross_amount bigint fee_amount bigint net_amount "CHECK gross-fee" }
+ CREDIT_ADVANCE { int id PK char36 credit_advance_key UK int account_id FK bigint gross_amount bigint fee_amount bigint net_amount "CHECK =gross-fee; >0" }
  APP_USER { int id PK char36 user_key UK varchar email UK varchar password_hash }
  USER_CUSTOMER_ACCESS { int id PK int user_id FK int customer_id FK varchar role "UNIQUE usuario+PME" }
  USER_SESSION { int id PK char36 session_key UK int user_id FK char64 refresh_token_hash UK timestamp expires_at timestamp revoked_at }
@@ -121,7 +121,7 @@ erDiagram
  RISK_POLICY { int id PK char36 policy_key UK int customer_id FK int version boolean transfer_enabled boolean billing_plan_enabled boolean credit_advance_enabled bigint daily_outgoing_limit bigint max_transfer_amount bigint max_credit_advance_amount int max_advance_bank_slips }
  RISK_POLICY_SNAPSHOT { int id PK char36 policy_key int policy_version bigint requested_amount bigint daily_outgoing_before bigint daily_outgoing_after timestamp applied_at }
  CUSTOMER_DAILY_OUTGOING { int customer_id PK,FK date operation_date PK bigint consumed_amount "CHECK >= 0" }
- QUOTE { int id PK char36 quote_key UK int account_id FK char64 request_hash bigint gross_amount bigint fee_amount bigint net_amount char36 pricing_policy_key char36 risk_policy_key timestamp expires_at }
+ QUOTE { int id PK char36 quote_key UK int account_id FK varchar operation char64 request_hash bigint gross_amount bigint fee_amount bigint net_amount "CHECK >=0; >0 se CREDIT_ADVANCE" char36 pricing_policy_key char36 risk_policy_key timestamp expires_at }
  POLICY_CHANGE_REQUEST { int id PK char36 request_key UK int customer_id FK int creator_user_id FK int approver_user_id FK varchar policy_type jsonb payload varchar status char36 published_policy_key timestamp submitted_at timestamp approved_at }
  AUDIT_EVENT { int id PK varchar actor_type varchar actor_key varchar action char36 resource_key char64 previous_hash char64 event_hash UK timestamp event_datetime }
  OUTBOX_EVENT { int id PK char36 event_key UK char36 aggregate_key "sem FK de conta" varchar topic jsonb payload int delivery_attempts char36 lock_token timestamp locked_until timestamp next_attempt_at timestamp published_at }
@@ -169,19 +169,20 @@ A regra noturna do produto aplica 100000 centavos por saque/transferência quand
 
 **Antecipação de recebíveis — caminho feliz**
 1. Exigir conta aprovada e 1–50 boletos próprios PENDING sem vínculo anterior; travá-los por ID e validar risco.
-2. Somar bruto, calcular tarifa fixa + half-up(bruto×bps/10000); lançar crédito e tarifa separados, vincular lastro e confirmar tudo com idempotência.
+2. Somar bruto, calcular tarifa fixa + half-up(bruto×bps/10000), exigir líquido > 0 antes do snapshot de preço; persistir a mesma política/tarifa escolhidas, lançar crédito e tarifa quando positiva, vincular lastro e confirmar tudo com idempotência.
 
 **Falha:** lastro alheio/inexistente dá o mesmo 404, já consumido dá 409 e lista parcialmente inválida é desfeita integralmente. Não há empréstimo/amortização/boleto de devedor: a PME cobra pagadores externos e obtém liquidez dos próprios recebíveis. Pagador não tem cadastro/saldo/baixa nesta versão.
 
-**Regra aprovada — implementação pendente P0.4:** exigir `net_amount = gross_amount - fee_amount > 0` após arredondamento; recusar tarifa ≥ bruto mesmo com saldo disponível. Cotação de antecipação e execução deverão aplicar a mesma regra e responder 422 com código QIT próprio ainda a implementar, sem confirmar dinheiro/lastro/reserva da tentativa recusada.
+**Regra implementada — subparte autorizada de P0.4:** exigir `net_amount = gross_amount - fee_amount > 0` após arredondamento; tarifa ≥ bruto retorna **422/QIT001030** mesmo com saldo disponível. Cotação CREDIT_ADVANCE e execução compartilham a validação no controller: antes da quote e, na execução, antes do snapshot de preço, antecipação, dinheiro e vínculo de lastro. Reserva/snapshot de risco provisórios não confirmam: rollback desfaz a tentativa; erro de negócio não aciona retry. Replay de sucesso mantém a resposta original, mesmo após nova política. CHECKs protegem novas gravações; a migração preserva fatos históricos incompatíveis, sem reprificação.
 
-| Exemplo: bruto R$ 100,00 | Líquido | Resultado exigido pela regra aprovada |
+| Exemplo: bruto R$ 100,00 | Líquido | Resultado da regra implementada |
 |---|---|---|
 | Tarifa R$ 3,00 | R$ 97,00 | Pode prosseguir, respeitando as demais validações |
-| Tarifa R$ 100,00 | R$ 0,00 | Recusar |
-| Tarifa R$ 120,00 | −R$ 20,00 | Recusar |
+| Tarifa R$ 99,99 | R$ 0,01 | Pode prosseguir |
+| Tarifa R$ 100,00 | R$ 0,00 | 422/QIT001030 |
+| Tarifa R$ 120,00 | −R$ 20,00 | 422/QIT001030 |
 
-Com saldo anterior de R$ 500,00, o último caso poderia deixar R$ 480,00 e consumir lastro no código atual: coerência do ledger não basta para validar o propósito econômico. É exemplo deduzido do código, não teste da nova regra. A mesma tarifa de R$ 120,00 pode ser válida para antecipar R$ 1.000,00 (líquido R$ 880,00); validar cada operação preserva a personalização. [DECISOES 3.5.1](DECISOES.md#351-líquido-positivo-regra-aprovada-e-implementação-pendente) detalha cálculo, atomicidade, replay e testes necessários.
+Com saldo anterior de R$ 500,00, o último caso reduziria o saldo para R$ 480,00 se fosse permitido: coerência do ledger não basta para validar o propósito econômico. Agora retorna 422, mantém os R$ 500,00 e deixa o boleto disponível. Testes cobrem saldo zero/suficiente, arredondamento, seleção múltipla, replay e tarifa fixa + percentual que exceda BIGINT e já inviabilize o líquido: recusa antes de persistir preço. A mesma tarifa de R$ 120,00 continua válida para antecipar R$ 1.000,00 (líquido R$ 880,00); validar por operação preserva a personalização. [DECISOES 3.5.1](DECISOES.md#351-líquido-positivo-regra-implementada-e-validada) detalha contrato, evidência e preservação do legado. Cotação TRANSFER e limites numéricos gerais continuam pendentes.
 
 **Preço, cotação e quatro olhos — caminho feliz**
 1. Publicação encerra vigência anterior e cria versão; snapshots retêm a regra consumida, sem reprificação de fatos passados.
@@ -201,11 +202,11 @@ Com saldo anterior de R$ 500,00, o último caso poderia deixar R$ 480,00 e consu
 2. Auditoria encadeia SHA-256 sob trava global e exporta cadeia/checkpoint com ID sequencial administrativo. Trigger protege UPDATE/DELETE somente de audit_event; não resiste a administrador. Ledger/status/snapshots ainda dependem da aplicação.
 3. Bloqueio/cancelamento enfileiram `account.status_changed`; worker reclama por SKIP LOCKED+lease, confirma claim, envia webhook e confirma ack em outra transação.
 
-**Falha:** lançamento alheio/inexistente tem mesmo 404. Webhook falho agenda backoff; queda após aceite ou expiração do lease pode reenviar. Consumidor deduplica event_key: entrega é pelo menos uma vez, sem dead-letter ou versão explícita de envelope.
+**Falha:** lançamento alheio/inexistente tem mesmo 404. Webhook falho agenda backoff; queda após aceite ou expiração do lease pode reenviar. O consumidor deve deduplicar event_key: entrega é pelo menos uma vez, sem dead-letter ou versão explícita de envelope.
 
 **Pipelines e evidências**
 1. CI push/PR instala dependências, valida Compose, sobe containers, espera liveness e compila. Executa guarda estática, testes HTTP e contratos de infraestrutura separadamente; SQL/injeção de falha/worker não são prova estritamente HTTP, embora não importem módulos internos.
-2. A jornada PME prova quatro olhos, tarifas, emissão/reajuste, cotação/antecipação, transferência/replay, quatro páginas de extrato e estado/auditoria. Falha interrompe pipeline e coleta logs; execução remota do Actions e clone independente continuam por comprovar.
+2. A jornada PME prova quatro olhos, tarifas, emissão/reajuste, cotação/antecipação, transferência/replay, quatro páginas de extrato e estado/auditoria. Falha interrompe pipeline e coleta logs; [CI remoto e publicação foram confirmados](entrega/ENTREGA.md#51-evidência-remota-confirmada) para `1603118` em 10/10/2026. Novas revisões exigem novo CI; clone independente, aceite e ensaio do grupo continuam pendentes.
 3. Logs normais JSON correlacionam X-Request-ID sem body; tracebacks SQL/ASGI e URLs externas ainda exigem sanitização (P1.11). Prometheus interno mede HTTP, QIT tipados, replay, conectores, locks, retries, sessões e outbox. Registry é por processo; gauges de dados persistidos são recalculadas. Coletores/alertas não estão instalados.
 
 [COBERTURA.md](COBERTURA.md) registra resultados e lacunas; [BENCHMARK.md](BENCHMARK.md) mede 5×40 transferências cruzadas e CPU/RAM por docker stats: observação local, não SLO. README mapeia código/comandos; [PLANO_DE_EXECUCAO.md](PLANO_DE_EXECUCAO.md) distingue entrega/hardening. A [RFC de entrega em PDF](entrega/RFC_FINAL.pdf) sintetiza este conteúdo em quatro páginas no modelo oficial; [apresentação](entrega/APRESENTACAO.pdf), [roteiro de defesa](entrega/ENTREGA.md#6-defesa-técnica-e-ensaio) e [registro de entrega](entrega/ENTREGA.md) preservam fronteiras e pendências humanas/externas. Os contratos integrais acima permanecem a fonte detalhada; gerar os PDFs não implementa o backlog 9.5.

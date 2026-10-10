@@ -2,6 +2,7 @@ from uuid import uuid4
 import time
 
 from controllers.base_controller import BaseController
+from controllers.credit_advance_rules import ensure_positive_credit_advance_net
 from controllers.idempotency_controller import IdempotencyController
 from dtos import CreditAdvanceDTO
 from errors import (
@@ -74,8 +75,10 @@ class CreditAdvanceController(BaseController):
         risk_snapshot = self.risk_policy_repository.apply_credit_advance(
             account.customer_id, gross_amount, len(bank_slips)
         )
-        pricing = self.pricing_repository.resolve(account.customer_id, "CREDIT_ADVANCE", gross_amount)
-        fee_amount = pricing.fee_amount
+        policy = self.pricing_repository.get_policy(account.customer_id, "CREDIT_ADVANCE")
+        fee_amount = self.pricing_repository.calculate_fee(policy, gross_amount)
+        ensure_positive_credit_advance_net(gross_amount, fee_amount)
+        pricing = self.pricing_repository.create_snapshot(policy, gross_amount, fee_amount)
         credit_advance = self.credit_advance_repository.create(account.id, gross_amount, fee_amount)
         credit_advance.pricing_snapshot_id = pricing.id
         credit_advance.risk_policy_snapshot_id = risk_snapshot.id

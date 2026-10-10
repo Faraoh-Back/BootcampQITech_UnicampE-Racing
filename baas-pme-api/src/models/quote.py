@@ -1,10 +1,24 @@
-from sqlalchemy import CHAR, BigInteger, Column, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy import CHAR, BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Integer, String, text
 
 from models.base import Base
 
 
 class Quote(Base):
     __tablename__ = "quote"
+    __table_args__ = (
+        CheckConstraint(
+            "operation IN ('TRANSFER', 'BILLING_PLAN', 'CREDIT_ADVANCE')",
+            name="chk_quote_operation",
+        ),
+        CheckConstraint(
+            "gross_amount >= 0 AND fee_amount >= 0 AND net_amount >= 0",
+            name="chk_quote_amounts",
+        ),
+        CheckConstraint(
+            "operation <> 'CREDIT_ADVANCE' OR net_amount > 0",
+            name="chk_quote_credit_advance_positive_net",
+        ),
+    )
 
     id = Column(Integer, primary_key=True)
     quote_key = Column(CHAR(36), nullable=False, unique=True)

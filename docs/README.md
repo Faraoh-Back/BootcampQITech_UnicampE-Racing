@@ -1,12 +1,34 @@
 # Documentação: onde buscar cada evidência
 
-O produto ativo é `baas-pme-api/`; `bootcamp-biblioteca-api/` e `sample_entity`
-são material-base, não features do BaaS PME.
+O produto ativo é `baas-pme-api/`; `bootcamp-biblioteca-api/` é um exercício
+independente e suas três referências Markdown descrevem a biblioteca, não o
+BaaS PME. `sample_entity` é legado ainda ativo na API, fora do produto financeiro.
 
 O enquadramento adotado é **garantias verificadas e limitações conhecidas**.
-DECISOES 3.5.1 registra a regra aprovada de líquido positivo com exemplos;
-P0.4 do plano registra sua implementação pendente. Não confundir aprovação
-documental com comportamento já validado na API.
+DECISOES 3.5.1 registra a regra implementada de líquido positivo com exemplos
+e `422 QIT001030`; COBERTURA registra os testes e o README da API, o upgrade
+sem apagar histórico. P0.4 do plano está parcial: as outras fronteiras econômicas
+continuam pendentes. Não confundir essa entrega específica com conclusão de 9.5.
+
+Publicação e CI estão [confirmados por commit](entrega/ENTREGA.md#51-evidência-remota-confirmada)
+para `1603118`. A confirmação não cobre alterações posteriores; clone independente,
+revisão dos PDFs e ensaio serão realizados pelo grupo e continuam pendentes.
+
+## Estado vigente — 10/10/2026
+
+| Assunto | Referência vigente / limite |
+|---|---|
+| Arquitetura e apresentação | RFC 3.3 integral e síntese de quatro páginas; apresentação de dez slides; seções do modelo oficial preservadas |
+| Contrato de antecipação | [DECISOES §3.5.1](DECISOES.md#351-líquido-positivo-regra-implementada-e-validada): líquido > 0 na criação/cotação CREDIT_ADVANCE; validação antes do snapshot de preço; 422/QIT001030; replay preservado |
+| Resultado completo mais recente | [COBERTURA — fechamento final](COBERTURA.md#fechamento-final-snapshots-padrão-e-tarifa-extrema); execuções anteriores permanecem datadas, não substituem esse fechamento |
+| Medição de recursos mais recente | [BENCHMARK §13](BENCHMARK.md#13-fechamento-final-validação-anterior-ao-snapshot-de-preço); transferência cruzada local, não capacidade da antecipação ou SLO |
+| Reproduzir / atualizar banco existente | [README da API](../baas-pme-api/README.md); testes em banco descartável, upgrade pontual sem apagar histórico |
+| Pendências | [Rodada 5](PLANO_DE_EXECUCAO.md#9-rodada-5-entrega-9h) para aceite/clone/ensaio/publicação da revisão final; [9.5](PLANO_DE_EXECUCAO.md#95-garantias-verificadas-e-limitações-conhecidas-correções-e-hardening) para limites e hardening ainda não entregues |
+
+Em caso de divergência, confira implementação/DDL e evidência datada; não
+resolva o conflito apenas escolhendo a frase mais favorável. DECISOES define
+o contrato, COBERTURA/BENCHMARK comprovam execuções e PLANO registra estado.
+RFC e slides sintetizam essas referências, sem criar garantias adicionais.
 
 | Documento | Função / autoridade | Quando consultar |
 |---|---|---|
@@ -41,7 +63,9 @@ documental com comportamento já validado na API.
    Guardas conferem entidades/relações, páginas e hashes, mas a legibilidade
    ainda exige revisão visual. O conteúdo integral continua em RFC/DECISOES.
 
-As contagens atuais ficam em COBERTURA, não repetidas em cada guia. Os marcos
+COBERTURA é a fonte canônica das contagens. Resumos no plano/entrega apontam
+para a execução datada correspondente, sem tratar uma coleta como execução.
+Os marcos
 antigos de 143/155 testes e benchmarks anteriores permanecem identificados
 como históricos. Não usar “100% seguro” como conclusão, mesmo após fechar
 backlog. Garantias de imutabilidade, formato de erro, gateway e entrega externa

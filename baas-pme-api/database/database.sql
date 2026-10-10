@@ -306,7 +306,8 @@ CREATE TABLE quote (
     expires_at          TIMESTAMP NOT NULL,
     created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_quote_operation CHECK (operation IN ('TRANSFER', 'BILLING_PLAN', 'CREDIT_ADVANCE')),
-    CONSTRAINT chk_quote_amounts CHECK (gross_amount >= 0 AND fee_amount >= 0 AND net_amount >= 0)
+    CONSTRAINT chk_quote_amounts CHECK (gross_amount >= 0 AND fee_amount >= 0 AND net_amount >= 0),
+    CONSTRAINT chk_quote_credit_advance_positive_net CHECK (operation <> 'CREDIT_ADVANCE' OR net_amount > 0)
 );
 
 CREATE TABLE policy_change_request (
@@ -382,7 +383,8 @@ CREATE TABLE credit_advance (
     pricing_snapshot_id INTEGER REFERENCES pricing_snapshot(id),
     risk_policy_snapshot_id INTEGER REFERENCES risk_policy_snapshot(id),
     created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_credit_advance_net_amount CHECK (net_amount = gross_amount - fee_amount)
+    CONSTRAINT chk_credit_advance_net_amount CHECK (net_amount = gross_amount - fee_amount),
+    CONSTRAINT chk_credit_advance_positive_net CHECK (net_amount > 0)
 );
 
 CREATE TABLE billing_plan (

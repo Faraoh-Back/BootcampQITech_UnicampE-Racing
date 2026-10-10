@@ -9,7 +9,7 @@ Um serviço financeiro modular: rigor matemático, confirmação transacional e 
 
 **Garantias verificadas e limitações conhecidas**, não uma certificação de produção ou “100% seguro”.
 
-<div class="small">Escopo desta entrega: S1–S21 e Rodada 5. Backlog 9.5 excluído; regra de líquido positivo aprovada, não implementada (P0.4).</div>
+<div class="small">Escopo: S1–S21, Rodada 5 e líquido positivo (subparte autorizada P0.4). Restante do backlog 9.5 não implementado.</div>
 
 <!-- page -->
 
@@ -85,7 +85,7 @@ B→A: espera #10 ────────→ lock #10 → lock #20 → validar 
 - Quote de 60 segundos é prévia, sem reserva nem garantia de preço na confirmação.
 - Maker-checker: OWNER propõe, outro OWNER aprova; pendência não vale na operação.
 
-<div class="small">Políticas diretas continuam como bootstrap e contornam quatro olhos. Líquido positivo da antecipação: regra aprovada, não implementada (P0.4). Bruto R$100 com tarifa R$120 deve ser recusado mesmo com saldo anterior; essa recusa ainda não é entregue.</div>
+<div class="small">Políticas diretas contornam quatro olhos. Líquido positivo implementado: antecipação/cotação CREDIT_ADVANCE retornam 422/QIT001030 se tarifa ≥ bruto; execução valida antes do snapshot de preço. Bruto R$100/tarifa R$120 recusa mesmo com saldo anterior, sem consumir saldo/lastro. Replay preservado; CHECKs sem reescrita de legado.</div>
 
 <!-- page -->
 
@@ -111,9 +111,9 @@ push / PR → build + saúde + compilação
 
 Jornada real: quatro olhos → cobrança/reajuste → cotação/antecipação → transferência/saque → extrato → block/cancel/auditoria.
 
-Concorrência: último saldo, transferências cruzadas, mesma chave, último limite e lastro disputado. Falhas: rollback, conector, autorização, retry e resposta inesperada sanitizada.
+Concorrência: último saldo, transferências cruzadas, mesma chave, último limite e lastro disputado. Falhas: rollback, conector, autorização, retry, líquido não positivo e resposta inesperada sanitizada.
 
-<div class="small">Resultados datados em COBERTURA/ENTREGA. Não importar src não torna SQL/subprocesso black-box HTTP. Sem declaração retrospectiva de TDD: só o Red/Green realmente executado conta como evidência. CI remoto e revisão humana ainda precisam confirmação.</div>
+<div class="small">Resultados datados em COBERTURA/ENTREGA. Não importar src não torna SQL/subprocesso black-box HTTP. Sem declaração retrospectiva de TDD: só o Red/Green realmente executado conta como evidência. CI remoto confirmado em 1603118; novas revisões exigem novo CI. Aceite humano pendente.</div>
 
 <!-- page -->
 
@@ -140,7 +140,7 @@ Concorrência: último saldo, transferências cruzadas, mesma chave, último lim
 | Eventos, não soft delete | História financeira preservada | Remoção de dados descartáveis |
 
 **Entregue:** produto, testes, contratos e evidências reproduzíveis.<br>
-**Fora desta rodada:** hardening 9.5, produção/SLO/gateway e regra P0.4 não implementada.<br>
-**Confirmação humana:** revisão dos PDFs, ensaio, clone por outra pessoa e publicação do commit final.
+**Fora desta rodada:** restante do hardening 9.5/P0.4 e produção/SLO/gateway.<br>
+**Confirmação humana:** revisão dos PDFs, ensaio e clone por outra pessoa.
 
 <div class="small">Fontes: RFC/DECISOES (contratos), COBERTURA (testes), BENCHMARK (medição), ENTREGA (execução final). A banca recebe fatos verificáveis, não promessas absolutas.</div>

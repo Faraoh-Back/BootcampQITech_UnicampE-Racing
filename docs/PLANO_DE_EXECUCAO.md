@@ -4,18 +4,19 @@
 
 - **Horas** são horas-pessoa para alguém confortável com Python, FastAPI e SQL, já incluindo 0,5h de revisão cruzada por fatia. Se for a primeira vez de alguém com Docker, SQLAlchemy ou concorrência, multiplique as tarefas dessa pessoa por 1,5.
 - **Rodadas** substituem datas. Uma rodada termina quando as três trilhas terminam. O tempo de relógio de uma rodada é o da trilha mais longa.
-- **Trilhas A, B e C** são papéis para um time de 3. Com 2 pessoas ou 1, veja a seção 8.
+- **Trilhas A, B e C** são papéis do planejamento original para um time de 3, não exigência de três autores. Com 2 pessoas ou 1, veja a seção 11; aceite/ensaio valem para todos os integrantes reais.
 - **Fatia vertical** é uma funcionalidade completa, da rota ao banco, entregue com teste. Nenhuma camada é construída "para depois".
 - **Gate** é um ponto de verificação. Só se passa para a rodada seguinte com o gate verde.
 - Fonte das restrições R1 a R8: os PDFs de estudo. Confira com o enunciado oficial.
 - **Estado de entrega (2026-10-10):** S1–S21 possuem implementação/testes, com limites em RFC/DECISOES/COBERTURA. Listas “Fazer” preservam a intenção original e não provam conclusão integral. O estado de cada tarefa e o backlog 9.5 prevalecem; resultados atuais ficam em COBERTURA.
+- **Referência vigente:** RFC 3.3; [fechamento completo de 260 testes](COBERTURA.md#fechamento-final-snapshots-padrão-e-tarifa-extrema) e [benchmark final](BENCHMARK.md#13-fechamento-final-validação-anterior-ao-snapshot-de-preço). A publicação/CI de `1603118` precede a regra de líquido positivo; a revisão final ainda precisa ser publicada/validada no remoto pelo grupo.
 
 ### Regras de trabalho do time (valem para todas as tarefas)
 
 1. `main` sempre verde: `NIGHT_TIME_OVERRIDE=21:00 docker compose up -d --build` e `./.venv/bin/python -m pytest tests -q` passando antes de qualquer merge. Use `down -v` somente em banco local descartável quando a recriação for intencional; apaga dados. O override reproduz o perfil determinístico do CI para a regra noturna.
 2. Branch curta por fatia (`feat/s3-deposito-saque`). Pull request pequeno, revisado por outra pessoa.
-3. Commits separados por cor do TDD: `test(S3): vermelho ...`, depois `feat(S3): verde ...`, depois `refactor(S3): ...`. O histórico do git é a prova do TDD.
-4. Arquivos compartilhados são onde nascem os conflitos. Evite assim: um arquivo de erros por domínio (`errors/account_errors.py`, `errors/billing_errors.py`), rotas novas só no fim de `src/app.py`, e `database.sql` e `models` escritos uma vez só (T1.1 e T1.2).
+3. Commits separados por cor do TDD: `test(S3): vermelho ...`, depois `feat(S3): verde ...`, depois `refactor(S3): ...`. Histórico Git e registros de execução são evidências; não afirmar que todas as features seguiram esse ciclo apenas porque a suíte atual passa.
+4. Arquivos compartilhados são onde nascem os conflitos. A recomendação inicial era separar erros por domínio (`errors/account_errors.py`, `errors/billing_errors.py`); a implementação mantém o catálogo em `errors/custom_errors.py` e os erros-base em `errors/base_error.py`. Coordenar alterações nesses arquivos e em `src/app.py`, DDL e models; eles evoluíram além de T1.1/T1.2 e não são arquivos congelados.
 5. Teste nunca importa nada de `src/` (R1). Existe um teste guardião para isso (T0.5).
 6. Dinheiro é sempre inteiro em centavos, em todas as camadas (R6). DTOs financeiros expõem UUID (R5); a exportação/checkpoint administrativo de auditoria expõe `audit_event_id` sequencial como exceção explícita, não garantia universal de R5.
 
@@ -37,7 +38,7 @@
 | D1 | Precificação e regra noturna do produto | Tarifas são políticas versionadas em banco, específicas por PME ou padrão, em centavos/pontos-base; o seed mantém transferência de 100 centavos e antecipação de 300 bps. Limite noturno permanece 100000 centavos por saque ou transferência. |
 | D2 | Índices do reajuste | O plano antigo diz IPCA/Selic, a RFC diz IPCA/IGPM. Selic não é índice de inflação: fique com **IPCA e IGPM**. |
 | D3 | Ciclo de vida de conta | Adicionar `PUT /account/{account_key}/block` e `PUT /account/{account_key}/cancel` na S2b. Transições: `APPROVED → BLOCKED`, `APPROVED → CANCELLED` e `BLOCKED → CANCELLED`; `CANCELLED` é final. A API registra evento em toda transição e devolve `409 QIT001019` se ela não for permitida. |
-| D4 | Antecipação | Lastreada em `bank_slip_keys` (como na RFC v2), não em valor livre. |
+| D4 | Antecipação | Lastreada em `bank_slip_keys`, não em valor livre. Após a evolução inicial, líquido > 0 na execução/cotação CREDIT_ADVANCE, com 422/QIT001030; exemplos em DECISOES 3.5.1. |
 | D5 | Formato da taxa do índice | Percentual em string: `"4.83"` significa 4,83%, fator `1 + 4.83/100`. |
 | D6 | Contratos dos mocks | BankSlip: `POST /bank-slips` com `{external_reference, installments:[{installment_number, amount, due_date}]}` responde `200 {bank_slips:[{installment_number, barcode}]}`. Banco Central: `GET /index/{IPCA\|IGPM}` responde `200 {index, accumulated_rate}`. |
 | D7 | Eventos visíveis por HTTP | O R4 (nada que entrou deixa de existir) só é testável em caixa-preta se os eventos saírem na resposta. `GET /account/{key}` devolve `status_events` da conta; `GET .../billing-plan/{key}` devolve `status_events` de cada boleto (cada item com `status` e `event_datetime`). Atualize a RFC. |
@@ -63,7 +64,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 
 ### Gates e linha de corte
 
-- **Gate 0** (fim da R0): as três máquinas sobem `docker compose up` com API/banco `healthy` e MockServer `Up`/respondendo ao status, `pytest` verde nos testes de fumaça e o PDF de teste da RFC sai com o diagrama renderizado.
+- **Gate 0** (fim da R0): as máquinas do time sobem `docker compose up` com API/banco `healthy` e MockServer `Up`/respondendo ao status, `pytest` verde nos testes de fumaça e o PDF de teste da RFC sai com o diagrama renderizado.
 - **Gate 1** (fim da R2): cliente, conta, depósito, saque, extrato paginado e a R8 verdes; plano de boletos funcionando contra o MockServer.
 - **Gate 2** (fim da R4): núcleo completo, testes de concorrência e idempotência verdes, extras integrados.
 - **Gate 3** (fim da R4.5, opcional): autenticação, auditoria, métricas e timeouts possuem contrato, testes e evidência operacional reproduzível.
@@ -91,14 +92,14 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
   1. Clonar o repositório-base e criar o repositório do time (público no dia da entrega; privado até lá).
   2. `cp .env.example .env`, `docker compose up --build`, esperar API/banco `healthy` e mock `Up`, abrir `/health_check` (204).
   3. Criar venv, `pip install -r requirements-dev.txt`, rodar `pytest`.
-  4. Rodar `docker compose down -v` e subir de novo (é assim que o schema é reaplicado: o script em `/docker-entrypoint-initdb.d` só roda com o volume vazio).
+  4. Somente num banco descartável, rodar `docker compose down -v && docker compose up -d --build` (apaga dados; o script em `/docker-entrypoint-initdb.d` só roda com volume vazio, e o SQL precisa estar na imagem nova). Para banco existente, usar upgrade específico, quando disponível, sem reset; comandos no README da API.
   5. Ler o caminho completo do exemplo `sample_entity`: `app.py`, `resource`, `schema`, `controller`, `repository`, `model`, `dto`. Conferir que a ordem dos middlewares não será mexida.
   6. Registrar problemas de Docker na sua máquina (é aqui que eles aparecem, e não na véspera).
 - **Pronto quando:** cada pessoa tem print do `docker compose ps` com API/banco `healthy` e MockServer `Up` e do `pytest` verde.
 
 ### T0.2 Decisões fixas e contratos (A, 1h, com 15 min do time todo)
 - **Fazer:** criar `docs/DECISOES.md` com D1 a D9 acima, o **catálogo de erros** (código, status, nome, quando) e o **formato de resposta de cada rota** (campos e tipos). D10–D13 serão acrescentadas na R4.5 como decisões planejadas, sem antecipar contratos inexistentes. Esse arquivo é o contrato que permite as três trilhas trabalharem sem esperar umas pelas outras. **Atualização:** S11 materializou D10, S12 materializou D11, S13/S14 materializaram observabilidade e timeout da D12, e S15 materializou D13.
-- **Pronto quando:** as três pessoas leram e disseram "ok" no PR.
+- **Pronto quando:** todos os integrantes leram e disseram "ok" no PR.
 
 ### T0.3 [Postergado para a Entrega / R5] RFC no modelo oficial da QI Tech e PDF
 - **Status:** artefatos preparados no fechamento T5.3: RFC final de quatro páginas em `docs/entrega/RFC_FINAL.pdf`, com fonte editável e DER vetorial. Aceite dos integrantes ainda requer confirmação; a RFC integral permanece preservada.
@@ -129,14 +130,14 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 
 ### T1.1 DDL completo em `database/database.sql` (A, 2,5h)
 - **Depende de:** T0.4. **Paralelo com:** T1.3, T1.4, S1 (parte vermelha).
-- **Fazer:** as 12 tabelas do DER da RFC: `customer`, `account_status`, `account`, `account_status_event`, `idempotency_key`, `transaction`, `credit_advance`, `billing_plan`, `bank_slip_status`, `bank_slip`, `bank_slip_status_event` (e as de domínio que sobrarem). Detalhes que costumam esquecer:
+- **Fazer:** as 11 tabelas do núcleo inicial: `customer`, `account_status`, `account`, `account_status_event`, `idempotency_key`, `transaction`, `credit_advance`, `billing_plan`, `bank_slip_status`, `bank_slip`, `bank_slip_status_event`. As fatias posteriores ampliaram o produto para 23 entidades; o SQL também mantém três tabelas legadas herdadas da base. Detalhes que costumam esquecer:
   - `INSERT` dos enumeradores: `account_status` (PENDING, APPROVED, BLOCKED, CANCELLED) e `bank_slip_status` (PENDING, PAID, CANCELLED).
   - `document_number VARCHAR(18)` (o `CHAR(14)` do exemplo só cabe CPF; PME tem CNPJ).
   - `UNIQUE(account_id, scope, idempotency_key)` em `idempotency_key`; `UNIQUE(billing_plan_id, installment_number)` em `bank_slip`.
-  - `CHECK (balance >= 0)`, `CHECK (amount <> 0)`, `CHECK (net_amount = gross_amount - fee_amount)`, `CHECK` do `type` do lançamento.
+  - `CHECK (balance >= 0)`, `CHECK (amount <> 0)`, `CHECK (net_amount = gross_amount - fee_amount)`, `CHECK` do `type` do lançamento. Evolução posterior: `CHECK (net_amount > 0)` na antecipação e CHECK condicional CREDIT_ADVANCE na quote, com upgrade não destrutivo.
   - Índice `transaction(account_id, created_at DESC, id DESC)` para o extrato.
-  - Todo `*_key` como `CHAR(36) NOT NULL UNIQUE`.
-- **Pronto quando:** `docker compose down -v && up` aplica sem erro; `\d` no `psql` mostra tudo; um `INSERT` manual de saldo negativo é recusado pelo banco.
+  - Chaves públicas das entidades como `CHAR(36) NOT NULL UNIQUE`; referências/agrupadores podem se repetir (`operation_key`, política nos snapshots), e `Idempotency-Key` é string com unicidade composta por conta/escopo.
+- **Pronto quando:** num banco descartável, `docker compose down -v && docker compose up -d --build` aplica sem erro; `\d` no `psql` mostra tudo; um `INSERT` manual de saldo negativo é recusado pelo banco. Nunca usar reset como upgrade de dados reais.
 
 ### T1.2 Models SQLAlchemy (A, 2h)
 - **Depende de:** T1.1.
@@ -177,7 +178,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 ### S3 Depósito e saque (A, 4h)
 - **Depende de:** S2.
 - **Vermelho:** `POST /account/{key}/transaction` com `DEPOSIT` e `WITHDRAWAL`: 201 com `transaction_key`, `type`, `amount`, `balance`; saldo conferido por `GET /account`; saque acima do saldo: 422 `QIT001005` e saldo inalterado; `amount` 0, negativo, `10.5`, `10.0`, string: 400; `type` inválido: 400; `destination_account_key` presente em depósito: 400; `TRANSFER` sem destino: 400 (schema com `if/then`); conta 404 `QIT001002`.
-- **Verde:** `post_transaction.json`; `TransactionRepository.create_entry` (valor com sinal, `operation_key`, `balance_after`); controller: trava a conta (`FOR UPDATE`), confere `amount` inteiro (**`jsonschema` aceita `10.0` como inteiro**, então rejeite `float` no controller), confere saldo, lança, atualiza o cache do saldo, `commit` único. A integração da `Idempotency-Key` foi antecipada depois da S3 e é documentada na S6.
+- **Verde:** `post_transaction.json`; `TransactionRepository.create_entry` (valor com sinal, `operation_key`, `balance_after`); controller trava a conta (`FOR NO KEY UPDATE` na implementação atual), confere saldo, lança, atualiza o saldo materializado e faz `commit` único. O JSON Schema padrão admite `10.0` como inteiro matemático; a solução atual é `StrictValidator` central, exigindo `int` nativo antes do controller, que também preserva a checagem defensiva. A integração da `Idempotency-Key` foi antecipada depois da S3 e é documentada na S6.
 - **Pronto quando:** testes verdes e `CHECK (balance >= 0)` do banco comprovado por um teste que tenta estourar o saldo.
 
 ### S8 Plano de boletos, lote 1 (B, 5h)
@@ -236,7 +237,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 - **Registro preservado:** [seção 13](#13-checkpoint-histórico-t31), reunida neste plano em 10/10/2026; não substitui contratos/evidências atuais.
 - **Status:** concluído no checkpoint original RFC 2.1 e consolidado na RFC 2.2 após S7c e o roadmap da R4.5.
 - **Feito:** releitura de `docs/RFC.md` contra código, `DECISOES.md`, DDL, schemas e testes; revisão de rotas, códigos de erro, DER e fluxos; versão da RFC elevada para 2.1. O checkpoint registrou explicitamente o que ainda era futuro naquele momento. As entregas posteriores S7b, S10 e S7c estão documentadas como concluídas nas respectivas seções abaixo.
-- **PDF:** adiado de propósito para T5.3, como já determina T0.3; ainda não existe template oficial nem gerador de PDF no repositório. Assim não há um PDF provisório a regenerar ou páginas a contar neste checkpoint.
+- **PDF naquele checkpoint:** adiado de propósito para T5.3, como já determinava T0.3; naquele momento não existiam template oficial nem gerador de PDF no repositório. Hoje ambos existem e T5.3 registra o PDF final, sem transformar o checkpoint antigo em validação dessa versão.
 - **Pronto quando:** nenhuma divergência conhecida entre RFC e código no escopo entregue; itens futuros explicitamente marcados como planejados.
 
 ---
@@ -257,11 +258,11 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
 - **Pronto quando:** testes verdes e a decisão D8 documentada em README e RFC.
 
 ### S10 Antecipação lastreada em boletos (B, 6h)
-- **Status:** concluída. A rota exige `Idempotency-Key`, trava conta e boletos em ordem, calcula taxa somente com inteiros, cria a antecipação, vincula os boletos e registra o crédito/taxa no ledger em um único commit.
-- **Visibilidade:** `GET /billing-plan/{plan_key}` expõe `credit_advance_key` no boleto antecipado; o status permanece `PENDING`, pois antecipar não equivale a pagamento ou baixa.
+- **Status:** concluída. A rota exige `Idempotency-Key`, trava conta e boletos em ordem, calcula tarifa comercial com inteiros/Decimal half-up (sem float monetário), cria a antecipação, vincula os boletos e registra crédito/tarifa positiva no ledger em um único commit. A regra posterior de líquido positivo agora antecede o snapshot de preço e a antecipação, com 422/QIT001030.
+- **Visibilidade:** `GET /account/{account_key}/billing-plan/{plan_key}` expõe `credit_advance_key` no boleto antecipado; o status permanece `PENDING`, pois antecipar não equivale a pagamento ou baixa.
 - **Depende de:** S8, S6 (comece o vermelho e o verde sem idempotência e integre no fim).
 - **Vermelho:** `POST .../credit-advance` 201 com `credit_advance_key`, `gross_amount`, `fee_amount`, `net_amount`, `balance`; taxa por inteiros *half-up* (boletos somando 10000 geram taxa 300; somando 1050 geram taxa 32); saldo sobe `net`; extrato tem `ADVANCE_CREDIT` e `ADVANCE_FEE`; `GET` do plano mostra o boleto antecipado; segundo pedido do mesmo boleto 409 `QIT001016`; boleto de outra conta ou inexistente 404 `QIT001015` com o mesmo corpo; lista com uma chave inválida **não aplica nada** nas demais (atomicidade); lista vazia, duplicada ou com mais de 50 chaves 400; sem header 400; conta bloqueada 409; repetição idempotente devolve a resposta original.
-- **Verde:** trava a conta e depois os boletos (`ORDER BY id`); `fee = (gross * 3 + 50) // 100`; cria `credit_advance`, preenche `credit_advance_id`, lança as duas linhas do ledger e soma `net` ao saldo; `commit` único.
+- **Verde original:** trava a conta e depois os boletos (`ORDER BY id`); `fee = (gross * 3 + 50) // 100`; cria `credit_advance`, preenche `credit_advance_id`, lança crédito/tarifa e soma `net` ao saldo; `commit` único. **Evolução vigente:** S17 substituiu a tarifa fixa de 3% por política versionada (o seed mantém 300 bps), e P0.4 entregou líquido > 0. Tarifa zero não gera lançamento de valor zero; a fórmula atual é fixo + half-up(bruto×bps/10000).
 - **Pronto quando:** testes verdes.
 
 ### S7c Concorrência avançada (C, 4h)
@@ -274,7 +275,7 @@ Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.
   - Mesma `Idempotency-Key` em 10 threads: exatamente **um** conjunto de lançamentos e todas as respostas `201` com a mesma `transaction_key`.
   - Duas antecipações simultâneas do mesmo boleto (chaves diferentes): um 201 e um 409.
   - Duas transferências disputando o último saldo: um 201 e um 422.
-- **Pronto quando:** 5 repetições seguidas verdes. **Atingido:** 20 testes verdes em 10,52s.
+- **Pronto quando:** 5 repetições seguidas verdes. **Atingido no marco original:** 20 testes verdes em 10,52s; regressões posteriores datadas em COBERTURA.
 
 **Gate 2.**
 
@@ -286,8 +287,14 @@ Esta rodada não muda o critério de entrega do núcleo financeiro. Ela transfor
 o protótipo em uma demonstração mais próxima de produção e deve começar somente
 com o Gate 2 verde.
 
+Contagens de 137/140/143 abaixo pertencem ao marco de 09/10/2026, antes da
+classificação atual por marcadores. Não são contagens da suíte exclusivamente
+HTTP vigente; a distribuição atual está em COBERTURA. “Concluída” descreve o
+escopo demonstrativo e não implica gateway, coleta de alertas ou proteção
+contra administração privilegiada do banco.
+
 ### S11 Identidade, sessões e autorização (A, 8h)
-- **Status:** concluída em 2026-10-09. A suíte HTTP soma 137 testes verdes após S13.
+- **Status:** concluída em 2026-10-09. O marco de validação após S13 registrou 137 testes verdes.
 - **Depende de:** Gate 2.
 - **Fazer:** criar `user`, vínculo de usuário à PME/conta e `user_session`; cadastro, login, refresh e logout/revogação de uma sessão. Senhas somente com Argon2 ou bcrypt. Emitir JWT de acesso curto e refresh token rotativo com validade máxima de 8 horas; o `jti` e a sessão permitem vários dispositivos e revogação individual. Definir papéis mínimos (`OWNER`, `OPERATOR`, `VIEWER`) e verificar acesso à conta antes de rotas financeiras.
 - **Não fazer:** substituir a autenticação por JWT de 8 horas sem sessão persistida, armazenar senha em texto, ou remover `INTERNAL-TOKEN` sem definir a fronteira serviço-a-serviço.
@@ -295,7 +302,7 @@ com o Gate 2 verde.
 - **Evidência entregue:** `app_user`, `user_customer_access` e `user_session`; bcrypt; JWT de acesso com 15 minutos padrão; refresh opaco rotativo limitado a 8 horas; `POST /user`, `/auth/login`, `/auth/refresh` e `/auth/logout`; `QIT001020`–`QIT001023`; testes cobrem rotação, múltiplos dispositivos, logout individual, papel `VIEWER`, ausência de vínculo e regressão de idempotência na suíte completa. O `INTERNAL-TOKEN` foi preservado como fronteira serviço-a-serviço; `Authorization` passa a exigir RBAC quando fornecido.
 
 ### S12 Auditoria append-only verificável (C, 6h)
-- **Status:** concluída em 2026-10-09. A suíte HTTP soma 137 testes verdes.
+- **Status:** concluída em 2026-10-09. Marco histórico: 137 testes verdes.
 - **Depende de:** S11 para registrar ator; pode iniciar o DDL e os testes antes.
 - **Fazer:** tabela `audit_event` com ator (usuário ou serviço), ação, tipo/chave do recurso, `request_id`, origem, timestamp, resumo anterior/posterior e hashes `previous_hash`/`event_hash`. Proibir `UPDATE` e `DELETE` no banco para essa tabela; correções usam evento compensatório. Exportar ou assinar checkpoints do hash para detectar adulteração fora do banco.
 - **Não fazer:** chamar isso de blockchain nem permitir edição do histórico. Blockchain não é requisito para encadear hashes e provar violação.
@@ -303,26 +310,26 @@ com o Gate 2 verde.
 - **Evidência entregue:** `audit_event`, índice por recurso e trigger PostgreSQL append-only; `AuditRecorder` inclui evento na mesma transação e serializa a cadeia com `pg_advisory_xact_lock`; ações de cliente, conta, transação, plano, antecipação e sessão são registradas com ator, `request_id`, origem e resumos seguros. `GET /audit-events` exporta a cadeia e `GET /audit-events/checkpoint` publica sua ponta. Testes recalculam SHA-256 de todos os eventos, provam eventos de criar/bloquear/cancelar/transferir/antecipar e confirmam que SQL direto não consegue atualizar nem apagar um evento.
 
 ### S13 Logs estruturados e métricas (B, 5h)
-- **Status:** concluída em 2026-10-09. A suíte HTTP soma 137 testes verdes.
+- **Status:** concluída em 2026-10-09. Marco histórico: 137 testes verdes.
 - **Depende de:** Gate 2. **Paralelo com:** S11 e S12.
 - **Fazer:** manter logs no stdout, mas em JSON com `request_id`, rota, status, duração, conta mascarada e usuário quando existir. Expor métricas Prometheus de requisições/latência, códigos QIT, falhas de conectores, replay idempotente, espera por lock e saldo de sessões. Documentar quais rótulos não podem conter dados pessoais.
 - **Pronto quando:** uma requisição pode ser acompanhada pelo `request_id`; `/metrics` é consultável no ambiente de observabilidade; teste prova contador de replay e falha de conector.
 - **Evidência entregue:** `prometheus-client` com registry própria e rota interna `GET /metrics`; logs JSON no stdout com correlação e identificadores mascarados; métricas de HTTP/latência, QIT, conectores, replay, aquisição de lock e sessões ativas. Rótulos são de baixa cardinalidade e não aceitam PII, tokens, UUIDs, IPs nem query string. Testes provam o incremento de replay e falha do BankSlipConnector e preservam `X-Request-ID` no fluxo de erro.
 
 ### S14 Timeouts e política de retentativa (A, 4h)
-- **Status:** concluída em 2026-10-09. A suíte HTTP soma 140 testes verdes.
+- **Status:** concluída em 2026-10-09. Marco histórico: 140 testes verdes.
 - **Depende de:** Gate 2. **Paralelo com:** S13.
 - **Fazer:** separar timeout de conexão e leitura dos conectores, configurar `lock_timeout` e `statement_timeout` do PostgreSQL e definir prazo máximo de requisição. Documentar o status de resposta para cada esgotamento e reforçar que transação financeira após timeout só pode ser reenviada com a mesma `Idempotency-Key`.
 - **Pronto quando:** o MockServer prova o timeout de leitura; o timeout de conexão é configurado e tratado pela mesma classe-base de conector (um mock HTTP não consegue atrasar o handshake TCP); lock longo não esgota workers; resposta e logs preservam `request_id`; teste demonstra replay seguro após o cliente interromper a espera.
-- **Evidência entregue:** conectores recebem 1 s para conexão e 5 s para leitura, sempre limitados pelo orçamento de 15 s; o MockServer prova o atraso de leitura e retorna `502 QIT001009`, enquanto falha de conexão é capturada pela mesma exceção `requests.RequestException`. Cada transação PostgreSQL recebe `lock_timeout=2 s` e `statement_timeout=10 s` via configuração local; esgotamento responde `503 QIT001024` com `X-Request-ID`. Testes HTTP seguram uma conta com `FOR UPDATE`, provam que uma consulta não relacionada continua atendida, e simulam cliente que desiste da resposta antes do commit: o replay com a mesma `Idempotency-Key` resulta em um único lançamento.
+- **Evidência entregue:** conectores recebem 1 s para conexão e 5 s para leitura, sempre limitados pelo orçamento de 15 s; o MockServer prova o atraso de leitura e retorna `502 QIT001009`, enquanto falha de conexão é capturada pela mesma exceção `requests.RequestException`. Cada transação PostgreSQL recebe `lock_timeout=2 s` e `statement_timeout=10 s` via configuração local; esgotamento responde `503 QIT001024` com `X-Request-ID`. Contratos de infraestrutura seguram uma conta por SQL com `FOR UPDATE` e observam a API por HTTP: consulta não relacionada continua atendida; cliente que desiste antes do commit recupera, via mesma chave, um único lançamento. Não são testes estritamente HTTP e o orçamento não impõe deadline global rígido.
 
 ### S15 Alertas e notificações confiáveis (B, 5h)
-- **Status:** concluída em 2026-10-09. A suíte HTTP soma 143 testes verdes.
+- **Status:** concluída em 2026-10-09. Marco histórico: 143 testes verdes. Notificações/outbox entregues; regras de alerta são exemplos, sem stack de coletores instalado.
 - **Depende de:** S12 e S13.
 - **Fazer:** criar `outbox_event` na mesma transação do fato de negócio e um publicador separado. Alarmes operacionais cobrem aumento de `5xx`, falha de conector, lock lento e uso sustentado de recursos; notificações de domínio podem comunicar bloqueio/cancelamento ao responsável da PME.
 - **Não fazer:** enviar e-mail ou webhook dentro do controller antes do commit, pois uma falha externa não pode desfazer ou duplicar uma operação financeira.
-- **Pronto quando:** o commit cria o evento de saída junto com a mudança de domínio; repetição do publicador é idempotente; falha de entrega é retentável e observável.
-- **Evidência entregue:** `outbox_event` é criado junto de bloqueio/cancelamento e da auditoria; `workers/outbox_publisher.py` roda separado (ou no perfil Compose `workers`), usa `FOR UPDATE SKIP LOCKED`, lease e backoff exponencial. O webhook recebe `Idempotency-Key=event_key`; sucesso não volta à fila e falha mantém a linha para nova tentativa. `baas_outbox_pending_events`, `baas_outbox_retrying_events` e `baas_outbox_delivery_attempts_total` são derivados do estado persistido no `/metrics`, enquanto a [seção de alertas do README da API](../baas-pme-api/README.md#regras-operacionais-de-alerta-s15) fornece regras para 5xx, conectores, locks, outbox e recursos de container. Três testes HTTP/MockServer provam commit conjunto, não republicação e retentativa.
+- **Pronto quando:** o commit cria o evento de saída junto com a mudança de domínio; publicação usa chave estável para deduplicação pelo consumidor; falha de entrega é retentável e observável. Aceite externo sem ack confirmado pode causar reentrega: at-least-once, não exatamente uma entrega.
+- **Evidência entregue:** `outbox_event` é criado junto de bloqueio/cancelamento e da auditoria; `workers/outbox_publisher.py` roda separado (ou no perfil Compose `workers`), usa `FOR UPDATE SKIP LOCKED`, lease e backoff exponencial. O webhook recebe `Idempotency-Key=event_key`; sucesso confirmado no banco não volta à fila e falha mantém a linha para nova tentativa. `baas_outbox_pending_events`, `baas_outbox_retrying_events` e `baas_outbox_delivery_attempts_total` são derivados do estado persistido no `/metrics`, enquanto a [seção de alertas do README da API](../baas-pme-api/README.md#regras-operacionais-de-alerta-s15) fornece exemplos para 5xx, conectores, locks, outbox e recursos de container. Três contratos de infraestrutura (HTTP/MockServer + SQL/subprocesso do worker) provam commit conjunto, não republicação de sucesso confirmado e retentativa, não exactly-once externo nem disparo de alertas.
 
 ### T4.5 Benchmark reproduzível de concorrência (C, 2h)
 - **Status:** concluída em 2026-10-09. A carga S7c canônica passou 5 vezes (40 transferências cruzadas por repetição) em 6,753 s de parede no ambiente de referência.
@@ -358,7 +365,7 @@ do pedido atual.
 - **Pronto quando:** RFC e métricas descrevem retry como recuperação de infraestrutura, nunca como espera por dinheiro.
 
 ### S17 Precificação versionada e personalizada por PME (A e B, 6h)
-- **Status:** concluída em 2026-10-09. `pricing_policy` define preço padrão ou específico por PME, e `pricing_snapshot` congela política, versão, base e tarifa calculada em cada operação. `POST /pricing-policy` publica a próxima versão imediatamente e encerra a vigência da anterior sem mudar seus termos. A precedência em execução é PME específica vigente, depois padrão vigente. Transferência, antecipação, lote 1 e lote 2 de boletos aplicam a política; lançamento de tarifa e auditoria retêm a evidência. A aprovação por dois pares e estados formais ficam deliberadamente para S21.
+- **Status:** concluída em 2026-10-09. `pricing_policy` define preço padrão ou específico por PME, e `pricing_snapshot` congela política, versão, base e tarifa calculada em cada operação. `POST /pricing-policy` publica a próxima versão imediatamente e encerra a vigência da anterior sem mudar seus termos. A precedência em execução é PME específica vigente, depois padrão vigente. Transferência, antecipação, lote 1 e lote 2 de boletos aplicam a política; lançamento de tarifa e auditoria retêm a evidência. A aprovação por dois atores foi implementada posteriormente em S21 no fluxo de propostas; as rotas diretas ainda permitem contorná-la.
 - **Depende de:** S10, S12 e S16. **Fazer:** tabelas de política de preço por operação (`TRANSFER`, `CREDIT_ADVANCE`, `BANK_SLIP_ISSUANCE`), com valor fixo em centavos e/ou percentual em pontos-base, vigência, versão, estado e associação opcional por PME. A precedência é `PME específica > padrão vigente`.
 - **Auditoria:** política publicada não é sobrescrita; correção gera versão nova. A operação guarda snapshot imutável da política, base de cálculo, taxa e valor aplicado no fato financeiro, e `audit_event` registra a escolha. Mudança futura de preço nunca altera histórico.
 - **Regras:** valores em `BIGINT`; percentual em pontos-base ou `Decimal` controlado; arredondamento, vigência e proibição de sobreposição documentados. Emissão de boleto é cobrança explícita de serviço à PME, não valor do boleto do pagador.
@@ -404,14 +411,14 @@ do pedido atual.
 - **Pronto quando:** roda verde do zero, com `reset()` do mock no início.
 
 ### T5.2 Varredura de cobertura de erros (A, 3h)
-- **Status:** **matriz reconciliada na revisão de 2026-10-10**. `COBERTURA.md` relaciona os 39 códigos do catálogo a cenários/testes, distinguindo legado e infraestrutura. O handler inesperado agora tem injeção controlada de falha com rollback e resposta sanitizada; `40P01`/`40001` são exercitados. Isso não prova cada combinação código–rota–papel; ampliar essas combinações permanece possível.
+- **Status:** **matriz reconciliada na revisão de 2026-10-10**. `COBERTURA.md` relaciona os 40 códigos do catálogo a cenários/testes, distinguindo legado e infraestrutura; inclui `QIT001030` de líquido não positivo. O handler inesperado tem injeção controlada de falha com rollback e resposta sanitizada; `40P01`/`40001` são exercitados. Isso não prova cada combinação código–rota–papel; ampliar essas combinações permanece possível.
 - **Fazer:** tabela em `docs/COBERTURA.md`: cada código `QIT` do catálogo e a rota, ligados ao teste que o provoca. Cada rota deve ter pelo menos um teste de sucesso e um de erro. Preencher o que faltar.
 - **Pronto quando:** nenhum código do catálogo sem teste (ou removido da RFC com justificativa).
 
 ### T5.3 RFC final e PDF (B, 3h)
-- **Status:** **artefatos concluídos em 2026-10-10; aceite do time pendente**. `docs/entrega/RFC_FINAL.md` e PDF de quatro páginas seguem o modelo oficial, versão 3.2, sem apagar a RFC integral/contratos. Conservam 28 rotas, 23 entidades, relações/cardinalidades e todos os fluxos S1–S21/pipelines. DER vetorial gerado da RFC integral; revisão visual pelo agente e validação automática de overflow, páginas e hashes. A regra P0.4 permanece explicitamente não implementada. Revisão dos integrantes não foi inventada.
+- **Status:** **artefatos concluídos em 2026-10-10; aceite do time pendente**. `docs/entrega/RFC_FINAL.md` e PDF de quatro páginas seguem o modelo oficial, versão 3.3, sem apagar a RFC integral/contratos. Conservam 28 rotas, 23 entidades, relações/cardinalidades e todos os fluxos S1–S21/pipelines, incluindo líquido positivo da antecipação/cotação e `QIT001030`. DER vetorial gerado da RFC integral; revisão visual pelo agente e validação automática de overflow, páginas e hashes. O restante de P0.4/9.5 permanece pendente. Revisão dos integrantes não foi inventada.
 - **Fazer:** atualizar a RFC (rotas, DER, fluxos, alternativas descartadas no formato "descartada porque X, ganharia se Y", principal desafio); cortar para o limite de 2 a 4 páginas (sugestão: reduzir a tabela de rotas ao essencial, cortar uma alternativa, enxugar fluxos secundários); gerar o PDF final; conferir que o diagrama está legível.
-- **Pronto quando:** PDF com as duas seções fixas, diagrama renderizado, tabela de rotas com erros e idempotência, e revisado pelos três.
+- **Pronto quando:** PDF com as duas seções fixas, diagrama renderizado, tabela de rotas com erros e idempotência, e revisado por todos os integrantes.
 
 ### T5.4 README e `.env` (A, 1,5h)
 - **Status:** **conteúdo concluído na revisão de 2026-10-10**. README reúne setup/venv, Compose, comandos das três suítes, worker, benchmark, limites e mapa RFC → código → testes. Guias duplicados foram consolidados, com os originais preservados em arquivo histórico. A comprovação independente de usabilidade continua em T5.5.
@@ -419,14 +426,14 @@ do pedido atual.
 - **Pronto quando:** alguém que não participou consegue seguir só o README.
 
 ### T5.5 Teste de clone limpo em Linux (A, 1,5h)
-- **Status:** **validação isolada concluída; critério independente parcial**. `scripts/validate_delivery.sh --snapshot` passou em 2026-10-10 com `.venv`/banco novos: 10 guardas, 170 HTTP, 26 infraestrutura e 206 na suíte completa; métricas consultadas; benchmark 5×40 verde (parede 7,506 s). Só o projeto descartável foi removido; banco original preservado. Evidência em `docs/entrega/ENTREGA.md`. Não substitui clone remoto do commit final, VM virgem ou pessoa independente: essa confirmação continua pendente. `--head` poderá validar somente o conteúdo commitado após publicação.
+- **Status:** **validação isolada concluída; critério independente parcial**. Snapshot `20261010T083920Z` comprovou venv/DDL/banco novos, seleções independentes e 255 testes. Após o ajuste de ordem do snapshot/tarifa extrema, fechamento em banco novo com a `.venv` existente: **260 passed, 75.43 s** (206 HTTP + 42 infraestrutura + 12 estáticos, todos na execução completa); métricas consultadas, benchmark 5×40 verde (parede 8,255 s). Históricos/limites preservados em COBERTURA/ENTREGA. Só projetos descartáveis removidos; banco original não foi alvo das suítes e recebeu somente o upgrade não destrutivo dos CHECKs. Não substitui clone remoto do commit final, VM virgem ou pessoa independente: essa confirmação continua pendente. `--head` poderá validar somente o conteúdo commitado após publicação.
 - **Fazer:** numa máquina ou VM Linux **limpa** (a do jurado é Linux): `git clone` do repositório, **sem editar nada**, `docker compose up --build`, esperar API/banco `healthy` e mock `Up`, preparar `.venv` e executar os comandos de testes do README com relógio noturno fixo. O Compose tem padrões demonstrativos e `.env.example`; nunca versionar segredos reais. Use banco de teste descartável.
 - **Pronto quando:** tudo verde sem nenhum passo manual além dos comandos do README. Quem executa **não** pode ser quem escreveu o compose.
 
 ### T5.6 Apresentação em PDF (B e C, 2h cada)
 - **Status:** **artefato concluído em 2026-10-10; aceite do time pendente**. `docs/entrega/APRESENTACAO.pdf` possui dez slides 16:9; fonte Markdown, ferramentas e manifesto acompanham o PDF. Inclui enredo, arquitetura, desafio financeiro, deadlock por ID (não IP), replay/retry, preço/risco/cotação/quatro olhos, identidade/auditoria/outbox, testes/pipeline, métricas/benchmark e alternativas/limitações. Revisão visual e overflow conferidos pelo agente; os integrantes ainda precisam aprovar.
 - **Fazer:** a apresentação explica o sistema no lugar de vocês: o enredo da PME (cobra, recebe, antecipa, paga, audita), o ecossistema (API, banco, mock), a regra de negócio (o que o sistema permite, o que barra e por quê), o principal desafio com o diagrama de concorrência, e as decisões descartadas. Slides ou documento, em PDF.
-- **Pronto quando:** PDF final revisado pelos três.
+- **Pronto quando:** PDF final revisado por todos os integrantes.
 
 ### T5.7 Ensaio da defesa (A, B e C, 2h cada)
 - **Status:** **roteiro concluído; ensaio humano pendente**. a [seção de defesa do guia de entrega](entrega/ENTREGA.md#6-defesa-técnica-e-ensaio) organiza roteiro de dez minutos, perguntas/respostas sustentadas pelos contratos e folha de registro. Cada integrante deve apresentar e responder sem consultar código; os campos de aceite não foram preenchidos pelo agente.
@@ -435,17 +442,17 @@ do pedido atual.
 
 ### T5.8 Buffer de bugs (A, B e C, ~4h no total)
 - **Status:** **aberto por definição**. Reservado para o que o clone limpo, a geração do PDF e o ensaio acharem; não deve ser convertido em funcionalidade nova.
-- **Achado tratado nesta rodada:** o smoke confundia porta publicada com porta interna do MockServer; validar em 11080 reproduziu a falha. A asserção passa a verificar a escuta interna 1080 definida no Compose. Benchmark agora consulta a porta API configurada, permitindo a execução isolada. Nenhuma alteração no comportamento financeiro/hardening 9.5.
+- **Achado tratado na entrega inicial:** o smoke confundia porta publicada com porta interna do MockServer; validar em 11080 reproduziu a falha. A asserção passa a verificar a escuta interna 1080 definida no Compose. Benchmark agora consulta a porta API configurada, permitindo a execução isolada. Esse ajuste não alterou o comportamento financeiro; a implementação posterior de líquido positivo está registrada separadamente em P0.4.
 
 ### T5.9 Publicação (C, 0,25h)
-- **Status:** **parcial; publicação final pendente**. A API pública do GitHub respondeu HTTP 200 sem credenciais em 2026-10-10, confirmando acesso anônimo ao repositório. Checklist e arquivos em `docs/entrega/ENTREGA.md`; não houve commit/push, alteração de visibilidade ou execução remota do Actions nesta rodada. Confirmar commit final e PDFs visíveis depois da publicação pelo responsável; acesso ao repositório não prova publicação dos novos artefatos.
+- **Status:** **publicação/CI confirmados para `1603118` em 2026-10-10**. A `main` pública correspondeu ao HEAD local; o [BaaS PME CI](https://github.com/Faraoh-Back/BootcampQITech_UnicampE-Racing/actions/runs/38036090796) concluiu com sucesso nesse SHA. Ambos os PDFs retornaram HTTP 200 sem autenticação, com blobs iguais aos arquivos locais da versão verificada. [Evidência datada](entrega/ENTREGA.md#51-evidência-remota-confirmada). O agente não publicou mudanças nem alterou visibilidade. Novas revisões de código/documentos/PDFs precisam de novo commit/push, CI e verificação de acesso; o sucesso anterior não as cobre automaticamente. Clone, aceite e ensaio do grupo permanecem pendentes.
 - Tornar o repositório **público**, abrir em janela anônima, conferir que o último commit é o esperado e que a RFC em PDF está no repositório ou anexada. O que estiver no repositório nessa data é o que a banca vê.
 
 ---
 
 ## 9.5 Garantias verificadas e limitações conhecidas: correções e hardening
 
-Esta seção transforma achados em trabalho rastreável e é a fonte do backlog de correções/evolução produtiva. O enquadramento aprovado é **garantias verificadas e limitações conhecidas**, não proteção absoluta. Testes verdes sustentam os cenários cobertos, mas não anulam lacunas. A regra de líquido positivo da antecipação foi aprovada em 2026-10-10; sua implementação continua pendente em P0.4. As correções anteriores são pontuais e não equivalem à conclusão deste backlog.
+Esta seção transforma achados em trabalho rastreável e é a fonte do backlog de correções/evolução produtiva. O enquadramento aprovado é **garantias verificadas e limitações conhecidas**, não proteção absoluta. Testes verdes sustentam os cenários cobertos, mas não anulam lacunas. A regra de líquido positivo da antecipação foi implementada em 2026-10-10 mediante autorização específica posterior à exclusão geral de 9.5. P0.4 fica **parcial**, com os demais limites/semânticas pendentes. Essa correção pontual não equivale à conclusão deste backlog nem autoriza seus outros itens.
 
 Prioridade: **P0** trata lacunas atuais de integridade econômica/financeira e não deve ser tratado como melhoria cosmética pós-entrega; **P1** trata controles necessários antes da exposição produtiva; **P2** eleva evidência, operabilidade e qualidade da defesa. Concluir tarefas amplia garantias demonstráveis, sem certificar segurança absoluta. Alterações de DDL devem ser testadas por migrations e/ou recriação **intencional de banco local descartável**; `docker compose down -v && docker compose up -d --build` apaga dados e não é procedimento de upgrade produtivo.
 
@@ -488,17 +495,17 @@ de uma decisão não substitui essa evidência nem permite marcar tarefa conclu�
 - **Pronto quando:** nenhum campo monetário atravessa a fronteira HTTP sem prova de ser inteiro em centavos; catálogo de erros e RFC registram o erro de contrato aplicável.
 
 ### P0.4 Semântica econômica e fronteiras de cálculo (A, 4h)
-- **Estado:** regra de líquido positivo aprovada em 2026-10-10; **implementação e testes ainda pendentes**. Detalhes/exemplos canônicos em [DECISOES 3.5.1](DECISOES.md#351-líquido-positivo-regra-aprovada-e-implementação-pendente). As demais fronteiras econômicas continuam exigindo especificação.
-- **Problema:** a tarifa configurável pode alcançar/superar o bruto da antecipação; cotação de transferência usa bruto menos tarifa e pode produzir líquido negativo; BIGINT e índices <= -100% podem chegar a restrições SQL como 500.
+- **Estado:** **parcial**. Líquido positivo implementado e testado em 2026-10-10 por autorização específica: 36 casos HTTP + 16 SQL/migração, `422 QIT001030`, regra comum aos controllers, validação anterior ao snapshot de preço, CHECKs e upgrade que preserva histórico. Detalhes/exemplos em [DECISOES 3.5.1](DECISOES.md#351-líquido-positivo-regra-implementada-e-validada). As demais fronteiras econômicas continuam exigindo especificação; não foram implementadas nesta rodada.
+- **Problema:** antes da correção, tarifa >= bruto podia confirmar antecipação sem liquidez ou resultar em 500 por CHECK de saldo. Essa parte foi corrigida. Cotação de transferência ainda calcula bruto menos tarifa; resultado negativo esbarra no CHECK da quote e pode gerar 500, não uma prévia negativa válida. Limites BIGINT e índices <= -100% também podem chegar a restrições SQL como 500.
 - **Regra aprovada:** permitir antecipação somente com `gross_amount - fee_amount > 0`, após half-up, tanto na cotação CREDIT_ADVANCE quanto em nova execução; saldo existente não autoriza líquido zero/negativo. Para bruto R$ 100: tarifa R$ 3 permite líquido R$ 97; R$ 100/R$ 120 recusam líquido R$ 0/−R$ 20. A política fixa de R$ 120 pode continuar válida para bruto R$ 1.000; validar por operação.
-- **Implementar:** recusar antes de criar antecipação/vincular lastro/lançar dinheiro, com HTTP 422 e novo erro QIT estável documentado; não usar saldo insuficiente como explicação. Complementar CHECK de net_amount positivo em antecipação, preservando a igualdade bruto−tarifa. Inspecionar dados existentes antes da migração; não alterar fatos históricos silenciosamente.
+- **Implementado para antecipação:** recusa antes de criar antecipação/vincular lastro/lançar dinheiro, com HTTP 422/QIT001030; não usa saldo insuficiente como explicação. CHECK de net_amount positivo e igualdade bruto−tarifa em antecipação, CHECK condicional em quote. Migração inspeciona legado e valida CHECKs quando possível; não reescreve fatos históricos. Operação no README da API; evidência em COBERTURA/ENTREGA.
 - **Idempotência:** recusa desfaz efeitos e reserva; replay de sucesso preserva resposta original mesmo após nova política. Não repetir a recusa como falha transitória.
 - **Outras decisões:** especificar representação de débito/crédito da cotação de transferência conforme sua execução, sem aplicar automaticamente a regra de líquido de antecipação. Definir limites monetários/derivados e a resposta para índices que produzam parcela não positiva; obter aprovação quando houver escolha de negócio.
-- **Testar:** tarifa fixa/percentual/combinada menor/igual/maior que bruto, um centavo líquido, arredondamento, seleção múltipla, saldo zero/suficiente, quote e execução. Provar ausência de alterações em saldo/extrato/lastro/snapshots e replay/retomada segura; testar índices-limite e valores próximos/acima de BIGINT sem 500 por contrato inválido.
+- **Testado para antecipação:** tarifa fixa/percentual/combinada menor/igual/maior que bruto, um centavo líquido, arredondamento, seleção múltipla, saldo zero/suficiente, quote e execução. Ausência de alterações em saldo/extrato/lastro/snapshots/reserva/auditoria, replay e retomada segura; constraints em INSERT/UPDATE e upgrade idempotente com/sem legado. **Ainda testar/especificar:** índices-limite e valores próximos/acima de BIGINT sem 500 por contrato inválido, semântica de quote TRANSFER.
 - **Pronto quando:** contrato, quote, execução, CHECKs e testes comprovam a regra aprovada e demais limites definidos. Estimativa inicial de 4h deve ser reavaliada conforme migração e amplitude dos casos; não é compromisso de duração.
 
 ### P1.1 Testes estritamente black-box separados de contratos de infraestrutura (C, 3h)
-- **Estado:** marcadores, comandos, documentação e etapas CI separados em 2026-10-10, com execução local de cada seleção. Preservadas as duas evidências e a guarda estática. Clone limpo independente/CI remoto seguem pendentes.
+- **Estado:** marcadores, comandos, documentação e etapas CI separados em 2026-10-10, com execução local de cada seleção. Preservadas as duas evidências e a guarda estática. CI remoto confirmado para `1603118`, conforme T5.9; clone limpo independente continua pendente. Esta atualização registra evidência, sem concluir os demais itens desta tarefa ou implementar hardening.
 - **Problema identificado:** a suíte não importa `src/`, o que é correto, mas alguns testes acessam PostgreSQL diretamente ou iniciam worker por subprocesso. Eles são excelentes testes de infraestrutura, porém não são caixa-preta sob a definição estrita de “somente HTTP”.
 - **Fazer:** separar nomenclatura, diretórios e comandos: uma suíte `api_blackbox` exclusivamente HTTP contra containers e uma suíte `infrastructure_contract` para SQL direto, triggers, locks e workers. Preservar ambas; não reduzir cobertura para cumprir uma etiqueta.
 - **Testar:** executar cada suíte isoladamente em clone/ambiente limpo e documentar dependências, reset do MockServer e critérios de falha.
@@ -511,6 +518,7 @@ de uma decisão não substitui essa evidência nem permite marcar tarefa conclu�
 - **Pronto quando:** há caminho verificável de recuperação e rastreio de referência externa, sem boleto órfão invisível. Não prometer exactly-once externo sem suporte/deduplicação comprovados no provedor; os commits de reserva/finalização devem ser explicitados como desenho multifásico, não commit financeiro único fictício.
 
 ### P1.3 Banco e ciclo de mudança produtivos (A, 4h)
+- **Estado:** upgrade SQL pontual de líquido positivo disponível e testado, sem reset; ferramenta/histórico geral de migrations e migração de timestamps permanecem pendentes. Um arquivo de upgrade não conclui esta tarefa.
 - **Fazer:** migrar a evolução do DDL para ferramenta/versionamento de migrations; usar `TIMESTAMPTZ` em UTC nos timestamps novos e definir plano de migração dos existentes; revisar `CHECK`s de positividade, não negatividade e limites de `BIGINT` para os valores financeiros.
 - **Testar:** ambiente vazio e upgrade de uma versão anterior; migração falha de maneira segura e não deixa schema parcialmente aplicado.
 - **Pronto quando:** produção não depende de apagar volume com `down -v`; a documentação distingue claramente bootstrap local de evolução segura do banco.
@@ -589,7 +597,7 @@ de uma decisão não substitui essa evidência nem permite marcar tarefa conclu�
 - **Limitação:** o benchmark curto comprova correção de transferências cruzadas naquele ambiente; não valida throughput sustentável, auditoria crescente ou alertas enviados.
 - **Fazer:** definir carga/hardware/cgroups comparáveis, executar repetições com condições de aquecimento controladas e avaliar latência, fila, pool, locks, auditoria/paginação e crescimento de memória. Instalar/configurar coletores de aplicação/worker/runtime e regras somente no perfil operacional escolhido.
 - **Testar:** medir distribuição de latência e recursos sob carga prolongada; confirmar coleta por processo, perda/restart de séries e notificação de alertas com falhas controladas. Não usar uma amostra local para prometer SLO.
-- **Pronto quando:** método, resultados, cardinalidade segura e alertas efetivamente exercitados estão registrados em BENCHMARK/ALERTAS; metas operacionais, se houver, têm aprovação e evidência.
+- **Pronto quando:** método, resultados, cardinalidade segura e alertas efetivamente exercitados estão registrados em BENCHMARK e na [seção de alertas do README da API](../baas-pme-api/README.md#regras-operacionais-de-alerta-s15) (antigo ALERTAS.md, consolidado); metas operacionais, se houver, têm aprovação e evidência.
 
 ## 10. Se travar: tarefas flexíveis sem dependência
 
@@ -644,8 +652,8 @@ Esses números são estimativas históricas de planejamento, não horas efetivam
 - [x] Concorrência: suíte funcional cobre saque, transferência cruzada, idempotência simultânea e antecipação dupla. O benchmark mede **somente transferência cruzada**, cinco repetições de 40 chamadas (200 total); resultados datados em BENCHMARK.
 - [x] RFC em PDF com 2 seções fixas, quatro páginas e DER vetorial renderizado; fontes preservadas, guardas/hash e revisão visual pelo agente. **Aceite do time pendente.**
 - [x] Apresentação em PDF, dez slides 16:9, fontes editáveis e guardas/hash. **Aceite do time pendente.**
-- [ ] Repositório público no dia da entrega, README completo. **Parcial:** README está disponível; publicação e checagem anônima pendentes.
-- [ ] Os três sabem defender qualquer decisão. **Pendente:** ensaio cruzado.
+- [x] Repositório público, README e PDFs acessíveis sem autenticação; CI aprovado para `1603118`, conforme T5.9. **Por versão:** repetir publicação/CI/acesso após novas alterações e na revisão efetivamente submetida.
+- [ ] Todos os integrantes sabem defender qualquer decisão. **Pendente:** ensaio cruzado.
 
 ## 13. Checkpoint histórico T3.1
 
@@ -653,14 +661,21 @@ Conteúdo antes mantido em `CHECKPOINT_T3_1.md`, incorporado em 10/10/2026.
 Datas, resultados e ressalvas abaixo são preservados por marco; não atualizam
 retroativamente as evidências nem concluem o backlog da seção 9.5.
 
+**Atualização posterior ao registro:** T5.9 confirma publicação e CI de
+`1603118`. Menções a publicação pendente no checkpoint abaixo retratam o marco
+anterior; clone independente, aceite e ensaio continuam com o grupo.
+Após esse marco, a RFC passou para 3.3: líquido positivo foi implementado com
+QIT001030 e testes, por autorização específica. Menções abaixo à versão 3.2
+e à regra pendente são históricas; os marcos antigos não provam a regra nova.
+
 ### Checkpoint T3.1 — registro histórico e reconciliação atual
 
 Data da revisão original: 2026-10-03. Registro acumulado de S11–S21 e
-T4.5/T4.75: 2026-10-10. A RFC vigente é 3.2; este checkpoint não substitui
+T4.5/T4.75: 2026-10-10. A RFC naquele marco era 3.2; este checkpoint não substitui
 os contratos de DECISOES nem as evidências datadas de COBERTURA.
 
-O enquadramento atual é **garantias verificadas e limitações conhecidas**.
-A regra de líquido positivo na antecipação foi aprovada, mas a validação
+O enquadramento é **garantias verificadas e limitações conhecidas**.
+Naquele marco, a regra de líquido positivo foi aprovada, mas a validação
 permanece pendente P0.4; os marcos de testes abaixo não a comprovam.
 
 #### Escopo conferido

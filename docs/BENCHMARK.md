@@ -1,5 +1,13 @@
 # Benchmark reproduzível de concorrência — T4.5
 
+**Referência mais recente:** [seção 13](#13-fechamento-final-validação-anterior-ao-snapshot-de-preço),
+10/10/2026, 09:07 UTC: 200 transferências corretas, parede **8,255 s**.
+CPU/RAM, ambiente e limites estão junto dessa coleta. A linha de base da seção
+5 e os registros 9–12 são históricos preservados, não resultados do código
+final. A suíte de features e seus 260 testes pertencem a
+[COBERTURA](COBERTURA.md#fechamento-final-snapshots-padrão-e-tarifa-extrema);
+o benchmark é uma execução separada de cinco casos, não cinco features novas.
+
 ## 1. Objetivo e limite da evidência
 
 Este documento mede o cenário mais sensível de concorrência já provado pela
@@ -64,8 +72,10 @@ O script faz, nesta ordem:
 8. restaura o Compose sem `NIGHT_TIME_OVERRIDE`.
 
 O script não executa `docker compose down -v`: não apaga dados locais. Se a
-mudança que está sendo avaliada alterou `database/database.sql`, recrie o banco
-intencionalmente antes da medição:
+mudança alterou `database/database.sql`, um volume existente não é atualizado
+só pelo build. Use a migração específica quando disponível (líquido positivo:
+[README da API](../baas-pme-api/README.md#atualizar-banco-existente-líquido-positivo-da-antecipação)).
+Alternativamente, recrie **somente um banco descartável** intencionalmente:
 
 ```bash
 docker compose down -v && docker compose up -d --build
@@ -157,7 +167,7 @@ limitado ou Docker Desktop não é comparável por esse critério.
 | Teste demora mais de 30 s | `docker compose logs api db`, `/metrics` e locks PostgreSQL | Procure regressão de ordem de locks/pool; não aumente o timeout para mascarar. |
 | Falha de saldo ou status | `pytest-s7c.txt` e extrato da conta criada no teste | Trate como regressão funcional; não use média de duração. |
 | Memória/CPU diferente | `environment.txt`, limites do Docker e processos externos | Refaça em host estável; compare apenas séries equivalentes. |
-| Banco tem schema antigo | data da alteração de `database.sql` | Execute o reset de volume descrito na seção 3. |
+| Banco tem schema antigo | data da alteração de `database.sql` | Aplique a migração específica ou recrie somente um banco descartável, conforme seção 3. |
 | Amostra de CPU parece baixa | confira quantidade de linhas NDJSON e duração | O benchmark é curto; amplie a carga apenas em uma experiência separada, documentada. |
 
 ## 8. Decisões metodológicas
@@ -266,3 +276,78 @@ são máximos observados no espaçamento real de docker stats, não picos
 garantidos. A evidência funcional é a invariância financeira em 200 chamadas;
 capacidade sustentável/SLO continuam fora do escopo. Resultados de todas as
 features/pipelines e limites do snapshot estão em COBERTURA/ENTREGA.
+
+## 12. Líquido positivo: regressão completa e benchmark
+
+**Marco intermediário**, anterior à validação antes do snapshot de preço e aos
+cinco casos adicionais de tarifa extrema. Preservado para rastreabilidade;
+usar §13 para a medição do código final.
+
+Em **2026-10-10 08:42 UTC**, a carga foi repetida após implementar líquido
+positivo da antecipação/cotação CREDIT_ADVANCE. O benchmark permanece o mesmo
+cenário de transferência; **não** mede capacidade da antecipação. A regressão
+de 255 testes, incluindo essa nova regra, está em COBERTURA.
+
+Clone local + snapshot, base `160311850dbfbc9427ed7f5049047aada951e8b3`,
+27 entradas dirty na coleta; não é execução do commit remoto publicado.
+Projeto `baas-delivery-20261010t083920z-x8u6peuz`, portas 13000/15432/11080,
+venv/banco novos; mesmo host/cache Docker e outros projetos locais ativos.
+Linux 6.1.0-49-amd64, x86_64; 16 CPUs lógicas, 15 GiB; Docker 29.5.3,
+Compose 5.1.4 e Python 3.11.2.
+
+| Campo | Observação |
+|---|---|
+| Carga / correção | 5×40 transferências; 200 operações; **5 passed in 7.41s**, saída 0 |
+| Parede ao redor do pytest | **7,753 s** |
+| API pré-carga | 0,26% CPU / 90,67 MiB |
+| PostgreSQL pré-carga | 6,64% CPU / 45,05 MiB |
+| MockServer pré-carga | 0,16% CPU / 221,2 MiB |
+| Maior CPU amostrada | API **75,16%**; PostgreSQL **47,03%**; MockServer **10,42%** |
+| Maior RAM amostrada | API **116,9 MiB**; PostgreSQL **91,16 MiB**; MockServer **221,3 MiB** |
+| Amostras completas | Três snapshots dos três containers, em 08:42:17, :19 e :23 UTC |
+| Artefatos | `baas-pme-api/artifacts/delivery/20261010T083920Z/benchmark/` |
+| Encerramento | Projeto descartável removido; ambiente original preservado |
+
+A amostra chamada idle pelo script é somente **pré-carga**, sem janela de
+estabilização; o PostgreSQL ainda pode executar trabalho posterior às suítes.
+CPU/RAM são máximos observados, não picos garantidos. A diferença de duração
+para medições anteriores não prova ganho/regressão, capacidade sustentável
+ou SLO: é uma coleta única no host compartilhado.
+
+GET `/metrics` foi consultado depois da regressão completa e antes da API
+recriada para o benchmark. A exposition contém QIT001030 nas duas rotas e
+retries sintéticos de deadlock/serialização; não é monitoração contínua do
+benchmark nem alarmes instalados. O banco original recebeu somente a migração
+de CHECKs já validada em isolamento, sem reset ou reprificação de históricos.
+
+## 13. Fechamento final: validação anterior ao snapshot de preço
+
+Depois de reproduzir o extremo de tarifa calculada acima de BIGINT, a
+antecipação passou a recusar líquido não positivo antes de persistir o preço.
+O snapshot usa a mesma política/tarifa calculada. A carga abaixo foi repetida
+com esse código final, após **260 testes aprovados** (75.43 s). Não mede a
+capacidade da antecipação nem conclui os limites numéricos gerais de P0.4.
+
+Coleta **2026-10-10 09:07:16–09:07:31 UTC**, base `1603118`, 30 entradas
+dirty. Projeto exclusivo `baas-p04-final-20261010085856`, banco criado novo,
+venv existente da API; host/cache compartilhados, Linux 6.1.0-49-amd64,
+x86_64, 16 CPUs/15 GiB, Docker 29.5.3, Compose 5.1.4, Python 3.11.2.
+Não é o commit publicado nem um CI remoto da revisão nova.
+
+| Campo | Observação |
+|---|---|
+| Correção | **5 passed in 7.89s**, saída 0; 200 transferências |
+| Parede ao redor de pytest | **8,255 s** |
+| Pré-carga API / PostgreSQL / MockServer | 0,23%/89,37 MiB; 0,00%/44,7 MiB; 0,13%/240,8 MiB |
+| Maior CPU amostrada API / PostgreSQL / MockServer | **87,55% / 55,92% / 11,36%** |
+| Maior RAM amostrada API / PostgreSQL / MockServer | **117,7 / 79,24 / 240,8 MiB** |
+| Amostras completas | Três snapshots dos três containers, em 09:07:23, :26 e :29 UTC |
+| Artefatos | `baas-pme-api/artifacts/p04/20261010085856-final/benchmark/` |
+| Encerramento | Projeto/dados sintéticos descartados; banco original preservado |
+
+`metrics-final.prom` foi obtido antes da recriação da API para a carga;
+contém QIT001030 nas duas rotas e retries sintéticos, não uma série contínua
+do benchmark. Pré-carga não é repouso estabilizado; máximos não são picos
+garantidos. Os resultados intermediários de §12/anteriores permanecem
+preservados; diferenças de tempo/CPU/RAM não provam melhoria ou regressão
+sem repetições equivalentes. Não há SLO ou coletores/alarmes instalados.

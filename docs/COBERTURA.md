@@ -6,9 +6,147 @@
 > executados separadamente dos testes estritamente HTTP.
 
 **Enquadramento aprovado: garantias verificadas e limitações conhecidas.**
-A regra de antecipação com líquido positivo foi aprovada após esta validação;
-está documentada em DECISOES 3.5.1 e aguarda implementação/testes em P0.4.
-Os resultados abaixo não demonstram uma recusa que ainda não foi implementada.
+A regra de antecipação com líquido positivo está implementada na execução e
+cotação CREDIT_ADVANCE, com 422/QIT001030. Foram acrescentados 52 cenários:
+36 HTTP e 16 contratos SQL/migração. Apenas esta subparte foi autorizada;
+as demais lacunas P0.4/9.5 permanecem pendentes. Resultados anteriores são
+preservados como históricos, sem atribuir-lhes cobertura da regra nova.
+Suíte vigente: **260 testes** — 206 HTTP, 42 contratos de infraestrutura e
+12 guardas estáticas; todos executados na regressão final abaixo.
+
+Leitura recomendada: [fechamento final](#fechamento-final-snapshots-padrão-e-tarifa-extrema)
+para o resultado completo mais recente; [features e pipelines](#features-e-pipelines-o-que-a-evidência-comprova)
+para a matriz vigente; [lacunas](#garantias-verificadas-e-limitações-conhecidas-lacunas-pendentes)
+para o que ainda não foi comprovado. Os marcos de 255/208/206/202 e anteriores
+não são resultados da mesma versão nem novas medições desta revisão documental.
+
+## Alinhamento documental posterior ao fechamento — 10/10/2026
+
+Rodada somente de documentação: regra de líquido positivo e ordem anterior ao
+snapshot, contratos/exemplos, resultados atuais versus históricos, entrega/CI
+por commit e limites de outbox/migrations foram reconciliados. Sem mudanças de
+código da API, DDL, workflow ou implementação do restante de 9.5. Modelo oficial
+preservado; registros antigos mantidos e identificados, sem reescrever resultados.
+
+| Verificação desta rodada | Evidência |
+|---|---|
+| `.venv/bin/python -m pytest tests -q -m static_guard` | **12 passed, 248 deselected**; seções/rotas, erros, DER, hashes/páginas, consolidação, links/âncoras e R1 |
+| Coleta sem execução financeira | **260 coletados**; seleções confirmam 206 HTTP, 42 infraestrutura e 12 estáticos |
+| Artefatos regenerados | RFC 3.3 de quatro páginas/apresentação de dez; sem overflow, manifesto atualizado; revisão visual dos fluxos e slides alterados |
+| Escopo de evidência | Suíte completa/benchmark/métricas **não reexecutados nesta rodada documental**; resultados financeiros mais recentes permanecem 260/75.43 s e benchmark separado de 8,255 s abaixo |
+
+Relatório estático local em
+`baas-pme-api/artifacts/p04/20261010085856-final/documentation-coherence.xml`,
+ignorado pelo Git como os demais relatórios. Publicação/CI da revisão final e
+aceite/clone/ensaio do grupo continuam pendentes.
+
+## Líquido positivo: implementação e Red/Green — 10/10/2026
+
+| Verificação específica inicial, antes dos cinco casos adicionais | Resultado |
+|---|---|
+| Red antes da implementação | 3 falhas de execução: líquido zero retornou 201; tarifa maior, sem saldo, retornou 500; tarifa de 100% retornou 201. Mais 2 falhas de quote: zero 201/negativo 500. Seleções interrompidas em 3/2 falhas, não são execução integral |
+| Green HTTP | **33 passed**, 10.83 s, na `.venv` existente |
+| Green PostgreSQL/upgrade | **14 passed**, 1.64 s, após corrigir um nome de tabela no próprio teste |
+| Regra e rollback | Tarifas fixa/percentual/combinada, half-up, 1 centavo, seleção múltipla, saldo zero/suficiente, preço vigente/replay; sem consumo de saldo/lastro, snapshots, quote, auditoria ou reserva confirmados |
+| Banco existente | Upgrade idempotente com e sem legado; NOT VALID rejeita novas gravações e preserva fatos antigos, inclusive zero/negativo. Sem legado, constraints validadas |
+
+Projeto `baas-p04-net-20261010t082035z`, portas 13010/15442/11090; dados
+sintéticos separados do banco de desenvolvimento. Relatórios locais em
+`baas-pme-api/artifacts/p04/20261010T082035Z/` (ignorados pelo Git).
+O Red produziu dois registros de antecipação e uma cotação sem líquido;
+a migração real sobre esse banco preservou-os e protegeu novas gravações.
+As duas provas de migração também usam schemas exclusivos, removidos ao final.
+Essa compatibilidade não autoriza criar novas operações inválidas nem
+reprificar respostas idempotentes antigas.
+
+Após o upgrade, as **duas antecipações antigas de líquido zero** produzidas
+no Red também tiveram replay conferido via HTTP: 201/corpo original,
+`Idempotent-Replayed: true`, saldo/extrato/checkpoint inalterados. É uma
+verificação complementar do legado sintético, não um caso acrescentado à
+contagem de pytest (255 naquele marco, 260 no fechamento posterior).
+
+### Fechamento final: snapshots padrão e tarifa extrema
+
+A contagem SQL de rollback foi reforçada para incluir também snapshots de
+políticas padrão (`customer_id IS NULL`). Uma reexecução intermediária passou
+com **255 testes, 73.47 s**, antes de acrescentar os cinco casos seguintes.
+
+O novo Red reproduziu tarifa fixa `9223372036854775807` + 1 bps sobre bruto
+10000: o valor calculado ultrapassa BIGINT e o snapshot falhava com 500 antes
+da comparação de líquido. O controller agora calcula/valida **antes** de
+persistir preço e usa a mesma política/tarifa na criação do snapshot. A quote
+já fazia a validação antes de sua gravação. Não foram definidos os limites
+monetários gerais de P0.3/P0.4 nem alterada a semântica da quote TRANSFER.
+
+| Verificação final em banco descartável novo | Resultado |
+|---|---|
+| Red adicional do extremo | 1 falha real por 500 em vez de 422; seleção interrompida na primeira falha |
+| Green da regra completa | **52 passed**, 14.82 s: 36 HTTP + 16 SQL/migração |
+| Suíte inteira atual | **260 passed in 75.43s**, 09:05:17–09:06:33 UTC; JUnit em horário local −03:00 |
+| Classificação atual | 206 `api_blackbox`, 42 `infrastructure_contract`, 12 `static_guard`; executados juntos na suíte inteira, não novas medições isoladas por marcador |
+| Métricas após Green + suíte | QIT001030: 82 recusas de execução/24 de quote; retries sintéticos: 2 deadlock/2 serialização; counters por processo, não clientes únicos |
+| Benchmark do código final | **5 passed in 7.89s**, 200 transferências; parede **8,255 s** |
+| PDFs/DDL | RFC 3.3, quatro páginas/23 entidades; apresentação dez; CHECKs no DER, hashes/links e catálogo de 40 erros aprovados |
+
+Projeto final `baas-p04-final-20261010085856`, portas 13010/15442/11090;
+teste na `.venv` existente da API. Relatórios/JUnit, métricas e benchmark em
+`baas-pme-api/artifacts/p04/20261010085856-final/` (ignorados pelo Git).
+O banco foi criado vazio para a verificação, depois preenchido por casos
+sintéticos; foi removido somente após a coleta final. O ambiente original
+não foi alvo dos testes. Código financeiro permaneceu igual entre a suíte
+final e a carga. Método/CPU/RAM em [BENCHMARK §13](BENCHMARK.md#13-fechamento-final-validação-anterior-ao-snapshot-de-preço).
+
+### Regressão completa, métricas e benchmark desta implementação
+
+**Registro intermediário anterior ao ajuste do snapshot/tarifa extrema.**
+Preservado para rastreabilidade; a evidência do código final é a seção acima.
+
+Execução **2026-10-10 08:39:21–08:42:27 UTC**, pelo validador de entrega em
+clone local + snapshot, `.venv`/banco novos e Compose exclusivo. Base Git
+`160311850dbfbc9427ed7f5049047aada951e8b3`, 27 entradas modificadas/novas
+na origem ao copiar o snapshot. O código financeiro é o da implementação inicial
+da regra, anterior ao ajuste de ordem do snapshot e aos cinco casos extremos;
+não é validação do commit publicado nem CI remoto da revisão nova.
+
+| Etapa | Resultado |
+|---|---|
+| Suíte completa | **255 passed in 72.98s** |
+| Somente HTTP (`api_blackbox`) | **203 passed**, 64.74 s; 52 deselected |
+| Contratos SQL/worker (`infrastructure_contract`) | **40 passed**, 11.56 s; 215 deselected |
+| Guardas documentais (`static_guard`) | **12 passed**, 0.43 s; 243 deselected |
+| Guardas na origem após os ajustes finais de texto/PDF | **12 passed**, 243 deselected; rechecagens de 0.14–0.16 s, incluindo 422/líquido nas tabelas das duas rotas; não recontar como novos casos |
+| Benchmark separado | **5 passed in 7.41s**, 200 transferências; parede **7,753 s** |
+| Compilação/dependências | compileall sem erro; pip check sem incompatibilidade na venv nova e na existente |
+| Container e bootstrap | uid=100(user), não-root; DDL novo, API/DB saudáveis e MockServer local |
+| Métricas | exposition obtida antes do benchmark; QIT001030: 72 recusas de execução/20 de quote ao longo das seleções e suíte completa; retries sintéticos: 4 deadlock/4 serialização |
+| Cleanup | saída 0, projeto exclusivo removido; checkout/relatórios preservados |
+| Banco original | migração aplicada sem recriar volume; preflight: 0 antecipações/0 cotações incompatíveis; ambos os CHECKs confirmados como validados; mesmos IDs dos containers originais |
+
+Artefatos locais ignorados:
+`baas-pme-api/artifacts/delivery/20261010T083920Z/`. Checkout preservado:
+`/tmp/baas-delivery-x8U6PEUz/repository`. A revisão final apenas do texto de
+ressalva/PDF foi reconferida pelas guardas na origem; o código financeiro
+testado não mudou. CPU/RAM e limites da coleta em
+[BENCHMARK §12](BENCHMARK.md#12-líquido-positivo-regressão-completa-e-benchmark).
+Counters são por processo, não clientes únicos ou SLO; os testes de recusa
+conferem que QIT001030 não incrementa o retry transitório. Coletores/Alertmanager
+não foram instalados. Todo resultado anterior abaixo permanece histórico.
+
+## Evidência remota de publicação e CI — 10/10/2026
+
+O [BaaS PME CI, execução 38036090796](https://github.com/Faraoh-Back/BootcampQITech_UnicampE-Racing/actions/runs/38036090796)
+foi confirmado como `completed/success` para
+`160311850dbfbc9427ed7f5049047aada951e8b3`, correspondente à `main` e ao HEAD
+local no momento da consulta pública. Os PDFs dessa versão estavam acessíveis
+sem autenticação e tinham blobs iguais aos arquivos locais verificados.
+Método, tamanhos, identificadores e fronteira em [ENTREGA §5.1](entrega/ENTREGA.md#51-evidência-remota-confirmada).
+
+Esta é evidência de execução remota do workflow, não uma nova medição local,
+benchmark ou confirmação de ensaio/clone independente. Não atribui ao run
+contagens/durações que não foram obtidas de seus logs. Alterações posteriores
+no código/documentos/PDFs requerem publicação e CI da nova revisão. Esse run
+anterior não comprova a implementação posterior de líquido positivo;
+os números históricos abaixo permanecem preservados.
 
 ## Consolidação documental — 10/10/2026
 
@@ -62,7 +200,9 @@ As durações não são SLO; a diferença para execuções anteriores não prova
 de desempenho. O mesmo host/Docker e caches de imagem foram reutilizados.
 
 As novas guardas conferem seções/rotas no modelo oficial, todas as entidades e
-relações do DER, PDF/páginas/hashes e que P0.4 não aparece como implementada.
+relações do DER, PDF/páginas/hashes e, naquele marco, que P0.4 não aparecia
+como implementada. A guarda atual distingue líquido positivo implementado
+dos demais itens pendentes de 9.5.
 Seu Red foi executado antes dos artefatos: quatro falhas por arquivos ainda
 ausentes; Green com dez guardas. O teste de fumaça do MockServer foi corrigido
 após reproduzir porta publicada 11080 versus escuta interna 1080. Falhas
@@ -169,13 +309,14 @@ S7c. Recursos/ambiente e artefatos estão em BENCHMARK.
 | `POST /user`, `/auth/login`, `/auth/refresh`, `/auth/logout` | sessão, rotação, revogação, `QIT001020`–`QIT001023` | `tests/integration/auth/test_auth.py` |
 | `GET /audit-events`, `/checkpoint` | cadeia SHA-256, append-only, checkpoint | `tests/integration/audit/test_audit.py` |
 | `GET /metrics` | métricas sem PII e erros/latência/locks | `tests/integration/metrics/test_metrics.py` |
-| Worker de outbox | lease, retry, entrega idempotente | `tests/integration/outbox/test_outbox.py` |
+| Worker de outbox | lease, retry, chave estável e não republicação de sucesso confirmado; entrega at-least-once exige deduplicação do consumidor | `tests/integration/outbox/test_outbox.py` (infraestrutura SQL/subprocesso + HTTP/MockServer) |
 | Timeout/retry PostgreSQL | `QIT001024`, `QIT001025`; não repetir `422` | `tests/integration/timeouts/test_timeouts.py`, `tests/integration/transaction/test_transient_retry.py` |
 | `POST /pricing-policy` | preço PME, fallback, nova versão, snapshots | `tests/integration/pricing/test_pricing_policy.py` |
 | `POST /risk-policy` | `QIT001026`, `QIT001027`, teto diário concorrente | `tests/integration/risk_policy/test_risk_policy.py` |
 | `POST /account/{key}/quote` | preço/risco vigente, expiração informativa e recálculo | `tests/integration/quote/test_quote.py` |
 | `/policy-change-request` | draft, submissão, outro OWNER aprova, autoaprovação `QIT001029` | `tests/integration/policy_change_request/test_maker_checker.py` |
 | Jornada PME | cobrança própria, antecipação única, crédito/tarifa no extrato | `tests/integration/credit_advance/test_receivables_flow.py`, `tests/test_pme_journey.py` |
+| Líquido positivo na antecipação/cotação | `QIT001030`, arredondamento, 1 centavo, tarifa extrema antes do snapshot, ausência de efeitos, replay/recálculo; CHECKs e upgrade sem reescrever legado | `tests/integration/credit_advance/test_positive_net.py` (36 HTTP), `test_positive_net_database.py` (16 infraestrutura, incluindo snapshots padrão) |
 | Guarda R1 | testes de produto não importam módulos internos `src/` | `tests/test_r1_guard.py` |
 
 ## Complemento do catálogo: códigos transversais e legado
@@ -196,6 +337,7 @@ por código **não** prova cada código em cada rota nem toda a matriz de papéi
 | `QIT001027` | 422 | Teto de valor, quantidade ou consumo diário excedido | `risk_policy/test_risk_policy.py`, `risk_policy/test_risk_atomicity.py` |
 | `QIT001028` | 404 | Proposta inexistente na submissão/aprovação | `policy_change_request/test_policy_contract.py` |
 | `QIT001029` | 409 | Autoaprovação, estado inválido, submissão por outro criador ou segunda aprovação concorrente | `policy_change_request/test_maker_checker.py`, `policy_change_request/test_policy_governance.py` |
+| `QIT001030` | 422 | Nova antecipação/cotação CREDIT_ADVANCE com tarifa >= bruto, inclusive saldo suficiente; nenhuma alteração financeira confirmada | `credit_advance/test_positive_net.py`, `credit_advance/test_positive_net_database.py` (rollback SQL) |
 | `QIT000500` | 500 | Falha inesperada injetada no INSERT de lançamento; corpo sanitizado, sem retry nem efeito financeiro | `transaction/test_transient_retry.py` (infraestrutura) |
 | `QIT000010` | 400 | Intervalo invertido de datas na listagem legada | `sample_entity/test_sample_entities.py` (infraestrutura/legado) |
 | `QIT002001` | 404 | Entidade legada inexistente | `sample_entity/test_sample_entity_get.py` |
@@ -204,7 +346,7 @@ por código **não** prova cada código em cada rota nem toda a matriz de papéi
 | `QIT002004` | 422 | Data impossível no legado | `sample_entity/test_sample_entity_create.py` |
 
 Os caminhos abreviados nessa tabela são relativos a `tests/integration/`.
-Há 39 códigos catalogados: 29 do produto, seis globais e quatro do legado.
+Há 40 códigos catalogados: 30 do produto, seis globais e quatro do legado.
 `QIT000010` é um código global cujo cenário atual é do legado.
 
 ## Features e pipelines: o que a evidência comprova
@@ -220,9 +362,10 @@ Há 39 códigos catalogados: 29 do produto, seis globais e quatro do legado.
 | S13–S15: operação | Logs/métricas, isolamento de conta travada, timeout, interrupção do cliente, lease/retry de outbox; não stack de monitoramento instalado |
 | S16: retry transacional | SQLSTATE `40P01` e `40001` injetados; nova tentativa tem um efeito; esgotamento/falha inesperada não grava saldo/ledger; regra de negócio não é repetida |
 | S17/S19/S20: personalização | Precedência PME/padrão, versões/snapshots, tetos concorrentes, produto desabilitado, cotação informativa e autorização por PME |
+| Regra posterior: antecipação com líquido positivo | Execução/cotação CREDIT_ADVANCE, QIT001030 antes do snapshot de preço/quote, rollback incluindo política padrão, um centavo líquido, preço vigente/replay; 36 HTTP + 16 SQL/migração. Não define cotação TRANSFER nem limites numéricos gerais |
 | S21: maker-checker | Contrato aninhado estrito de preço/risco, segregação criador/aprovador, estado pendente não aplicável, três corridas com dois aprovadores e uma versão publicada |
 | Jornada integrada T5.1 | Dois OWNERs publicam preço, emitem/reajustam, cotam/antecipam, transferem/sacam, percorrem quatro páginas, reconciliam oito lançamentos com saldo e bloqueiam/cancelam com trilha auditável |
-| Pipeline CI | Compose/build → liveness → compileall → static_guard → api_blackbox → infrastructure_contract → logs na falha → cleanup; validado localmente, não execução remota do Actions nesta revisão |
+| Pipeline CI | Compose/build → liveness → compileall → static_guard → api_blackbox → infrastructure_contract → logs na falha → cleanup; evidência local preservada e execução remota confirmada para `1603118`, conforme a seção de evidência remota acima |
 | Consistência documental | Guardas estáticas de seções do modelo, todos os métodos/rotas registrados, códigos catalogados e 23 tabelas do produto no DER; não comparação completa de payloads/FKs nem validação visual de PDF |
 
 ## Revisão: correções com regressão comprovada
@@ -249,18 +392,18 @@ TDD retrospectivo ao histórico inteiro: o Red/Green aqui é da revisão.
 
 | Prioridade | Achado / próxima prova necessária | Plano |
 |---|---|---|
-| P0 | Recusa de antecipação com tarifa >= bruto: regra aprovada, implementação/testes pendentes. Cotação de transferência, limites BIGINT e índices <= -100% ainda exigem especificação/validação segura | P0.3/P0.4 |
+| P0 | Líquido positivo da antecipação/cotação implementado; demais fronteiras pendentes: cotação de transferência, limites BIGINT e índices <= -100% ainda exigem especificação/validação segura | P0.3/P0.4 (parcial) |
 | P0 | Ledger/eventos/snapshots ainda não têm proteção append-only SQL equivalente à auditoria; saldo é projeção sem rotina de reconciliação | P0.1/P0.2 |
 | P1 | Token interno tem autoridade ampla, JWT é opcional fora de propostas, cadastro de OWNER e políticas diretas podem contornar segregação | P1.4/P1.8 |
 | P1 | Faltam controles produtivos de abuso de login, rotação de chaves e gestão administrativa de sessões | P1.5 |
 | P1 | Emissão externa antes da validação final pode criar boleto órfão; billing não tem idempotência de cliente e lote 2 faz I/O com lock de plano | P1.2 |
 | P1 | Preço/risco contêm regras em repositories e auditoria executa SQL em utils | P1.7 |
-| P1 | Orçamento de 15 s não é deadline global; virada diária de risco usa data do runtime; timestamps sem offset e bootstrap sem migrations | P1.3/P1.9 |
+| P1 | Orçamento de 15 s não é deadline global; virada diária de risco usa data do runtime; timestamps sem offset. Há upgrade SQL pontual de líquido positivo, não ferramenta/histórico geral de migrations | P1.3/P1.9 |
 | P1 | Lease de lote de outbox pode vencer durante publicação; ack obsoleto não deve contar entrega; faltam dead-letter e operação de recuperação | P1.6 |
 | P1 | Exportação completa da auditoria, cadeia global serializada e paginação offset não são provas de escalabilidade/snapshot estável sob novas escritas | P1.10 |
 | P1 | Erros inesperados e exceções de bibliotecas podem escrever parâmetros SQL/URLs em traceback; logs normais sem body não equivalem a sanitização universal | P1.11 |
 | P1 | Backup/restore e retomada financeira após perda de dados não foram comprovados pela revisão | P1.12 |
-| P2 | PDFs foram gerados/revistos pelo agente; aceite do time, clone remoto/Linux novo por outra pessoa e execução remota do CI ainda não foram comprovados | T5.3/T5.5/P2.2 |
+| P2 | PDFs gerados/revistos pelo agente; aceite do time, ensaio e clone remoto/Linux novo por outra pessoa pendentes. CI/publicação comprovados para `1603118`, não para a revisão posterior de líquido positivo/documentação | T5.3/T5.5/T5.7/T5.9/P2.2 |
 | P2 | Combinações de papel/rota/estado, expiração/calendário e quedas não são exaustivas; faltam capacidade sustentada e alertas efetivamente exercitados | P2.3/P2.4 |
 
 Esses itens estão documentados como lacunas, não mascarados por testes verdes.

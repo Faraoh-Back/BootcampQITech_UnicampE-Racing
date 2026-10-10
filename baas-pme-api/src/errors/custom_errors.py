@@ -319,6 +319,19 @@ class DatabaseTransientFailure(QIException):
         )
 
 
+class NonPositiveCreditAdvance(QIException):
+    code = "QIT001030"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Non-positive credit advance",
+            self.code,
+            422,
+            "The credit advance fee must be lower than the gross amount.",
+            "A antecipação deve gerar um valor líquido maior que zero; a tarifa deve ser menor que o valor bruto.",
+        )
+
+
 class NotFoundSampleEntity(QIException):
     """Erro legado do recurso de exemplo, fora do catálogo BaaS PME."""
 

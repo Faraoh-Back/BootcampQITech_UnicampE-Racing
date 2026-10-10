@@ -1,26 +1,27 @@
 # DECISÕES FIXAS, CONTRATOS DE DADOS E CATÁLOGO DE ERROS (T0.2)
 
 > **Documento de Alinhamento do Time (Trilhas A, B e C)**  
-> **Objetivo:** Estabelecer todas as convenções, regras de negócio fixas, catálogo de erros e contratos de entrada/saída de cada endpoint. Este arquivo é o contrato de interface que permite que as três pessoas desenvolvam em paralelo sem bloqueios ou divergências.
+> **Objetivo:** Estabelecer todas as convenções, regras de negócio fixas, catálogo de erros e contratos de entrada/saída de cada endpoint. Este arquivo é o contrato de interface que permite que os integrantes desenvolvam em paralelo sem bloqueios ou divergências; A, B e C são papéis do plano, não exigência de três autores.
 
 > **Papel na entrega final:** este é o contrato detalhado e a fonte canônica de
 > rotas, payloads, erros e regras. A RFC usa o modelo oficial e resume apenas o
-> desenho, fluxos, evidências e trade-offs; README, Cobertura, Benchmark e
-> Alertas guardam a evidência operacional. O payload QIT é um contrato próprio,
+> desenho, fluxos, evidências e trade-offs; README, COBERTURA, BENCHMARK e
+> ENTREGA guardam a evidência operacional. As regras de alerta estão no README
+> da API e não são um stack instalado. O payload QIT é um contrato próprio,
 > não uma declaração de conformidade integral com RFC 9457.
 
 ---
 
 ## 1. Decisões Arquiteturais e de Negócio (D1 a D16)
 
-> **Estado RFC 3.2:** D1–D16 têm implementação com os limites descritos abaixo. A regra de líquido positivo da D4 foi aprovada em 2026-10-10, mas sua validação na API ainda é pendência P0.4; aprovação documental não significa implementação. A revisão de entrega acrescentou contratos estritos, autorização de cotação e separação das evidências de teste. O checkpoint histórico não substitui esta especificação atual.
+> **Estado RFC 3.3:** D1–D16 têm implementação com os limites descritos abaixo. A regra de líquido positivo da D4, aprovada em 2026-10-10, agora é aplicada à antecipação e à cotação CREDIT_ADVANCE, com `422 QIT001030`, proteção SQL e testes. Isso conclui apenas essa parte de P0.4, não o restante da seção 9.5. O checkpoint histórico não substitui esta especificação atual.
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
 | **D1** | **Precificação comercial versionada** | `pricing_policy` mantém tarifa fixa em centavos e/ou percentual em pontos-base para `TRANSFER`, `CREDIT_ADVANCE` e `BANK_SLIP_ISSUANCE`. Há políticas padrão sem PME e políticas específicas; a precedência é **PME específica vigente > padrão vigente**. O seed preserva o comportamento-base: transferência `100` centavos, antecipação `300` bps e emissão `0`. | Dinheiro e tarifa são `BIGINT`; percentual usa `Decimal` e arredondamento half-up, sem `float`. `pricing_snapshot` congela política, versão, base e tarifa no fato financeiro. Publicar preço cria nova versão e encerra a vigência anterior, sem alterar seus termos. `NIGHT_LIMIT_CENTS=100000`, `NIGHT_START="20:00"`, `NIGHT_END="06:00"` e `TIMEZONE="America/Sao_Paulo"` continuam sendo parâmetros da regra noturna do produto, não preço comercial. S21 entrega dupla aprovação pelo fluxo de propostas; a publicação técnica direta permanece disponível e deve ser isolada na fronteira de serviço. |
 | **D2** | **Índices de Reajuste** | Aceitar exclusivamente **`IPCA`** e **`IGPM`**. | A Selic foi descartada porque é taxa básica de juros de política monetária, e não índice de inflação contratual para reajuste de cobrança/mensalidade. |
 | **D3** | **Ciclo de Vida da Conta** | Rotas `PUT /account/{account_key}/block` e `PUT /account/{account_key}/cancel` (S2b). Transições permitidas: `APPROVED → BLOCKED`, `APPROVED → CANCELLED` e `BLOCKED → CANCELLED`. `CANCELLED` é final e irreversível. | Cada transição gera evento auditável. Operações financeiras só aceitam conta `APPROVED`; transição não permitida devolve `409 QIT001019`. |
-| **D4** | **Modelo de Antecipação de Recebíveis** | Antecipação lastreada em **`bank_slip_keys`** (1 a 50 chaves por chamada). **Regra adicional aprovada, implementação pendente P0.4:** exigir `net_amount > 0`; recusar tarifa maior ou igual ao bruto. | Lastro evita crédito por valor arbitrário; o vínculo `bank_slip.credit_advance_id` impede nova antecipação do mesmo boleto nos fluxos protegidos. Líquido positivo preserva o propósito de dar liquidez à PME, sem consumir recebível para receber zero ou perder saldo. Exemplos e critérios em 3.5.1. |
+| **D4** | **Modelo de Antecipação de Recebíveis** | Antecipação lastreada em **`bank_slip_keys`** (1 a 50 chaves por chamada). Exigir `net_amount > 0`; tarifa maior ou igual ao bruto retorna `422 QIT001030` na execução e na cotação CREDIT_ADVANCE. | Lastro evita crédito por valor arbitrário; o vínculo `bank_slip.credit_advance_id` impede nova antecipação do mesmo boleto nos fluxos protegidos. Líquido positivo preserva o propósito de dar liquidez à PME, sem consumir recebível para receber zero ou perder saldo. Exemplos e critérios em 3.5.1. |
 | **D5** | **Formato da Taxa do Banco Central** | Retornada em string percentual, ex: `"4.83"` (significa 4,83%). | O cálculo do novo valor utiliza `Decimal` com arredondamento *half-up* para centavos inteiros:<br>`fator = Decimal("1") + (Decimal(rate_str) / Decimal("100"))`<br>`novo_valor = int((Decimal(base_amount) * fator).quantize(Decimal("1"), rounding=ROUND_HALF_UP))` |
 | **D6** | **Contratos dos Mocks (MockServer)** | Contratos fixos para os conectores externos: | **BankSlip Mock (`POST /bank-slips`):**<br>Entrada: `{ external_reference: str, installments: [{ installment_number: int, amount: int, due_date: "AAAA-MM-DD" }] }`<br>Saída: `200 { bank_slips: [{ installment_number: int, barcode: str }] }`<br><br>**CentralBank Mock (`GET /index/{IPCA\|IGPM}`):**<br>Saída: `200 { index: str, accumulated_rate: "4.83" }` |
 | **D7** | **Histórico de Eventos Visível por HTTP (R4)** | `GET /account/{account_key}` expõe `status_events` da conta; `GET .../billing-plan/{plan_key}` expõe `status_events` dentro de cada boleto. | A regra R4 é verificável por HTTP porque os eventos são inspecionáveis. O formato atual é ISO 8601 sem offset, por exemplo `[{ "status": "APPROVED", "event_datetime": "2026-10-02T12:00:00.000000" }]`; consumidores não devem inferir fuso pelo texto. Evolução P1 prevê timestamps `TIMESTAMPTZ`/UTC explícitos. |
@@ -45,7 +46,8 @@ administrador do banco. Backlog e decisões aprovadas ainda sem implementação
 são identificados como pendentes, não garantias já aplicadas.
 
 O catálogo e os contratos de rota abaixo descrevem a API implementada, inclusive
-D10–D16; a exceção planejada da D4 está explicitamente separada em 3.5.1.
+D10–D16 e a regra de líquido positivo da D4 detalhada em 3.5.1. Essa regra
+está entregue; as demais fronteiras econômicas de P0.4 permanecem pendentes.
 A outbox não expõe uma rota pública: seu webhook contém `event_key`,
 `topic`, `aggregate_type`, `aggregate_key` e `payload`; o único tópico entregue
 é `account.status_changed` (bloqueio/cancelamento). Não existe campo explícito
@@ -104,6 +106,11 @@ Todas as respostas de erro retornam payload JSON padronizado:
 }
 ```
 
+Catálogo vigente: **40 códigos**, sendo 30 do produto (`QIT001001`–`QIT001030`),
+seis globais e quatro do legado. `QIT000010` é global, embora seu cenário de
+teste atual pertença ao legado. A matriz de cenários está em
+[COBERTURA](COBERTURA.md#complemento-do-catálogo-códigos-transversais-e-legado).
+
 | Código | HTTP Status | Nome do Erro / Exception | Descrição / Quando ocorre |
 |---|---|---|---|
 | **QIT000001** | `400 Bad Request` | `InvalidSchema` | Corpo da requisição fora do schema JSON esperado, campos ausentes ou tipos incompatíveis. |
@@ -137,6 +144,7 @@ Todas as respostas de erro retornam payload JSON padronizado:
 | **QIT001027** | `422 Unprocessable` | `RiskLimitExceeded` | Valor por transferência, teto diário de transferências, valor de antecipação ou quantidade de boletos excede a política de risco vigente. |
 | **QIT001028** | `404 Not Found` | `PolicyChangeRequestNotFound` | Proposta de alteração de política inexistente. |
 | **QIT001029** | `409 Conflict` | `MakerCheckerViolation` | Autoaprovação, aprovação sem submissão, submissão por outro criador ou nova aprovação de proposta já ativa. |
+| **QIT001030** | `422 Unprocessable` | `NonPositiveCreditAdvance` | Tarifa calculada maior ou igual ao bruto selecionado: nova antecipação ou cotação CREDIT_ADVANCE teria líquido zero/negativo, independentemente do saldo anterior. |
 
 ### Erros de infraestrutura HTTP
 
@@ -188,6 +196,13 @@ Todos os endpoints que usam PostgreSQL podem devolver `503 QIT001024`;
 transações e antecipações também podem devolver `503 QIT001025` após esgotar
 retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regra de negócio.
 
+Os exemplos abaixo são ilustrativos, não uma sequência única de operações.
+Arrays de boletos são abreviados a um item: o lote real retorna 12 novos
+boletos; a consulta do plano retorna todos os boletos já emitidos. Valores de
+data/chave devem ser ajustados ao cenário do integrador; a data de primeiro
+vencimento não pode estar no passado. Nas listas por rota, acrescente os erros
+transversais de autenticação/banco descritos acima.
+
 ---
 
 ### 3.1. Clientes (`/customer`)
@@ -199,7 +214,7 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
   {
     "name": "Academia Boa Forma Ltda",
     "email": "contato@boaforma.com.br",
-    "document_number": "12.345.678/0001-90"
+    "document_number": "12.345.678/0001-95"
   }
   ```
 - **Resposta Sucesso (`201 Created`):**
@@ -217,7 +232,7 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
     "customer_key": "c9bf9e57-1685-4c89-bafb-ff5af830be8a",
     "name": "Academia Boa Forma Ltda",
     "email": "contato@boaforma.com.br",
-    "document_number": "12.345.678/0001-90",
+    "document_number": "12.345.678/0001-95",
     "created_at": "2026-10-02T15:00:00.000000"
   }
   ```
@@ -325,7 +340,7 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
   }
   ```
   *(Em repetição com mesma `Idempotency-Key` e mesmo payload: responde `201` com o mesmo corpo e cabeçalho `Idempotent-Replayed: true`)*.
-- **Erros Possíveis:** `400 QIT000001`, `400 QIT001018`, `403 QIT000002`, `404 QIT001002`, `409 QIT001006`, `409 QIT001008`, `422 QIT001005`, `422 QIT001007`, `422 QIT001012`.
+- **Erros Possíveis:** `400 QIT000001`, `400 QIT001018`, `403 QIT000002`, `404 QIT001002`, `409 QIT001006`, `409 QIT001008`, `422 QIT001005`, `422 QIT001007`, `422 QIT001012`; para TRANSFER, também `409 QIT001026` e `422 QIT001027` por habilitação/limites de risco.
 
 #### `GET /account/{account_key}/transaction/{transaction_key}`
 - **Resposta Sucesso (`200 OK`):**
@@ -337,6 +352,7 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
     "amount": -20000,
     "balance_after": 30000,
     "operation_key": "c9d1b5a0-5a1c-4be7-bd19-1e40f9552a79",
+    "counterparty_account_key": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
     "created_at": "2026-10-02T15:10:00.000000"
   }
   ```
@@ -364,6 +380,7 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
         "amount": -20000,
         "balance_after": 30000,
         "operation_key": "c9d1b5a0-5a1c-4be7-bd19-1e40f9552a79",
+        "counterparty_account_key": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
         "created_at": "2026-10-02T15:10:00.000000"
       }
     ],
@@ -372,6 +389,10 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
     "is_last_page": false
   }
   ```
+- **Campos dos lançamentos:** `amount` tem sinal contábil (débito negativo,
+  crédito positivo); `balance_after` é o saldo após aquele lançamento.
+  `counterparty_account_key` aparece somente em TRANSFER_OUT/TRANSFER_IN,
+  quando há contraparte; o lançamento separado de tarifa não o inclui.
 - **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001002`.
 
 ---
@@ -407,7 +428,7 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
     "created_at": "2026-10-02T15:20:00.000000"
   }
   ```
-- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001002`, `409 QIT001006`, `422 QIT001017`, `502 QIT001009`.
+- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001002`, `409 QIT001006`, `409 QIT001026`, `422 QIT001005` (saldo para a tarifa de emissão), `422 QIT001017`, `502 QIT001009`.
 
 #### `GET /account/{account_key}/billing-plan/{plan_key}`
 - **Resposta Sucesso (`200 OK`):**
@@ -428,6 +449,8 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
         "barcode": "34191.09008 00000.123456 7 8901234567890",
         "status": "PENDING",
         "credit_advance_key": "9a8b7c6d-5e4f-3a2b-1c0d-e9f8a7b6c5d4",
+        "batch_number": 1,
+        "adjustment_rate": null,
         "status_events": [
           {
             "status": "PENDING",
@@ -438,6 +461,10 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
     ]
   }
   ```
+- **Campos do boleto na consulta:** `batch_number` identifica lote 1 ou 2;
+  `adjustment_rate` é `null` no lote inicial e string percentual no reajustado.
+  `credit_advance_key` aparece somente quando há vínculo de antecipação;
+  antecipar não altera o status PENDING para PAID.
 - **Erros Possíveis:** `403 QIT000002`, `404 QIT001002`, `404 QIT001013`.
 
 #### `POST /account/{account_key}/billing-plan/{plan_key}/adjustment`
@@ -466,7 +493,7 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
     ]
   }
   ```
-- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001002`, `404 QIT001013`, `409 QIT001014`, `502 QIT001009`.
+- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001002`, `404 QIT001013`, `409 QIT001006`, `409 QIT001014`, `409 QIT001026`, `422 QIT001005` (saldo para a tarifa do lote), `502 QIT001009`.
 
 ---
 
@@ -480,7 +507,7 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
 > principal livre, juros parcelados e amortização estão fora deste contrato.
 
 #### `POST /account/{account_key}/credit-advance`
-- **Cabeçalhos Obrigatórios:** `INTERNAL-TOKEN`, `Idempotency-Key: <uuid-ou-string>`
+- **Cabeçalhos Obrigatórios:** `INTERNAL-TOKEN`, `Idempotency-Key: <string de 1 a 64 caracteres>` (UUID é aceito, mas não obrigatório).
 - **Body de Entrada:**
   ```json
   {
@@ -505,19 +532,20 @@ retry de `40P01`/`40001`. `500 QIT000500` é contingência inesperada, não regr
     "created_at": "2026-10-02T15:25:00.000000"
   }
   ```
-- **Erros Possíveis:** `400 QIT000001`, `400 QIT001018`, `403 QIT000002`, `404 QIT001002`, `404 QIT001015`, `409 QIT001006`, `409 QIT001008`, `409 QIT001016`.
+- **Erros Possíveis:** `400 QIT000001`, `400 QIT001018`, `403 QIT000002`, `404 QIT001002`, `404 QIT001015`, `409 QIT001006`, `409 QIT001008`, `409 QIT001016`, `422 QIT001030` (além dos limites de produto/risco `QIT001026`/`QIT001027`).
 
-#### 3.5.1. Líquido positivo: regra aprovada e implementação pendente
+#### 3.5.1. Líquido positivo: regra implementada e validada
 
 **Decisão aprovada pelo responsável pelo produto em 2026-10-10:** uma nova
 antecipação somente pode ser confirmada se entregar **pelo menos um centavo
 líquido** à PME. Antecipar um recebível não deve consumir esse lastro para
 entregar zero, nem reduzir um saldo que a PME já tinha.
 
-**Estado desta decisão:** documentada/aprovada; **não implementada nesta
-alteração documental**. P0.4 do plano contempla aplicação, restrições e testes.
-O catálogo acima continua descrevendo os erros implementados; não se declara
-que a API atual já recusa todos os casos desta regra.
+**Estado desta decisão:** implementada em 2026-10-10, mediante autorização
+específica posterior à exclusão geral da seção 9.5. A regra compartilhada em
+`controllers/credit_advance_rules.py` protege criação e cotação CREDIT_ADVANCE;
+ambas retornam **422/QIT001030** quando o líquido não é positivo. O restante
+de P0.4/9.5 permanece pendente; não se estende esta regra à cotação TRANSFER.
 
 O cálculo usa a soma de todos os boletos selecionados e a política vigente:
 
@@ -535,26 +563,25 @@ centavos inteiros. A comparação acontece **depois do arredondamento**:
 comparar apenas o percentual não cobre tarifas fixas ou combinadas.
 O limite é o bruto total da seleção, não o valor isolado de cada boleto.
 
-**Exemplo prático: PME antecipa um boleto de R$ 100,00.** Os valores abaixo
-ilustram a regra aprovada; não são resultados de testes executados dos casos
-ainda pendentes.
+**Exemplo prático: PME antecipa um boleto de R$ 100,00.** Estes valores são
+cobertos pelos cenários HTTP da regra e pelos testes anteriores de tarifa de 3%.
 
-| Bruto | Tarifa calculada | Líquido calculado | Resultado exigido pela regra aprovada |
+| Bruto | Tarifa calculada | Líquido calculado | Resultado da regra implementada |
 |---|---|---|---|
 | R$ 100,00 (10000 centavos) | R$ 3,00 (300) | R$ 97,00 (9700) | Pode prosseguir, se lastro/risco/estado também forem válidos |
 | R$ 100,00 (10000) | R$ 99,99 (9999) | R$ 0,01 (1) | Pode prosseguir: líquido estritamente positivo |
-| R$ 100,00 (10000) | R$ 100,00 (10000) | R$ 0,00 (0) | Recusar: consome recebível sem dar liquidez |
-| R$ 100,00 (10000) | R$ 120,00 (12000) | −R$ 20,00 (−2000) | Recusar: a antecipação reduziria dinheiro já existente |
+| R$ 100,00 (10000) | R$ 100,00 (10000) | R$ 0,00 (0) | 422/QIT001030: consome recebível sem dar liquidez |
+| R$ 100,00 (10000) | R$ 120,00 (12000) | −R$ 20,00 (−2000) | 422/QIT001030: a antecipação reduziria dinheiro já existente |
 
 **Por que o saldo disponível não resolve o último caso?** Com R$ 500,00
 anteriores, creditar R$ 100,00 e cobrar R$ 120,00 deixaria R$ 480,00, além de
 vincular o boleto como já antecipado. Os lançamentos poderiam ser matematicamente
 coerentes e o saldo continuar positivo, mas a operação contrariaria o propósito
-econômico do produto. Pela leitura do código atual, esse caminho é possível
-quando há saldo suficiente; não foi comprovado por execução nesta alteração.
-Sem saldo anterior, o CHECK de saldo não negativo pode impedir a escrita,
-com rollback e erro 500. Esse CHECK protege saldo, mas **não substitui**
-a recusa comercial explícita antes do lançamento.
+econômico do produto. Esse era um caminho possível antes da correção. Agora,
+a API responde 422 e os R$ 500,00 permanecem intactos, assim como o boleto;
+o teste também cobre saldo anterior zero. No passo Red, tarifa igual ao bruto
+retornou 201 e tarifa maior, sem saldo anterior, retornou 500. A recusa explícita
+agora antecede o lançamento, sem depender do CHECK de saldo não negativo.
 
 **A regra não proíbe personalização de preços.** Uma tarifa fixa de R$ 120,00
 pode ser economicamente válida para um bruto de R$ 1.000,00 (líquido R$ 880,00)
@@ -562,18 +589,24 @@ e inválida para R$ 100,00. Portanto, sua publicação não deve ser rejeitada
 apenas por ultrapassar um boleto hipotético; cada operação deve validar o
 resultado da política efetivamente escolhida.
 
-**Comportamento a implementar em P0.4:**
+**Comportamento implementado:**
 
 1. Após validar/proteger lastro e resolver preço/risco vigentes, calcular o
    líquido e recusá-lo se não positivo, **antes** de criar a antecipação,
    vincular boletos ou lançar crédito/tarifa.
+   A política é consultada e sua tarifa calculada **antes** de gravar o
+   snapshot de preço; o snapshot usa exatamente essa escolha, sem nova
+   resolução. Uma tarifa fixa BIGINT válida pode somar um percentual e
+   ultrapassar BIGINT: se já inviabiliza o líquido, retorna QIT001030 antes
+   de tentar persistir essa tarifa. Isso não define os limites numéricos
+   gerais ainda pendentes em P0.3/P0.4.
 2. Aplicar a mesma recusa à cotação `CREDIT_ADVANCE`; uma cotação não deve
    apresentar líquido zero/negativo como antecipação elegível. A execução
    continua recalculando a regra vigente, sem confiar em cotação antiga.
-3. Responder **HTTP 422** com erro QIT próprio para líquido não positivo,
+3. Responder **HTTP 422/QIT001030 — NonPositiveCreditAdvance**,
    mantendo `{ title, description, translation, code }` e `X-Request-ID`.
-   Reservar/documentar o código estável ao implementar; não reutilizar
-   `InsufficientBalance`, pois a recusa vale mesmo com saldo disponível.
+   Não reutilizar `InsufficientBalance`, pois a recusa vale mesmo com saldo
+   disponível. É falha de negócio e não aciona retry de 40P01/40001.
 4. Não confirmar efeito financeiro, consumo de lastro, snapshots ou reserva
    idempotente da tentativa recusada; não registrar evento de antecipação
    criada. Logs/métricas devem permitir correlacionar a recusa sem PII.
@@ -583,9 +616,12 @@ resultado da política efetivamente escolhida.
    entrar em vigor, pois não confirmou uma operação.
 6. Complementar a validação no banco com `CHECK (net_amount > 0)` de
    antecipação, preservando `net_amount = gross_amount - fee_amount`.
-   Antes de alterar DDL, verificar registros existentes: não apagar,
-   reprificar ou corrigir silenciosamente fatos históricos; avaliar exceções
-   com reconciliação e procedimento autorizado.
+   A cotação tem CHECK condicional apenas para CREDIT_ADVANCE. Models e DDL
+   inicial reproduzem essas constraints. A migração pontual
+   `database/migrations/20261010_positive_credit_advance_net.sql` inspeciona
+   o histórico, instala CHECKs NOT VALID (protegem novas gravações) e os
+   valida somente se não houver legado incompatível. Não apaga, reprifica
+   ou corrige silenciosamente fatos; reconciliação exige procedimento autorizado.
 
 **Critérios de aceitação:** testar tarifa menor/igual/maior que bruto,
 líquido mínimo de um centavo, tarifa fixa/percentual/combinada, arredondamento,
@@ -593,6 +629,25 @@ saldo anterior zero e suficiente, múltiplos boletos, cotação/execução e rep
 Recusas devem deixar saldo/extrato/lastro inalterados; erro de negócio não deve
 disparar retry transitório. As condições válidas continuam exigindo as demais
 regras de propriedade, status e risco, não apenas líquido positivo.
+
+**Resposta de recusa** (422; `X-Request-ID` no cabeçalho):
+
+```json
+{
+  "title": "Non-positive credit advance",
+  "description": "The credit advance fee must be lower than the gross amount.",
+  "translation": "A antecipação deve gerar um valor líquido maior que zero; a tarifa deve ser menor que o valor bruto.",
+  "code": "QIT001030"
+}
+```
+
+**Evidência:** 36 cenários HTTP em `credit_advance/test_positive_net.py` e
+16 contratos SQL/migração em `credit_advance/test_positive_net_database.py`.
+Estes últimos não são classificados como caixa-preta HTTP. Conferem rollback
+de snapshots, reserva idempotente, quote, ledger, saldo, lastro e auditoria;
+constraints em INSERT/UPDATE, upgrade limpo, legado preservado e reexecução
+idempotente da migração. A contagem de snapshots inclui o fallback
+`customer_id IS NULL`. Resultados datados em COBERTURA; upgrade em README da API.
 
 ---
 
@@ -691,8 +746,10 @@ regras de propriedade, status e risco, não apenas líquido positivo.
   }
   ```
   `customer_key` é opcional (ou `null`) para a política padrão. `operation`
-  aceita `TRANSFER`, `CREDIT_ADVANCE` e `BANK_SLIP_ISSUANCE`; os dois valores
-  monetários são inteiros não negativos. A tarifa efetiva é `fixa +
+  aceita `TRANSFER`, `CREDIT_ADVANCE` e `BANK_SLIP_ISSUANCE`;
+  `fixed_fee_cents` é montante em centavos inteiros não negativos e
+  `percentage_basis_points` é taxa inteira de 0 a 10000 bps (não dinheiro).
+  A tarifa efetiva é `fixa +
   round_half_up(base × bps / 10000)`. Em `BANK_SLIP_ISSUANCE`, uma chamada
   que emite um lote é uma operação: o componente fixo é cobrado uma vez por
   lote e o percentual incide sobre a soma dos valores dos boletos emitidos.
@@ -760,7 +817,8 @@ regras de propriedade, status e risco, não apenas líquido positivo.
   os endpoints de escrita não recebem `quote_key` e recalculam a decisão
   vigente no commit. O cliente nunca envia `fee_amount` como dado confiável.
 - **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001002`,
-  `404 QIT001015`, `409 QIT001016`, `409 QIT001026`, `422 QIT001027`.
+  `404 QIT001015`, `409 QIT001016`, `409 QIT001026`, `422 QIT001027`,
+  `422 QIT001030` (somente CREDIT_ADVANCE).
 
 ---
 
@@ -815,7 +873,8 @@ e operações cobertas pelo retry transacional, `503 QIT001025` ao esgotá-lo.
 Cobrança/reajuste com emissão tarifada podem falhar por saldo insuficiente
 (`422 QIT001005`) ou conta não aprovada (`409 QIT001006`); habilitação e
 limites acrescentam `QIT001026`/`QIT001027` nos fluxos pertinentes.
-As listas históricas de erros por endpoint não excluem essas condições transversais.
+As listas de erros por endpoint complementam, sem excluir, essas condições
+transversais. As tabelas resumidas da RFC não substituem este catálogo.
 
 **Segurança de dependências:** requests foi atualizado de 2.32.3 para 2.32.4
 para corrigir o caso de vazamento de credenciais de `.netrc` por URL maliciosa

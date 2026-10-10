@@ -2,8 +2,24 @@
 
 Data: 10/10/2026. Este registro fecha o trabalho automatizável da Rodada 5;
 não substitui revisão do time, ensaio, publicação ou aceite da organização.
-O solicitante excluiu integralmente a seção **9.5**: não foram implementadas
-suas correções/hardening, inclusive líquido positivo da antecipação (P0.4).
+O solicitante excluiu inicialmente a seção **9.5** e depois autorizou
+especificamente líquido positivo da antecipação/cotação CREDIT_ADVANCE.
+Essa regra está implementada com 422/QIT001030, CHECKs, upgrade preservando
+histórico e 52 testes novos; o restante de P0.4/9.5 continua pendente.
+
+Publicação e CI foram posteriormente confirmados para o commit `1603118`;
+a [evidência por commit](#51-evidência-remota-confirmada) distingue essa versão
+das revisões seguintes. Revisão dos PDFs, clone independente e ensaio continuam
+sob responsabilidade do grupo, sem resultado humano presumido.
+
+Evidência da nova regra em [COBERTURA](../COBERTURA.md#líquido-positivo-implementação-e-redgreen--10102026);
+upgrade de banco existente no [README da API](../../baas-pme-api/README.md#atualizar-banco-existente-líquido-positivo-da-antecipação).
+As execuções anteriores abaixo são históricas; não comprovam a nova revisão.
+
+O fechamento completo mais recente está na [seção 3.2](#32-fechamento-final-da-regra-aprovada):
+260 testes/75.43 s, além do benchmark separado de 200 transferências/8,255 s.
+Uma atualização posterior somente de documentação deve reconferir guardas,
+links e artefatos; não apresentar esses números como nova execução financeira.
 
 Navegação: [artefatos](#1-o-que-entregar), [geração de PDFs](#2-gerar-novamente-os-pdfs),
 [validação isolada](#3-validar-sem-apagar-o-banco-em-desenvolvimento),
@@ -77,8 +93,8 @@ Na consolidação de 10/10/2026, o roteiro antes separado passou para a
 [seção 6](#6-defesa-técnica-e-ensaio). As duas novas guardas de organização/links
 tiveram Red antes da migração e Green depois: **12 passed, 196 deselected**.
 Os PDFs foram regenerados e seus hashes conferidos; a RFC integral mantém as
-seções oficiais. A suíte completa tem **208 testes coletados**, mas não foi
-reexecutada nesta alteração exclusivamente documental. A validação isolada
+seções oficiais. A suíte daquele marco teve **208 testes coletados**, mas não foi
+reexecutada naquela alteração exclusivamente documental. A validação isolada
 de 206 testes abaixo permanece uma evidência histórica, não uma nova execução.
 Registro atual em [COBERTURA](../COBERTURA.md#consolidação-documental--10102026).
 
@@ -117,7 +133,7 @@ O checkout/venv são preservados para inspeção. O script remove somente
 containers, rede e volumes do projeto criado por ele; os dados sintéticos
 desse banco são descartados. O banco e containers originais não são alvos.
 
-**Validação final concluída:** 10/10/2026, 07:30:27–07:33:26 UTC; base
+**Validação histórica da entrega inicial:** 10/10/2026, 07:30:27–07:33:26 UTC; base
 `524c7608ba305978bae7c97ece7348b8961c8a6a`, 44 entradas dirty na origem.
 Execução `20261010T073026Z`, saída 0; checkout preservado em
 `/tmp/baas-delivery-YH8rXgJs/repository`. Resultados:
@@ -154,6 +170,63 @@ virgem, clone remoto, build sem cache ou usabilidade por pessoa independente.
 Dependências transitivas podem evoluir: pip-freeze registra a resolução desta
 execução, não substitui lock/migrations/controles produtivos do backlog.
 
+### 3.1 Revalidação com líquido positivo — 10/10/2026
+
+Registro intermediário preservado. O fechamento com os cinco casos extras
+de tarifa extrema e o snapshot validado antes da escrita está na seção 3.2.
+
+Execução `20261010T083920Z`, **08:39:21–08:42:27 UTC**, saída 0; clone
+local + snapshot de 27 alterações sobre `1603118`, não o commit publicado.
+Código financeiro da implementação inicial da regra, antes do ajuste de
+snapshot/tarifa extrema; venv/DDL/banco novos. Resultado:
+**255 passed, 72.98 s**; seleções independentes: 12 estáticos (0.43 s),
+203 HTTP (64.74 s), 40 infraestrutura (11.56 s). Compilação/pip check aprovados
+e API não-root uid=100. Benchmark: 5 casos/200 transferências, parede 7,753 s;
+métricas obtidas antes da recriação da API para a carga.
+
+Relatórios em `baas-pme-api/artifacts/delivery/20261010T083920Z/`, checkout em
+`/tmp/baas-delivery-x8U6PEUz/repository`. O projeto exclusivo foi removido pelo
+script; o original permanece saudável com os mesmos IDs. A migração de líquido
+positivo foi aplicada ao banco original, com 0 registros incompatíveis no
+preflight e ambos os CHECKs confirmados como validados; nenhum dado financeiro
+foi reescrito. As duas respostas antigas geradas no Red foram preservadas no
+replay HTTP após o upgrade do banco sintético, antes do seu descarte.
+
+Ajustes finais apenas de texto/PDF foram reconferidos na origem: **12 guardas
+aprovadas**, rechecagens de 0.14–0.16 s, incluindo 422/líquido nas tabelas das
+duas rotas; o código financeiro testado não mudou. PDF de quatro páginas
+e apresentação de dez, sem overflow e com hashes conferidos. Esta revisão não
+está publicada nem coberta pelo CI remoto de `1603118`. Evidência/limites em
+[COBERTURA](../COBERTURA.md#regressão-completa-métricas-e-benchmark-desta-implementação)
+e [BENCHMARK §12](../BENCHMARK.md#12-líquido-positivo-regressão-completa-e-benchmark).
+
+### 3.2 Fechamento final da regra aprovada
+
+Após reforçar a contagem de snapshots padrão (`customer_id IS NULL`), a
+suíte intermediária passou novamente com 255 casos/73.47 s. Um novo Red
+identificou 500 ao tentar persistir tarifa calculada acima de BIGINT antes
+de recusar líquido negativo. Corrigida a ordem: calcular/validar no controller
+e só então persistir o snapshot com a mesma política/tarifa, sem nova resolução.
+Isso não entrega os limites numéricos gerais nem os demais itens de 9.5.
+
+Foram acrescentados cinco casos: **52 cenários da regra aprovados, 14.82 s**;
+suíte atual **260 passed, 75.43 s**, executada em 10/10/2026, 09:05:17–09:06:33
+UTC, na `.venv` da API contra DDL/banco novos e projeto exclusivo. Distribuição:
+206 HTTP, 42 infraestrutura, 12 estáticos; a execução completa incluiu todas
+essas categorias e os PDFs disponíveis naquele marco. Fontes/artefatos alterados
+depois são reconferidos pelas guardas documentais; não se inventam durações de
+seleções independentes por marcador.
+
+Benchmark do código final: **5 passed, 7.89 s**, 200 transferências, parede
+**8,255 s**. Exposition obtida antes da API recriada para a carga: QIT001030
+nas duas rotas, sem retry de negócio; CPU/RAM e limites em
+[BENCHMARK §13](../BENCHMARK.md#13-fechamento-final-validação-anterior-ao-snapshot-de-preço).
+Relatórios locais em `baas-pme-api/artifacts/p04/20261010085856-final/`.
+Somente o projeto `baas-p04-final-20261010085856` e seus dados sintéticos foram
+descartados; ambiente original preservado com CHECKs validados. Fontes/RFC
+3.3/PDFs estão alinhados; publicação/CI da revisão nova e confirmações humanas
+continuam pendentes, sem commit/push pelo agente.
+
 ## 4. Clone remoto por outra pessoa — ainda necessário
 
 Após publicar o commit/artefatos finais, um integrante que não escreveu o
@@ -187,8 +260,8 @@ produção. O relógio fixo pertence exclusivamente ao perfil de teste.
 3. Selecionar os arquivos para o commit, revisar inclusive o índice já
    preparado pelo usuário; conferir que o modelo oficial, fontes, ferramentas,
    package-lock, SVGs, manifesto e PDFs estão incluídos. Não versionar caches,
-   .env, dados ou node_modules. Não foi feito commit/push nesta rodada.
-4. Publicar no remoto e confirmar que o Actions daquele commit passou. Não
+   .env, dados ou node_modules. O agente não faz commit/push automaticamente.
+4. Após cada revisão, publicar no remoto e confirmar que o Actions daquele commit passou. Não
    dizer que validação local equivale a execução remota do workflow.
 5. Confirmar visibilidade pública sem login, commit final e acesso aos PDFs.
    Tornar privado → público exige decisão do responsável; esta rodada não
@@ -199,10 +272,11 @@ produção. O relógio fixo pertence exclusivamente ao perfil de teste.
 | Aceite da RFC/apresentação pelo time | A preencher | Pendente |
 | Clone remoto em Linux novo por outra pessoa | A preencher | Pendente |
 | Ensaio completo de cada integrante | A preencher na [seção 6.3](#63-registro-de-ensaio--preencher-após-realizar) | Pendente |
-| Commit/push e Actions remoto | A preencher | Pendente |
-| Acesso anônimo aos artefatos finais | A preencher | Pendente |
+| Publicação e Actions remoto | Verificação anônima em 10/10/2026; commit `1603118`; evidência abaixo | Confirmado para esse commit; revalidar novas revisões |
+| Acesso anônimo aos PDFs | Verificação anônima em 10/10/2026; commit `1603118`; bytes correspondentes às cópias locais verificadas | Confirmado para esse commit; revalidar novos PDFs |
 
-A consulta inicial por ferramenta de navegação não retornou evidência
+**Verificação anterior à publicação — histórico preservado:** a consulta inicial
+por ferramenta de navegação não retornou evidência
 utilizável. A verificação complementar por `curl -q`, sem autenticação ou
 configuração local de curl, obteve **HTTP 200** na
 [API pública do repositório](https://api.github.com/repos/Faraoh-Back/BootcampQITech_UnicampE-Racing)
@@ -210,17 +284,52 @@ em 10/10/2026: acesso anônimo ao repositório foi confirmado. Isso não prova
 que os novos PDFs/commit foram publicados. A consulta ao caminho
 `contents/docs/entrega/RFC_FINAL.pdf?ref=main` retornou **HTTP 404**: este PDF
 ainda não estava disponível na main remota no momento da checagem.
-Aceite, ensaio, clone independente,
-Actions e acesso aos artefatos finais continuam exigindo confirmação.
+Naquele momento, aceite, ensaio, clone independente, Actions e acesso aos
+artefatos finais ainda exigiam confirmação. A verificação posterior abaixo
+resolve publicação/CI daquela versão, não as confirmações humanas do grupo.
+
+### 5.1 Evidência remota confirmada
+
+Consulta pública somente de leitura, sem autenticação, reconfirmada em
+**10/10/2026**. Não houve mudança de visibilidade, execução manual de workflow
+ou push pelo agente.
+
+- **Commit verificado:** `160311850dbfbc9427ed7f5049047aada951e8b3`.
+  A consulta à `main` retornou HTTP 200 e esse SHA, igual ao HEAD local no
+  momento da verificação.
+- **CI verificado:** [BaaS PME CI, execução 38036090796](https://github.com/Faraoh-Back/BootcampQITech_UnicampE-Racing/actions/runs/38036090796),
+  iniciada em `2026-10-10T07:55:22Z`, com `head_sha` correspondente,
+  `status=completed` e `conclusion=success`. O workflow executa guardas estáticas,
+  testes HTTP e contratos de infraestrutura em etapas separadas. A confirmação
+  do run não fornece novas durações/contagens por teste nem reexecuta o benchmark.
+- **RFC publicada:** [RFC_FINAL.pdf no commit verificado](https://github.com/Faraoh-Back/BootcampQITech_UnicampE-Racing/blob/160311850dbfbc9427ed7f5049047aada951e8b3/docs/entrega/RFC_FINAL.pdf),
+  HTTP 200, 166336 bytes; Git blob SHA
+  `3bc2f2c4417f0f20dcb30bb3b44b4fea91bfda47`.
+- **Apresentação publicada:** [APRESENTACAO.pdf no commit verificado](https://github.com/Faraoh-Back/BootcampQITech_UnicampE-Racing/blob/160311850dbfbc9427ed7f5049047aada951e8b3/docs/entrega/APRESENTACAO.pdf),
+  HTTP 200, 102104 bytes; Git blob SHA
+  `ee339f96f639de561950310c3b85cebe33a9523e`.
+
+Os SHAs retornados pelo GitHub coincidiram com `git hash-object` dos PDFs locais
+daquela versão. São identificadores de blobs Git, não os SHA-256 do manifesto.
+CI em Ubuntu não substitui o clone/reprodução por integrante independente nem
+o aceite/ensaio da equipe.
+
+**Fronteira desta evidência:** novas alterações de código/documentos e PDFs regenerados
+nesta rodada ainda precisam de commit/push e de CI da nova versão. O sucesso de
+`1603118` não é automaticamente transferido para commits futuros; confirmar
+também o acesso aos arquivos da revisão que efetivamente será submetida.
 
 ## 6. Defesa técnica e ensaio
 
 **Defesa técnica — roteiro e registro de ensaio.** Conteúdo antes mantido em
-`DEFESA.md`, reunido aqui em 10/10/2026 sem alterar suas respostas ou pendências.
+`DEFESA.md`, reunido aqui em 10/10/2026. O conteúdo foi preservado na consolidação;
+respostas sobre a regra posteriormente implementada e suas evidências foram
+atualizadas, sem concluir as pendências humanas.
 
 Material de apoio à T5.7; não é evidência de que alguém já ensaiou. Frase-guia:
-**garantias verificadas e limitações conhecidas**. A regra de líquido positivo
-está aprovada, **não implementada** (P0.4); toda a seção 9.5 foi excluída pelo
+**garantias verificadas e limitações conhecidas**. No marco original, líquido
+positivo estava aprovado e não implementado; posteriormente foi autorizado e
+entregue com 422/QIT001030. O restante da seção 9.5 continua excluído pelo
 solicitante desta rodada. Não apresentar seus itens como resolvidos.
 
 ### 6.1 Roteiro de 10 minutos
@@ -276,7 +385,8 @@ Cadastro tem unicidade; lote 2/estado têm conflitos em repetição; quote cria
 nova prévia; políticas diretas publicam nova versão. Não confundir esses casos.
 
 **O banco é a fonte de verdade ou o saldo?** PostgreSQL contém fatos e projeção:
-ledger é a história assinada; account.balance é saldo materializado, protegido
+ledger é a história de valores com sinal contábil, não assinatura criptográfica;
+account.balance é saldo materializado, protegido
 na mesma transação. Testes reconciliam contas que criaram. Reconciliação
 operacional periódica e proteção SQL universal do ledger ainda são backlog.
 
@@ -300,9 +410,11 @@ produtivo, não prometer segregação universal de funções.
 
 **Por que a tarifa de R$120 sobre bruto R$100 é problema?** Pode consumir lastro
 e reduzir saldo prévio em vez de fornecer liquidez. A regra aprovada exige
-líquido >0 mesmo com R$500 anteriores, mas não foi implementada; é P0.4.
-Uma política fixa de R$120 pode ser válida para bruto R$1.000: a validação deve
-ser por operação. Não demonstrar a recusa como feature entregue.
+líquido >0 mesmo com R$500 anteriores. Agora execução/cotação CREDIT_ADVANCE
+retornam 422/QIT001030; saldo e boleto permanecem intactos. Essa subparte de
+P0.4 foi autorizada e entregue; o restante segue pendente. Uma tarifa fixa de
+R$120 continua válida para bruto R$1.000: validar por operação, não proibir a
+política personalizada. Replay confirmado preserva resposta/preço originais.
 
 **Plano e antecipação são o mesmo empréstimo?** Não. Plano emite recebível da
 PME contra pagador externo; antecipação credita liquidez sobre esse recebível
@@ -339,8 +451,14 @@ somente HTTP contra containers; infrastructure_contract usa SQL/injeção/worker
 static_guard lê arquivos. Explicar separadamente o que cada evidência prova.
 
 **Como provam TDD?** Só pelo Red/Green efetivamente executado e histórico
-registrado. Esta rodada comprovou Red de quatro contratos de entrega antes
-dos artefatos. Suíte verde não permite afirmar TDD retrospectivo das features.
+registrado. Na entrega inicial, quatro contratos falharam antes dos artefatos;
+na consolidação, duas guardas falharam antes da migração documental. Na regra
+de líquido positivo, foram reproduzidas cinco falhas HTTP antes de implementar;
+o extremo de tarifa acima de BIGINT teve um Red adicional (500 em vez de 422)
+antes de corrigir a ordem do snapshot. Green da regra: 52 casos; regressão
+completa: 260. Seleções interrompidas não provam Red de todos esses casos;
+suíte verde não permite afirmar TDD retrospectivo de todas as features.
+Relatórios/comandos/contexto em [COBERTURA](../COBERTURA.md).
 
 **Quanto a API aguenta?** Benchmark tem 5×40 chamadas cruzadas, não carga
 sustentada. CPU/RAM/duração dependem do hardware e do estado. Informar data,

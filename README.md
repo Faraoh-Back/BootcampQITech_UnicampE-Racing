@@ -19,12 +19,18 @@ testes/benchmark, histórico e pendências da entrega.
 Artefatos para a banca: [RFC em PDF — quatro páginas](docs/entrega/RFC_FINAL.pdf)
 e [apresentação — dez slides](docs/entrega/APRESENTACAO.pdf). Fontes editáveis,
 roteiro de defesa, geração e validação isolada estão no
-[registro de entrega](docs/entrega/ENTREGA.md). Revisão do time, ensaio,
-clone remoto independente e publicação precisam de confirmação humana.
+[registro de entrega](docs/entrega/ENTREGA.md). Publicação/CI foram confirmados
+para `1603118`; novas revisões precisam de novo CI. Revisão do time, ensaio e
+clone remoto independente continuam sob responsabilidade do grupo.
 
 A apresentação do produto é baseada em **garantias verificadas e limitações
-conhecidas**, não em segurança absoluta. A regra aprovada de líquido positivo
-na antecipação está documentada, com implementação pendente P0.4 do plano.
+conhecidas**, não em segurança absoluta. Antecipação/cotação CREDIT_ADVANCE
+exigem líquido positivo, com `422 QIT001030`, CHECKs e testes HTTP/SQL;
+as demais fronteiras de P0.4 do plano permanecem pendentes.
+Regra, exemplos e limites estão em
+[DECISOES §3.5.1](docs/DECISOES.md#351-líquido-positivo-regra-implementada-e-validada).
+Para o resultado mais recente, use [COBERTURA](docs/COBERTURA.md); para recursos
+medidos, [BENCHMARK §13](docs/BENCHMARK.md#13-fechamento-final-validação-anterior-ao-snapshot-de-preço).
 
 `bootcamp-biblioteca-api/` é o projeto-base de outro exercício do Bootcamp; ele
 não faz parte do deploy, dos testes ou do contrato do BaaS PME.

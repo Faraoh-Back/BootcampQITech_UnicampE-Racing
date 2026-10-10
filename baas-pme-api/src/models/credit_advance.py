@@ -6,6 +6,7 @@ class CreditAdvance(Base):
     __tablename__ = "credit_advance"
     __table_args__ = (
         CheckConstraint("net_amount = gross_amount - fee_amount", name="chk_credit_advance_net_amount"),
+        CheckConstraint("net_amount > 0", name="chk_credit_advance_positive_net"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)

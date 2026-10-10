@@ -99,12 +99,20 @@ def test_delivery_pdfs_have_expected_pages_and_are_not_empty():
         assert len(re.findall(rb"/Type\s*/Page\b", pdf)) == pages
 
 
-def test_delivery_does_not_present_excluded_business_rule_as_implemented():
+def test_delivery_distinguishes_implemented_positive_net_from_remaining_backlog():
     for name in ("RFC_FINAL.md", "APRESENTACAO.md", "ENTREGA.md"):
         document = (DOCS / "entrega" / name).read_text()
         assert "P0.4" in document
-        assert "não implementada" in document
+        assert "QIT001030" in document
+        assert "implementado" in document.lower()
+        assert "9.5" in document
+        assert "restante" in document.lower() or "demais" in document.lower()
         assert "garantias verificadas" in document.lower()
+    for source in (DOCS / "RFC.md", DOCS / "entrega/RFC_FINAL.md"):
+        for route in ("/account/{account_key}/credit-advance", "/account/{account_key}/quote"):
+            row = next(line for line in source.read_text().splitlines()
+                if line.startswith("| POST |") and f"`{route}`" in line)
+            assert "422" in row and "líquido" in row, (source, route)
 
 
 def _without_fenced_code(document):

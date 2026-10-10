@@ -18,6 +18,7 @@ def pytest_collection_modifyitems(items):
         "tests/integration/transaction/test_transient_retry.py",
         "tests/integration/outbox/test_outbox.py",
         "tests/integration/sample_entity/test_sample_entities.py",
+        "tests/integration/credit_advance/test_positive_net_database.py",
     }
     for item in items:
         relative = Path(str(item.fspath)).relative_to(root).as_posix()

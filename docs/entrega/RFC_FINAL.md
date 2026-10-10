@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Time / data / versão** | Cairê Belo · Pedro Campanha · 10/10/2026 · 3.2 · [RFC integral](../RFC.md) |
+| **Time / data / versão** | Cairê Belo · Pedro Campanha · 10/10/2026 · 3.3 · [RFC integral](../RFC.md) |
 
 ## Contextualização
 
 ### Entendendo o problema
 
-A PME cobra, movimenta e antecipa recebíveis. Duplicar dinheiro/lastro ou perder história impede confiar no saldo. Entregamos essas operações com identidade, personalização e auditoria. Não há empréstimo, baixa automática, estorno, múltiplas moedas ou SLO. São **garantias verificadas e limitações conhecidas**; líquido positivo aprovado, mas regra **não implementada** (P0.4).
+A PME cobra, movimenta e antecipa recebíveis. Duplicar dinheiro/lastro ou perder história impede confiar no saldo. Entregamos essas operações com identidade, personalização e auditoria. Não há empréstimo, baixa automática, estorno, múltiplas moedas ou SLO. São **garantias verificadas e limitações conhecidas**; líquido positivo implementado, demais fronteiras de P0.4 pendentes.
 
 ### Explicando a solução de forma macro
 
@@ -39,10 +39,10 @@ Token interno obrigatório, exceto raiz/saúde; JWT presente valida PME/papel na
 | POST | `/account/{account_key}/billing-plan` | Lote 1 | base, data | 201; 400 schema; 404 conta; 409 estado/produto; 422 data/tarifa; 502 emissor |
 | GET | `/account/{account_key}/billing-plan/{plan_key}` | Plano | UUIDs | 200; 404 ausente/alheio |
 | POST | `/account/{account_key}/billing-plan/{plan_key}/adjustment` | Lote 2 | índice | 201; 400 schema; 404 plano; 409 lote/estado/produto; 422 tarifa; 502 conector |
-| POST | `/account/{account_key}/credit-advance` | Antecipa/replay | boletos, chave | 201; 400 contrato; 404 lastro; 409 estado/chave/lastro/produto; 422 risco; 503 retry |
+| POST | `/account/{account_key}/credit-advance` | Antecipa/replay | boletos, chave | 201; 400 contrato; 404 lastro; 409 estado/chave/lastro/produto; 422 risco/líquido; 503 retry |
 | POST | `/pricing-policy` | Preço direto | PME, tarifa | 201; 400 schema; 404 PME |
 | POST | `/risk-policy` | Risco direto | PME, limites | 201; 400 schema; 404 PME |
-| POST | `/account/{account_key}/quote` | Prévia | produto, valor/lastro | 201; 400 schema; 404 conta/lastro; 409 produto/lastro; 422 risco |
+| POST | `/account/{account_key}/quote` | Prévia | produto, valor/lastro | 201; 400 schema; 404 conta/lastro; 409 produto/lastro; 422 risco/líquido de antecipação |
 | POST | `/policy-change-request` | DRAFT | política, OWNER | 201; 400 schema; 401 JWT; 403 vínculo; 404 PME |
 | PUT | `/policy-change-request/{request_key}/submit` | Submete | criador | 200; 401 JWT; 403 vínculo; 404 proposta; 409 ator/estado |
 | PUT | `/policy-change-request/{request_key}/approve` | Aprova | outro OWNER | 200; 401 JWT; 403 vínculo; 404 proposta; 409 ator/estado |
@@ -107,11 +107,11 @@ Token interno obrigatório, exceto raiz/saúde; JWT presente valida PME/papel na
 
 **Cobrança, reajuste e antecipação**
 1. Lote 1 emite 12 recebíveis da PME para pagadores externos, vencimentos mensais com fim de mês; tarifa de serviço separada. Lote 2 consulta IPCA/IGPM, trava plano, reajusta 13–24 com Decimal half-up e emite uma vez localmente.
-2. Antecipação trava conta/boletos próprios PENDING não consumidos; soma bruto, aplica tarifa/risco, credita bruto, debita tarifa e vincula lastro no mesmo commit idempotente. PENDING não vira PAID por antecipar.
+2. Antecipação trava conta/boletos próprios PENDING não consumidos; soma bruto, aplica risco e valida tarifa/líquido antes do snapshot de preço. Persiste a escolha, credita bruto, debita tarifa positiva e vincula lastro no commit idempotente. PENDING não vira PAID por antecipar.
 
 **Falha:** 502 externo desfaz escrita local, não emissão externa; lote 2 segura lock durante I/O e criação não tem replay. Lastro alheio/inexistente dá mesmo 404; usado dá 409; lista inválida desfaz toda tentativa. Não há empréstimo, amortização ou baixa do pagador.
 
-**Regra aprovada, não implementada — P0.4:** exigir líquido > 0 em antecipação/cotação. Bruto R$100: tarifa R$3 → R$97; R$99,99 → R$0,01; R$100/R$120 → R$0/−R$20 devem recusar. Hoje saldo R$500 pode permitir o último caso e cair a R$480 consumindo lastro. Tarifa fixa R$120 pode ser válida para bruto R$1.000; validar por operação, mesmo com saldo suficiente. Esta recusa ainda não é garantia entregue.
+**Líquido positivo implementado — subparte P0.4:** execução/cotação CREDIT_ADVANCE exigem bruto−tarifa > 0, após half-up; senão **422/QIT001030**, sem dinheiro/lastro/snapshots/reserva confirmados e sem retry de negócio. Bruto R$100: tarifa R$3 → R$97; R$99,99 → R$0,01; R$100/R$120 recusam. Saldo anterior R$500 permanece intacto. Tarifa R$120 pode valer para bruto R$1.000. Replay confirmado preserva resposta; CHECKs/migração protegem novas gravações sem reescrever legado. Testes HTTP/SQL em COBERTURA; demais itens 9.5 pendentes.
 
 **Cotação e quatro olhos**
 1. Quote de transferência/plano/antecipação dura 60s, persiste prévia sem reservar saldo/limite/lastro/preço. Execução recalcula; não aceita quote_key/tarifa do cliente.
@@ -126,15 +126,15 @@ Token interno obrigatório, exceto raiz/saúde; JWT presente valida PME/papel na
 **Falha:** credenciais/JWT 401, vínculo/papel 403; proposta com sessão revogada pode 403. Login não revela e-mail. Rate limit, rotação, provisionamento e gateway não entregues; UUID não substitui autorização.
 
 **Extrato, auditoria e outbox**
-1. Extrato ordena data+ID; valores assinados reconstroem saldo em conta estável. Lançamento alheio/inexistente dá mesmo 404. Offset não congela páginas com novas escritas.
+1. Extrato ordena data+ID; valores com sinal contábil reconstroem saldo em conta estável. Lançamento alheio/inexistente dá mesmo 404. Offset não congela páginas com novas escritas.
 2. SHA-256 encadeado sob lock global, cadeia/checkpoint exportados; ID sequencial administrativo é exceção documentada. Trigger impede UPDATE/DELETE só de audit_event; ledger/status/snapshots dependem da aplicação; administrador pode adulterar. Não é blockchain.
 3. Outbox de block/cancel confirma com domínio; worker claim SKIP LOCKED+lease → webhook event_key → ack em transações separadas.
 
-**Falha:** webhook agenda backoff; queda após aceite/lease vencido pode duplicar entrega; consumidor deduplica. At-least-once, sem dead-letter/envelope versionado; não exactly-once externo.
+**Falha:** webhook agenda backoff; queda após aceite/lease vencido pode duplicar entrega; consumidor deve deduplicar. At-least-once, sem dead-letter/envelope versionado; não exactly-once externo.
 
 **Pipelines e evidências**
 1. CI push/PR: dependências → Compose/build → saúde → compilação → static_guard → api_blackbox → infrastructure_contract; falha interrompe e coleta logs. R1 sem imports não torna SQL/worker estritamente HTTP. Jornada cobre preço/quatro olhos, cobrança/reajuste/cotação/antecipação, replay, transferência/saque, extrato e estado/auditoria.
 2. Logs JSON/X-Request-ID normais mascaram identificadores e não têm body; tracebacks podem conter SQL/URLs. Métricas internas: HTTP, QIT, replay, conectores, locks, retry, sessões/outbox; registry por processo, gauges persistidas. Regras de alertas são propostas, sem Prometheus/Alertmanager/cAdvisor instalado.
-3. Benchmark 5×40 transferências cruzadas amostra CPU/RAM; observação local, não SLO. Resultados/datas/comandos: [COBERTURA](../COBERTURA.md), [BENCHMARK](../BENCHMARK.md), [ENTREGA](ENTREGA.md). Clone independente, CI remoto, publicação e ensaio humano exigem confirmação. Legado sample_entity segue ativo; biblioteca não participa do produto. Detalhes preservados na RFC integral/DECISOES; seção 9.5 permanece fora deste trabalho.
+3. Benchmark 5×40 transferências cruzadas amostra CPU/RAM; observação local, não SLO. Resultados/datas/comandos: [COBERTURA](../COBERTURA.md), [BENCHMARK](../BENCHMARK.md), [ENTREGA](ENTREGA.md). CI/publicação confirmados em `1603118`; novas revisões exigem novo CI. Clone, aceite e ensaio do grupo pendentes. Legado sample_entity segue ativo; biblioteca não participa do produto. Detalhes preservados na RFC integral/DECISOES; demais itens 9.5 ficam fora deste trabalho.
 
 </div>

@@ -1,4 +1,5 @@
 from controllers.base_controller import BaseController
+from controllers.credit_advance_rules import ensure_positive_credit_advance_net
 from errors import AccountNotFound, BankSlipNotEligible, BankSlipNotFound, InvalidSchema
 from repositories import AccountRepository, CreditAdvanceRepository, PricingRepository, QuoteRepository, RiskPolicyRepository
 
@@ -41,6 +42,8 @@ class QuoteController(BaseController):
             risk = self.risk_policy_repository.evaluate_credit_advance(account.customer_id, gross, len(keys))
             extras = {"bank_slips_count": len(keys)}
         fee = self.pricing_repository.calculate_fee(pricing, gross)
+        if operation == "CREDIT_ADVANCE":
+            ensure_positive_credit_advance_net(gross, fee)
         quote = self.quote_repository.create(account.id, payload, operation, gross, fee, pricing, risk)
         self.audit.record("QUOTE_CREATED", "QUOTE", quote.quote_key, current_summary={
             "account_key": account_key, "operation": operation, "gross_amount": gross,

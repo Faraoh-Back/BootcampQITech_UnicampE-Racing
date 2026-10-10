@@ -5,6 +5,13 @@ foram ajustados apenas os níveis de títulos e os caminhos dos links para
 continuarem navegáveis. Instruções, exemplos e estados antigos não representam
 novas garantias da API. Para operar, use o [README vigente](../../baas-pme-api/README.md).
 
+Não execute resets de volume a partir destes guias antigos para atualizar um
+banco com dados a preservar. O upgrade pontual e as instruções atuais estão no
+[README da API](../../baas-pme-api/README.md#atualizar-banco-existente-líquido-positivo-da-antecipação);
+o [índice](../README.md) separa contrato vigente e evidências históricas.
+O corpo dos três registros abaixo permanece preservado, sem atualizar suas
+contagens ou atribuir-lhes validação das features posteriores.
+
 ## Origem e navegação
 
 | Origem anterior | Conteúdo preservado |

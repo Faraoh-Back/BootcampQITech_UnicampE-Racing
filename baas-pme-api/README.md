@@ -35,13 +35,18 @@ flowchart LR
   pendentes e ainda não antecipados. A API credita o valor bruto menos a
   tarifa e vincula os boletos ao registro de antecipação no mesmo commit.
 
-**Regra aprovada, implementação pendente P0.4:** uma nova antecipação deve ter
-líquido positivo; tarifa maior ou igual ao bruto deve ser recusada, mesmo
+**Regra implementada:** uma nova antecipação deve ter
+líquido positivo; tarifa maior ou igual ao bruto retorna **422/QIT001030**, mesmo
 com saldo disponível. Para bruto de R$ 100, tarifas de R$ 3/R$ 100/R$ 120
-resultam em R$ 97/R$ 0/−R$ 20; os dois últimos casos devem ser recusados.
-A API ainda não aplica essa validação em todos os caminhos. O exemplo completo,
+resultam em R$ 97/R$ 0/−R$ 20; os dois últimos casos são recusados na execução
+e na cotação CREDIT_ADVANCE, sem consumir saldo ou lastro. Replay confirmado
+preserva a resposta original. Na execução, o controller calcula e valida
+antes de gravar o snapshot de preço; depois persiste exatamente a política e
+tarifa escolhidas. Isso também recusa tarifa fixa + percentual que exceda
+BIGINT e já torne o líquido não positivo, sem afirmar limites numéricos gerais
+para os outros cálculos. O exemplo completo,
 cálculo, cotação e critérios de teste estão em
-[DECISOES 3.5.1](../docs/DECISOES.md#351-líquido-positivo-regra-aprovada-e-implementação-pendente).
+[DECISOES 3.5.1](../docs/DECISOES.md#351-líquido-positivo-regra-implementada-e-validada).
 
 Não existem nesta API contrato de empréstimo, principal sem lastro, juros
 parcelados, cronograma de amortização ou boleto para um devedor de crédito.
@@ -109,7 +114,8 @@ As evidências também podem ser executadas separadamente:
 ```
 
 O CI executa as três primeiras seleções após build, liveness e compilação,
-em todo push/PR. `static_guard` protege imports e rastreabilidade de
+em todo push/PR. A [execução remota confirmada](../docs/entrega/ENTREGA.md#51-evidência-remota-confirmada)
+é a de `1603118`; cada revisão seguinte precisa de novo CI. `static_guard` protege imports e rastreabilidade de
 RFC/rotas/tabelas/erros; `api_blackbox` usa somente HTTP; `infrastructure_contract`
 inclui SQL, injeção de falhas e subprocesso do worker. Todos evitam importar
 módulos internos no processo de teste. Contratos de infraestrutura e testes
@@ -160,6 +166,29 @@ docker compose down -v && docker compose up -d --build
 
 `down -v` apaga os dados locais do banco; use apenas quando esse descarte for
 intencional.
+
+### Atualizar banco existente: líquido positivo da antecipação
+
+O build não reaplica `database.sql` em volume já inicializado. Para instalar
+somente as duas novas constraints sem apagar dados, execute na raiz da API:
+
+```bash
+docker compose exec -T db psql -U bootcamp -d bootcamp -v ON_ERROR_STOP=1 \
+  < database/migrations/20261010_positive_credit_advance_net.sql
+```
+
+Ajuste projeto/credenciais se seu Compose não usa os padrões locais. A migração
+é transacional e reexecutável, tem lock/statement timeout de 2s/10s e lista a
+quantidade de registros antigos incompatíveis. Sem esses registros, valida os
+CHECKs. Com legado, mantém NOT VALID: INSERT/UPDATE novos já são protegidos,
+mas o histórico não é reescrito e requer reconciliação autorizada. Falha de lock
+aborta tudo; repetir em janela adequada. Não use `down -v` como migração.
+
+A regra de negócio roda nos controllers antes da gravação de preço/quote e dos
+efeitos financeiros, com erro 422/QIT001030; os CHECKs são defesa adicional.
+Snapshots de risco e reserva provisórios na execução são desfeitos por rollback
+na recusa; não há commit parcial. Esta migração pontual não
+entrega o framework de migrations/versionamento completo previsto em P1.3.
 
 ## Rotas do produto
 
@@ -244,7 +273,9 @@ docker compose --profile workers run --rm outbox-worker --once
 
 O webhook recebe `Idempotency-Key` igual ao `event_key`. A garantia é entrega
 **pelo menos uma vez**: o consumidor deve deduplicar essa chave. Falhas ficam
-na outbox com backoff exponencial; sucesso não é reenviado. As regras
+na outbox com backoff exponencial; um evento com sucesso confirmado no banco
+não volta à fila. Aceite externo sem ack confirmado ou lease expirado pode
+causar reentrega; não é exactly-once. As regras
 Prometheus para 5xx, conectores, lock, fila e falhas de entrega estão em
 [Regras operacionais de alerta (S15)](#regras-operacionais-de-alerta-s15).
 
@@ -320,7 +351,8 @@ correlação. O orçamento de 15 segundos reduz esses limites quando necessário
 
 Deadlock ou falha de serialização do PostgreSQL recebe no máximo uma nova
 tentativa interna, sempre em sessão/transação nova e com a mesma
-`Idempotency-Key`. A API não retenta saldo insuficiente, limite noturno, status
+`Idempotency-Key`. A API não retenta saldo insuficiente, líquido não positivo,
+limite noturno, status
 inválido, erros de contrato ou chamadas externas. A métrica
 `baas_database_transient_retries_total` registra apenas `deadlock` ou
 `serialization`, sem PII.
@@ -387,14 +419,14 @@ PostgreSQL outbox → worker → webhook, com transações independentes de clai
 | Saldo/ledger/locks, D3 | `controllers/transaction_controller.py`, `repositories/account_repository.py`, `repositories/transaction_repository.py` | transação, transferência, extrato, S7a/S7c |
 | Replay e retry | `controllers/idempotency_controller.py`, `repositories/idempotency_repository.py`, `utils/transient_retry.py` | idempotência simultânea, falha sintética PostgreSQL |
 | Cobrança/reajuste, D2/D5/D6/D9 | `controllers/billing_plan_controller.py`, `connectors/`, `dtos/billing_plan_dto.py` | plano, reajuste, jornada PME |
-| Recebíveis, D4 | `controllers/credit_advance_controller.py`, `repositories/credit_advance_repository.py` | antecipação, concorrência, jornada PME |
+| Recebíveis, D4 | `controllers/credit_advance_controller.py`, `controllers/credit_advance_rules.py`, `repositories/credit_advance_repository.py` | antecipação, concorrência, jornada PME; líquido positivo: 36 HTTP + 16 SQL/migração |
 | Identidade, D10 | `controllers/auth_controller.py`, `utils/authentication.py`, `utils/account_access.py` | auth, senha UTF-8, autorização de cotação |
 | Auditoria, D11 | `utils/audit.py`, `repositories/audit_repository.py`, `dtos/audit_event_dto.py` | cadeia HTTP; trigger por SQL em contrato de infraestrutura |
 | Observabilidade, D12 | `utils/metrics.py`, `controllers/metrics_controller.py` | métricas; benchmark de runtime |
 | Notificação, D13 | `repositories/outbox_repository.py`, `utils/outbox.py`, `workers/outbox_publisher.py` | outbox e MockServer; [alertas](#regras-operacionais-de-alerta-s15) |
 | Preço/risco, D1/D14 | `repositories/pricing_repository.py`, `repositories/risk_policy_repository.py`, controllers correspondentes | precificação, limite diário compartilhado/rollback |
 | Cotação/aprovação, D15/D16 | `controllers/quote_controller.py`, `controllers/policy_change_request_controller.py` | quote, maker-checker, duas aprovações concorrentes |
-| Persistência | `models/` e `database/database.sql` na raiz da API | bootstrap SQL; DER e guarda documental |
+| Persistência | `models/`, `database/database.sql` e upgrade pontual em `database/migrations/` | bootstrap SQL, CHECKs de líquido positivo; DER/guardas e contratos de migração |
 | Representação pública | `dtos/` e respostas dos controllers comerciais | contratos HTTP; UUID nos objetos financeiros |
 
 Regras de preço/risco atualmente residem parcialmente nos repositories e a
