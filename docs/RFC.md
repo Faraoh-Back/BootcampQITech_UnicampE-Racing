@@ -56,6 +56,7 @@ Exceto `/` e `/health_check`, as rotas exigem `INTERNAL-TOKEN`. Em rotas de cont
 | `POST/GET` | `/account/{key}/billing-plan`, `/billing-plan/{plan_key}` | Emite/consulta lote 1 | centavos, vencimento | `201/200`; `400`, `404`, `409`, `422`, `502` |
 | `POST` | `.../billing-plan/{plan_key}/adjustment` | Emite lote 2 IPCA/IGPM | índice | `201`; `400`, `404`, `409`, `502` |
 | `POST` | `/account/{key}/credit-advance` | Antecipa 1–50 boletos | chaves, chave idempotente | Idempotente: `201`; `400`, `404`, `409` |
+| `POST` | `/pricing-policy` | Publica tarifa padrão ou por PME | operação, centavos, bps, PME opcional | `201`; `400`, `403`, `404` |
 | `POST` | `/user`, `/auth/login|refresh|logout` | Usuário e sessões | PME, credenciais, refresh/JWT | `201/204`; `400`, `401`, `403`, `409` |
 | `GET` | `/audit-events[/checkpoint]`, `/metrics` | Auditoria e métricas internas | n/a | `200`; `403` sem token |
 
@@ -112,6 +113,24 @@ erDiagram
 1. A rota idempotente trava conta e boletos por `id`; exige conta aprovada, boletos pertencentes, `PENDING` e sem antecipação.
 2. Calcula somente em inteiros a partir do snapshot de preço vigente: `gross = soma`, `fee = fixa + round_half_up(gross × bps / 10000)`, `net = gross - fee`; grava vínculo, crédito, tarifa, saldo e resposta no mesmo commit.
 3. Duas solicitações concorrentes do mesmo boleto: a segunda vê o vínculo depois de esperar a trava e recebe `409 QIT001016`.
+
+**Dois fluxos de produto — cobrança e liquidez**
+
+```mermaid
+flowchart LR
+  PME[PME] -->|POST billing-plan| R[Boletos próprios / recebíveis pendentes]
+  Pagador[Pagador do boleto] -. obrigação de pagamento .-> R
+  R -->|POST credit-advance; 1 a 50 chaves| L[Liquidez para a PME]
+  L -->|ADVANCE_CREDIT e ADVANCE_FEE| Extrato[Extrato da PME]
+```
+
+O plano de cobrança cria os boletos que a PME apresentará a seus pagadores;
+eles são recebíveis da própria PME. A antecipação não cria dívida nova nem
+financia valor livre: somente transforma boletos próprios, `PENDING` e ainda
+sem `credit_advance_id` em liquidez. O pagador é participante econômico da
+cobrança, mas não possui cadastro, autenticação, baixa automática ou saldo
+nesta versão da API. Assim, não há contrato de empréstimo, juros parcelados,
+cronograma de amortização ou boleto para devedor de crédito no escopo.
 
 **Cobrança, reajuste e falha externa**
 

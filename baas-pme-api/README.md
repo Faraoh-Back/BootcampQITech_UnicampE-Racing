@@ -10,6 +10,28 @@ Os contratos são mantidos em [../docs/RFC.md](../docs/RFC.md) e
 [../docs/DECISOES.md](../docs/DECISOES.md). Eles são a referência para regras
 de negócio, payloads, códigos `QIT` e respostas de erro.
 
+## Dois fluxos, dois propósitos
+
+O produto não trata antecipação como empréstimo.
+
+```mermaid
+flowchart LR
+  PME[PME emissora] -->|emite plano de cobrança| B[Boleto / recebível pendente]
+  P[Pagador externo] -->|deve o valor do boleto| B
+  B -->|selecionado uma única vez como lastro| A[Antecipação de recebíveis]
+  A -->|crédito líquido; tarifa no extrato| PME
+```
+
+- **Plano de cobrança:** a PME solicita a emissão de 12 boletos para cobrar
+  seus próprios pagadores. A API registra o recebível e sua emissão; não
+  baixa automaticamente o boleto nem movimenta o dinheiro do pagador.
+- **Antecipação de recebíveis:** a PME seleciona de 1 a 50 boletos próprios,
+  pendentes e ainda não antecipados. A API credita o valor bruto menos a
+  tarifa e vincula os boletos ao registro de antecipação no mesmo commit.
+
+Não existem nesta API contrato de empréstimo, principal sem lastro, juros
+parcelados, cronograma de amortização ou boleto para um devedor de crédito.
+
 ## Subir a aplicação
 
 Pré-requisitos: Docker Compose v2 e Python 3.11.
@@ -85,6 +107,7 @@ intencional.
 | `POST` / `GET` | `/account/{account_key}/billing-plan`, `/billing-plan/{plan_key}` | Emissão e consulta de boletos. |
 | `POST` | `/account/{account_key}/billing-plan/{plan_key}/adjustment` | Emissão do lote reajustado. |
 | `POST` | `/account/{account_key}/credit-advance` | Antecipação lastreada em boletos. |
+| `POST` | `/pricing-policy` | Publicação interna de tarifa padrão ou específica por PME. |
 
 Depósito, saque, transferência e antecipação exigem `Idempotency-Key`. Uma
 repetição com o mesmo payload devolve `201` e `Idempotent-Replayed: true` sem
@@ -156,8 +179,7 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 | `JWT_SECRET` | segredo local de desenvolvimento | Chave de assinatura HS256; defina valor secreto fora do repositório em produção. |
 | `JWT_ACCESS_TOKEN_MINUTES` | `15` | Vida útil do JWT de acesso. |
 | `JWT_SESSION_MAX_HOURS` | `8` | Vida máxima da sessão e de seus refresh tokens. |
-| `TRANSFER_FEE_CENTS` | `100` | Tarifa por transferência. |
-| `ADVANCE_FEE_PERCENT` | `3` | Taxa percentual da antecipação. |
+| — | — | Tarifas comerciais são políticas versionadas no banco; o seed mantém transferência de 100 centavos e antecipação de 300 bps. |
 | `NIGHT_START`, `NIGHT_END` | `20:00`, `06:00` | Janela de limite noturno. |
 | `NIGHT_LIMIT_CENTS` | `100000` | Limite noturno por saque ou transferência. |
 | `TIMEZONE` | `America/Sao_Paulo` | Fuso do relógio de produção. |

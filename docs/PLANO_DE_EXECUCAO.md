@@ -33,7 +33,7 @@
 
 | # | Decisão | Recomendação |
 |---|---|---|
-| D1 | Valores fixos | Tarifa de transferência 100 centavos; taxa de antecipação 3% com *half-up* em inteiros; limite noturno 100000 centavos por saque ou transferência. Tudo em variável de ambiente. |
+| D1 | Precificação e limite regulatório | Tarifas são políticas versionadas em banco, específicas por PME ou padrão, em centavos/pontos-base; o seed mantém transferência de 100 centavos e antecipação de 300 bps. Limite noturno permanece 100000 centavos por saque ou transferência. |
 | D2 | Índices do reajuste | O plano antigo diz IPCA/Selic, a RFC diz IPCA/IGPM. Selic não é índice de inflação: fique com **IPCA e IGPM**. |
 | D3 | Ciclo de vida de conta | Adicionar `PUT /account/{account_key}/block` e `PUT /account/{account_key}/cancel` na S2b. Transições: `APPROVED → BLOCKED`, `APPROVED → CANCELLED` e `BLOCKED → CANCELLED`; `CANCELLED` é final. A API registra evento em toda transição e devolve `409 QIT001019` se ela não for permitida. |
 | D4 | Antecipação | Lastreada em `bank_slip_keys` (como na RFC v2), não em valor livre. |
@@ -363,6 +363,7 @@ do pedido atual.
 - **Pronto quando:** contratos comerciais diferenciados não exigem mudar variável de ambiente ou código, e é possível responder qual tarifa foi aplicada e por quê.
 
 ### S18 Dois fluxos explícitos: plano de cobrança e antecipação (B, 2h)
+- **Status:** concluída em 2026-10-09. RFC, README e contratos distinguem o recebível que a PME emite para seu pagador da liquidez que a própria PME obtém ao antecipar um boleto pendente. O teste HTTP `test_receivables_flow.py` prova propriedade da PME, crédito/tarifa no extrato e a vedação de segunda antecipação. Não há produto de empréstimo neste escopo.
 - **Fazer:** consolidar em RFC, README, contratos e apresentação: **Plano de cobrança** emite boletos da PME para seus próprios pagadores; **Antecipação de recebíveis** dá liquidez à PME sobre boletos pendentes já emitidos e vinculados como lastro.
 - **Não fazer:** incluir contrato de empréstimo, principal sem lastro, juros parcelados, cronograma de amortização, boleto para devedor ou baixa automática. Isso é outro produto de crédito.
 - **Testar:** jornada HTTP emite, seleciona boletos da própria PME, antecipa uma vez e mostra crédito/tarifa no extrato; documentos não usam “empréstimo” como sinônimo de antecipação.

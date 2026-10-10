@@ -329,6 +329,7 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
     "plan_key": "7b1c3e5a-4f8d-4a9c-9e2b-1a3d5e7f9a1b",
     "account_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
     "base_amount": 15000,
+    "issuance_fee_amount": 0,
     "installments_count": 12,
     "bank_slips": [
       {
@@ -352,6 +353,7 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
     "plan_key": "7b1c3e5a-4f8d-4a9c-9e2b-1a3d5e7f9a1b",
     "account_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
     "base_amount": 15000,
+    "issuance_fee_amount": 0,
     "first_due_date": "2026-11-10",
     "created_at": "2026-10-02T15:20:00.000000",
     "bank_slips": [
@@ -406,6 +408,13 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
 ---
 
 ### 3.5. Antecipação de Recebíveis (`/credit-advance`)
+
+> **Fronteira de produto:** `billing-plan` representa a cobrança que a PME
+> emissora fará aos seus próprios pagadores e cria recebíveis `PENDING`.
+> `credit-advance` não cria um empréstimo: recebe chaves desses boletos,
+> confirma que pertencem à conta solicitante e os vincula uma única vez como
+> lastro para creditar liquidez à mesma PME. Pagador, baixa do boleto,
+> principal livre, juros parcelados e amortização estão fora deste contrato.
 
 #### `POST /account/{account_key}/credit-advance`
 - **Cabeçalhos Obrigatórios:** `INTERNAL-TOKEN`, `Idempotency-Key: <uuid-ou-string>`
