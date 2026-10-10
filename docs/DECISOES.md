@@ -17,7 +17,7 @@
 
 | # | Decisão | Definição Adotada | Justificativa / Regra Técnica |
 |---|---|---|---|
-| **D1** | **Valores Fixos e Variáveis de Ambiente** | • Tarifa de transferência: `100` centavos (R$ 1,00)<br>• Taxa de antecipação: `3%`<br>• Limite noturno: `100000` centavos (R$ 1.000,00)<br>• Janela noturna padrão: 20:00 às 06:00 | Todos os valores monetários são inteiros em centavos. As variáveis de ambiente são:<br>`TRANSFER_FEE_CENTS=100`<br>`ADVANCE_FEE_PERCENT=3`<br>`NIGHT_LIMIT_CENTS=100000`<br>`NIGHT_START="20:00"`<br>`NIGHT_END="06:00"`<br>`TIMEZONE="America/Sao_Paulo"` |
+| **D1** | **Precificação comercial versionada** | `pricing_policy` mantém tarifa fixa em centavos e/ou percentual em pontos-base para `TRANSFER`, `CREDIT_ADVANCE` e `BANK_SLIP_ISSUANCE`. Há políticas padrão sem PME e políticas específicas; a precedência é **PME específica vigente > padrão vigente**. O seed preserva o comportamento-base: transferência `100` centavos, antecipação `300` bps e emissão `0`. | Dinheiro e tarifa são `BIGINT`; percentual usa `Decimal` e arredondamento half-up, sem `float`. `pricing_snapshot` congela política, versão, base e tarifa no fato financeiro. Publicar preço cria nova versão e encerra a vigência anterior, sem alterar seus termos. `NIGHT_LIMIT_CENTS=100000`, `NIGHT_START="20:00"`, `NIGHT_END="06:00"` e `TIMEZONE="America/Sao_Paulo"` continuam sendo parâmetros regulatórios, não preço comercial. Estados/dupla aprovação são evolução S21. |
 | **D2** | **Índices de Reajuste** | Aceitar exclusivamente **`IPCA`** e **`IGPM`**. | A Selic foi descartada porque é taxa básica de juros de política monetária, e não índice de inflação contratual para reajuste de cobrança/mensalidade. |
 | **D3** | **Ciclo de Vida da Conta** | Rotas `PUT /account/{account_key}/block` e `PUT /account/{account_key}/cancel` (S2b). Transições permitidas: `APPROVED → BLOCKED`, `APPROVED → CANCELLED` e `BLOCKED → CANCELLED`. `CANCELLED` é final e irreversível. | Cada transição gera evento auditável. Operações financeiras só aceitam conta `APPROVED`; transição não permitida devolve `409 QIT001019`. |
 | **D4** | **Modelo de Antecipação de Recebíveis** | Antecipação lastreada em **`bank_slip_keys`** (1 a 50 chaves por chamada). | Antecipação por valor arbitrário abre brecha para criar dinheiro sem lastro. Vincular às chaves dos boletos garante que cada boleto seja antecipado no máximo uma vez através do vínculo `bank_slip.credit_advance_id`. |
@@ -280,7 +280,7 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
 - **Erros Possíveis:** `403 QIT000002`, `404 QIT001002`, `404 QIT001011`.
 
 #### `GET /account/{account_key}/transactions` (Extrato Paginado)
-- **Query Params:** `page` (default 0), `limit` (default 10, max 100), `type` (opcional: `DEPOSIT`, `WITHDRAWAL`, `TRANSFER_IN`, `TRANSFER_OUT`, `TRANSFER_FEE`, `ADVANCE_CREDIT`, `ADVANCE_FEE`).
+- **Query Params:** `page` (default 0), `limit` (default 10, max 100), `type` (opcional: `DEPOSIT`, `WITHDRAWAL`, `TRANSFER_IN`, `TRANSFER_OUT`, `TRANSFER_FEE`, `ADVANCE_CREDIT`, `ADVANCE_FEE`, `BANK_SLIP_ISSUANCE_FEE`).
 - **Resposta Sucesso (`200 OK`):**
   ```json
   {
@@ -508,3 +508,35 @@ reajustes e antecipações; `VIEWER` somente consulta. Falha de token/sessão é
   conector, escopo de idempotência e operação de lock. Não use dados pessoais,
   tokens, hashes, chaves UUID, IP ou query string como rótulo.
 - **Erros Possíveis:** `403 QIT000002`.
+
+---
+
+### 3.9. Política comercial de preço (`/pricing-policy`)
+
+#### `POST /pricing-policy`
+- **Cabeçalhos:** `INTERNAL-TOKEN`.
+- **Body de Entrada:**
+  ```json
+  {
+    "customer_key": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
+    "operation": "TRANSFER",
+    "fixed_fee_cents": 7,
+    "percentage_basis_points": 100
+  }
+  ```
+  `customer_key` é opcional (ou `null`) para a política padrão. `operation`
+  aceita `TRANSFER`, `CREDIT_ADVANCE` e `BANK_SLIP_ISSUANCE`; os dois valores
+  monetários são inteiros não negativos. A tarifa efetiva é `fixa +
+  round_half_up(base × bps / 10000)`. Em `BANK_SLIP_ISSUANCE`, uma chamada
+  que emite um lote é uma operação: o componente fixo é cobrado uma vez por
+  lote e o percentual incide sobre a soma dos valores dos boletos emitidos.
+- **Resposta Sucesso (`201 Created`):** `policy_key`, `customer_key`,
+  `operation`, `version`, `fixed_fee_cents`, `percentage_basis_points` e
+  `effective_from`.
+- **Semântica:** a publicação é serializada por PME/operação, encerra a
+  vigência da versão anterior daquele mesmo escopo e cria outra linha. Em
+  execução, a política específica vigente vence a padrão; cada operação grava
+  um snapshot imutável, portanto uma alteração comercial não reprifica fatos
+  anteriores. O endpoint é administrativo interno nesta etapa; estados e
+  aprovação maker-checker pertencem à S21.
+- **Erros Possíveis:** `400 QIT000001`, `403 QIT000002`, `404 QIT001001`.

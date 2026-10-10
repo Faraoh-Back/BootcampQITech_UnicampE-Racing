@@ -18,7 +18,7 @@ class Transaction(Base):
     operation_key = Column(CHAR(36), nullable=False)
     account_id = Column(Integer, ForeignKey("account.id"), nullable=False)
     counterparty_account_id = Column(Integer, ForeignKey("account.id"), nullable=True)
-    type = Column(String(20), nullable=False)
+    type = Column(String(30), nullable=False)
     amount = Column(BigInteger, nullable=False)
     balance_after = Column(BigInteger, nullable=False)
     pricing_snapshot_id = Column(Integer, ForeignKey("pricing_snapshot.id"), nullable=True)

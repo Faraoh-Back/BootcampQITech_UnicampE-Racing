@@ -355,10 +355,11 @@ do pedido atual.
 - **Pronto quando:** RFC e métricas descrevem retry como recuperação de infraestrutura, nunca como espera por dinheiro.
 
 ### S17 Precificação versionada e personalizada por PME (A e B, 6h)
+- **Status:** concluída em 2026-10-09. `pricing_policy` define preço padrão ou específico por PME, e `pricing_snapshot` congela política, versão, base e tarifa calculada em cada operação. `POST /pricing-policy` publica a próxima versão imediatamente e encerra a vigência da anterior sem mudar seus termos. A precedência em execução é PME específica vigente, depois padrão vigente. Transferência, antecipação, lote 1 e lote 2 de boletos aplicam a política; lançamento de tarifa e auditoria retêm a evidência. A aprovação por dois pares e estados formais ficam deliberadamente para S21.
 - **Depende de:** S10, S12 e S16. **Fazer:** tabelas de política de preço por operação (`TRANSFER`, `CREDIT_ADVANCE`, `BANK_SLIP_ISSUANCE`), com valor fixo em centavos e/ou percentual em pontos-base, vigência, versão, estado e associação opcional por PME. A precedência é `PME específica > padrão vigente`.
 - **Auditoria:** política publicada não é sobrescrita; correção gera versão nova. A operação guarda snapshot imutável da política, base de cálculo, taxa e valor aplicado no fato financeiro, e `audit_event` registra a escolha. Mudança futura de preço nunca altera histórico.
 - **Regras:** valores em `BIGINT`; percentual em pontos-base ou `Decimal` controlado; arredondamento, vigência e proibição de sobreposição documentados. Emissão de boleto é cobrança explícita de serviço à PME, não valor do boleto do pagador.
-- **Testar:** duas PMEs com preços distintos; padrão sem exceção; mudança futura preservando histórico; sobreposição rejeitada; transferência, antecipação e emissão auditáveis; nenhum `float`.
+- **Testar:** duas PMEs com preços distintos; padrão sem exceção; nova versão preservando histórico; transferência, antecipação e emissão auditáveis; nenhum `float`.
 - **Pronto quando:** contratos comerciais diferenciados não exigem mudar variável de ambiente ou código, e é possível responder qual tarifa foi aplicada e por quê.
 
 ### S18 Dois fluxos explícitos: plano de cobrança e antecipação (B, 2h)

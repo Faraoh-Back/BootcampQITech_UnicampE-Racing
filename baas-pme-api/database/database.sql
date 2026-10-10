@@ -248,7 +248,7 @@ CREATE TABLE transaction (
     operation_key           CHAR(36) NOT NULL,
     account_id              INTEGER NOT NULL REFERENCES account(id),
     counterparty_account_id INTEGER REFERENCES account(id),
-    type                    VARCHAR(20) NOT NULL,
+    type                    VARCHAR(30) NOT NULL,
     amount                  BIGINT NOT NULL,
     balance_after           BIGINT NOT NULL,
     pricing_snapshot_id     INTEGER REFERENCES pricing_snapshot(id),

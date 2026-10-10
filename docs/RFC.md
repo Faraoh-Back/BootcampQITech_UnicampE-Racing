@@ -12,7 +12,7 @@
 
 Uma PME cobra mensalidades, recebe boletos, paga fornecedores e pode antecipar recebíveis para preservar caixa. O BaaS cadastra a PME e conta, movimenta dinheiro, emite boletos reajustados, antecipa recebíveis e entrega extrato. Sistemas internos usam credencial de serviço; usuários remotos operam conforme o papel na própria PME.
 
-Dinheiro exige saldo não negativo, retentativa sem duplicação, boleto antecipado uma única vez e extrato que explique a projeção de saldo. Falhas violariam o caixa, duplicariam pagamento/crédito ou destruiriam rastreabilidade. Estão fora do escopo: baixa de boleto, estorno, múltiplas moedas, reajuste agendado, SLO/capacidade produtiva e instalação de Alertmanager/cAdvisor. Bloqueio/cancelamento, identidade, auditoria verificável, métricas, timeout e notificação pós-commit foram entregues.
+Dinheiro exige saldo não negativo, retentativa sem duplicação, boleto antecipado uma única vez e extrato que explique a projeção de saldo. Falhas violariam o caixa, duplicariam pagamento/crédito ou destruiriam rastreabilidade. Estão fora do escopo: baixa de boleto, estorno, múltiplas moedas, reajuste agendado, SLO/capacidade produtiva e instalação de Alertmanager/cAdvisor. Bloqueio/cancelamento, identidade, auditoria verificável, métricas, timeout, notificação pós-commit e precificação comercial versionada foram entregues.
 
 Saques e transferências entre 20h e 6h, em `America/Sao_Paulo`, limitam cada operação a 100000 centavos; depósito não limita. Valores financeiros são centavos inteiros. O fluxo transacional e os testes concorrentes protegem saldo/ledger; a imutabilidade protegida diretamente pelo banco existe para `audit_event`. Expandir essa proteção a todo o ledger e reconciliar saldo independentemente é evolução P0 no plano.
 
@@ -99,7 +99,7 @@ erDiagram
 1. Resource valida corpo e `Idempotency-Key`; formato inválido devolve `400`.
 2. Controller reserva chave por `UNIQUE(account_id, scope, idempotency_key)` e hash SHA-256; destino igual e limite noturno falham antes de lock.
 3. Repository trava origem e destino em uma consulta `FOR NO KEY UPDATE ORDER BY id`; inexistente é `404`, status não aprovado é `409`.
-4. Controller valida saldo para valor+tarifa fixa de 100 centavos, grava `TRANSFER_OUT`, `TRANSFER_FEE`, `TRANSFER_IN` com mesmo `operation_key`, atualiza saldos e salva a resposta.
+4. Controller resolve a política comercial vigente (PME específica ou padrão), cria snapshot imutável de preço, valida saldo para valor+tarifa, grava `TRANSFER_OUT`, `TRANSFER_FEE` quando houver tarifa e `TRANSFER_IN` com mesmo `operation_key`, atualiza saldos e salva a resposta.
 5. Um commit confirma tudo. Mesmo hash retorna corpo original com `Idempotent-Replayed: true`; hash diverso devolve `409`.
 
 **Transferência — falha por saldo ou timeout**
@@ -110,12 +110,12 @@ erDiagram
 **Antecipação — caminho feliz e disputa**
 
 1. A rota idempotente trava conta e boletos por `id`; exige conta aprovada, boletos pertencentes, `PENDING` e sem antecipação.
-2. Calcula somente em inteiros: `gross = soma`, `fee = (gross * 3 + 50) // 100`, `net = gross - fee`; grava vínculo, crédito, tarifa, saldo e resposta no mesmo commit.
+2. Calcula somente em inteiros a partir do snapshot de preço vigente: `gross = soma`, `fee = fixa + round_half_up(gross × bps / 10000)`, `net = gross - fee`; grava vínculo, crédito, tarifa, saldo e resposta no mesmo commit.
 3. Duas solicitações concorrentes do mesmo boleto: a segunda vê o vínculo depois de esperar a trava e recebe `409 QIT001016`.
 
 **Cobrança, reajuste e falha externa**
 
-1. Lote 1 valida conta/vencimento/centavos, chama emissão externa e grava plano, 12 boletos e eventos em um commit.
+1. Lote 1 valida conta/vencimento/centavos, chama emissão externa e grava plano, 12 boletos, eventos e a tarifa de emissão da PME em um commit. Essa tarifa é serviço do BaaS e não altera o valor que o pagador deve em cada boleto; o lote 2 também resolve a política vigente quando emitido.
 2. Reajuste lê IPCA/IGPM como `Decimal` sem lock, trava plano, impede lote 2 e calcula parcelas 13–24 com half-up; referência externa é plano+lote.
 3. Falha de conector devolve `502 QIT001009` sem escrita local. Aceite externo seguido de falha de commit é reconciliável pela referência determinística, mas é a janela inevitável entre sistemas. O reajuste mantém lock somente do plano durante emissão; reserva persistida é evolução P1.
 
