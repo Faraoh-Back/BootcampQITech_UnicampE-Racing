@@ -13,6 +13,7 @@ from models.user import User, UserCustomerAccess, UserSession
 from models.audit_event import AuditEvent
 from models.outbox_event import OutboxEvent
 from models.pricing import PricingPolicy, PricingSnapshot
+from models.risk_policy import CustomerDailyOutgoing, RiskPolicy, RiskPolicySnapshot
 
 __all__ = [
     "Base",
@@ -37,4 +38,7 @@ __all__ = [
     "OutboxEvent",
     "PricingPolicy",
     "PricingSnapshot",
+    "RiskPolicy",
+    "RiskPolicySnapshot",
+    "CustomerDailyOutgoing",
 ]

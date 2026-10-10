@@ -15,7 +15,7 @@ from errors import (
     SameAccountTransfer,
     TransactionNotFound,
 )
-from repositories import AccountRepository, PricingRepository, TransactionRepository
+from repositories import AccountRepository, PricingRepository, RiskPolicyRepository, TransactionRepository
 from utils.night_limit import is_night_window
 from utils.metrics import observe_lock_wait, record_idempotency_replay
 from utils.transient_retry import execute_with_transient_retry
@@ -40,6 +40,7 @@ class TransactionController(BaseController):
         self.transaction_repository = TransactionRepository(self.context)
         self.idempotency_controller = IdempotencyController(self.context)
         self.pricing_repository = PricingRepository(self.context)
+        self.risk_policy_repository = RiskPolicyRepository(self.context)
 
     @classmethod
     def create_with_transient_retry(
@@ -154,6 +155,7 @@ class TransactionController(BaseController):
 
         pricing = self.pricing_repository.resolve(origin.customer_id, "TRANSFER", amount)
         total_debit = amount + pricing.fee_amount
+        risk_snapshot = self.risk_policy_repository.apply_transfer(origin.customer_id, amount)
         if origin.balance < total_debit:
             raise InsufficientBalance(origin_account_key)
 
@@ -164,6 +166,7 @@ class TransactionController(BaseController):
             -amount,
             operation_key,
             destination.id,
+            risk_policy_snapshot_id=risk_snapshot.id,
         )
         if pricing.fee_amount > 0:
             self.transaction_repository.create_entry(
@@ -188,6 +191,10 @@ class TransactionController(BaseController):
                 "fee_amount": pricing.fee_amount,
                 "pricing_policy_key": pricing.policy_key,
                 "pricing_policy_version": pricing.policy_version,
+                "risk_policy_key": risk_snapshot.policy_key,
+                "risk_policy_version": risk_snapshot.policy_version,
+                "daily_outgoing_before": risk_snapshot.daily_outgoing_before,
+                "daily_outgoing_after": risk_snapshot.daily_outgoing_after,
             },
         )
         return {

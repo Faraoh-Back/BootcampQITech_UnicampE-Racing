@@ -49,6 +49,28 @@ class AccountNotApproved(QIException):
         super().__init__(title, self.code, http_status, description, translation)
 
 
+class ProductNotEnabled(QIException):
+    code = "QIT001026"
+
+    def __init__(self, product: str) -> None:
+        super().__init__(
+            "Product not enabled", self.code, 409,
+            f"The {product} product is not enabled for this customer.",
+            "Este produto não está habilitado para esta PME.",
+        )
+
+
+class RiskLimitExceeded(QIException):
+    code = "QIT001027"
+
+    def __init__(self, limit_name: str) -> None:
+        super().__init__(
+            "Risk limit exceeded", self.code, 422,
+            f"The requested operation exceeds the configured {limit_name}.",
+            "A operação excede o limite de risco configurado.",
+        )
+
+
 class InsufficientBalance(QIException):
     """O débito solicitado não cabe no saldo disponível da conta."""
 

@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "transfer_enabled", "billing_plan_enabled", "credit_advance_enabled",
+    "max_transfer_amount", "daily_outgoing_limit",
+    "max_credit_advance_amount", "max_advance_bank_slips"
+  ],
+  "properties": {
+    "customer_key": {"type": ["string", "null"], "minLength": 36, "maxLength": 36},
+    "transfer_enabled": {"type": "boolean"},
+    "billing_plan_enabled": {"type": "boolean"},
+    "credit_advance_enabled": {"type": "boolean"},
+    "max_transfer_amount": {"type": "integer", "minimum": 0},
+    "daily_outgoing_limit": {"type": "integer", "minimum": 0},
+    "max_credit_advance_amount": {"type": "integer", "minimum": 0},
+    "max_advance_bank_slips": {"type": "integer", "minimum": 1, "maximum": 50}
+  }
+}

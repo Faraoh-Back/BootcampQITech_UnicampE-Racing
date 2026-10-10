@@ -16,7 +16,7 @@ from errors import (
     InvalidSchema,
     InsufficientBalance,
 )
-from repositories import AccountRepository, BillingPlanRepository, PricingRepository, TransactionRepository
+from repositories import AccountRepository, BillingPlanRepository, PricingRepository, RiskPolicyRepository, TransactionRepository
 from utils.date import add_months
 from utils.metrics import observe_lock_wait
 
@@ -28,6 +28,7 @@ class BillingPlanController(BaseController):
         self.account_repository = AccountRepository(self.context)
         self.pricing_repository = PricingRepository(self.context)
         self.transaction_repository = TransactionRepository(self.context)
+        self.risk_policy_repository = RiskPolicyRepository(self.context)
 
     def create(self, account_key: str, payload: dict) -> dict:
         account = self.billing_plan_repository.get_account_by_key(account_key)
@@ -35,6 +36,9 @@ class BillingPlanController(BaseController):
             raise AccountNotFound(account_key)
         if account.status.enumerator != "APPROVED":
             raise AccountNotApproved(account_key)
+        # Verificação antes do conector evita emitir externamente um produto
+        # que a política atual da PME já proibiu.
+        self.risk_policy_repository.assert_billing_plan_enabled(account.customer_id)
 
         try:
             first_due_date = date.fromisoformat(payload["first_due_date"])
@@ -64,6 +68,9 @@ class BillingPlanController(BaseController):
         )
         if account.balance < pricing.fee_amount:
             raise InsufficientBalance(account_key)
+        risk_snapshot = self.risk_policy_repository.apply_billing_plan(
+            account.customer_id, payload["base_amount"] * len(installments)
+        )
 
         plan = self.billing_plan_repository.create(
             account, plan_key, payload["base_amount"], first_due_date, issued_slips,
@@ -71,6 +78,7 @@ class BillingPlanController(BaseController):
         )
         plan.issuance_fee_amount = pricing.fee_amount
         plan.issuance_pricing_snapshot_id = pricing.id
+        plan.risk_policy_snapshot_id = risk_snapshot.id
         if pricing.fee_amount:
             self.transaction_repository.create_entry(
                 account,
@@ -78,6 +86,7 @@ class BillingPlanController(BaseController):
                 -pricing.fee_amount,
                 str(uuid4()),
                 pricing_snapshot_id=pricing.id,
+                risk_policy_snapshot_id=risk_snapshot.id,
             )
         plan_dto = BillingPlanDTO.obj_to_created_dict(plan)
         self.audit.record(
@@ -91,6 +100,8 @@ class BillingPlanController(BaseController):
                 "issuance_fee_amount": pricing.fee_amount,
                 "pricing_policy_key": pricing.policy_key,
                 "pricing_policy_version": pricing.policy_version,
+                "risk_policy_key": risk_snapshot.policy_key,
+                "risk_policy_version": risk_snapshot.policy_version,
             },
         )
         self.session.commit()
@@ -109,6 +120,7 @@ class BillingPlanController(BaseController):
         account = self.billing_plan_repository.get_account_by_key(account_key)
         if account is None:
             raise AccountNotFound(account_key)
+        self.risk_policy_repository.assert_billing_plan_enabled(account.customer_id)
         plan = self.billing_plan_repository.get_by_key_for_account(plan_key, account.id)
         if plan is None:
             raise BillingPlanNotFound(plan_key)
@@ -147,6 +159,9 @@ class BillingPlanController(BaseController):
         )
         if account.balance < pricing.fee_amount:
             raise InsufficientBalance(account_key)
+        risk_snapshot = self.risk_policy_repository.apply_billing_plan(
+            account.customer_id, adjusted_amount * len(installments)
+        )
         bank_slips = self.billing_plan_repository.create_adjustment_batch(
             plan, rate, issued_slips, pricing_snapshot_id=pricing.id
         )
@@ -154,6 +169,7 @@ class BillingPlanController(BaseController):
             self.transaction_repository.create_entry(
                 account, "BANK_SLIP_ISSUANCE_FEE", -pricing.fee_amount, str(uuid4()),
                 pricing_snapshot_id=pricing.id,
+                risk_policy_snapshot_id=risk_snapshot.id,
             )
         self.audit.record(
             "BILLING_PLAN_ADJUSTED",
@@ -168,6 +184,8 @@ class BillingPlanController(BaseController):
                 "issuance_fee_amount": pricing.fee_amount,
                 "pricing_policy_key": pricing.policy_key,
                 "pricing_policy_version": pricing.policy_version,
+                "risk_policy_key": risk_snapshot.policy_key,
+                "risk_policy_version": risk_snapshot.policy_version,
             },
         )
         self.session.commit()

@@ -12,6 +12,7 @@ class BillingPlan(Base):
     first_due_date = Column(Date, nullable=False)
     issuance_fee_amount = Column(BigInteger, nullable=False, server_default=text("0"))
     issuance_pricing_snapshot_id = Column(Integer, ForeignKey("pricing_snapshot.id"), nullable=True)
+    risk_policy_snapshot_id = Column(Integer, ForeignKey("risk_policy_snapshot.id"), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=text("NOW()"))
 
     account = relationship("Account")

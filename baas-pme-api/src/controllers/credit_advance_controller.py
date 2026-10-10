@@ -10,7 +10,7 @@ from errors import (
     BankSlipNotEligible,
     BankSlipNotFound,
 )
-from repositories import AccountRepository, CreditAdvanceRepository, PricingRepository, TransactionRepository
+from repositories import AccountRepository, CreditAdvanceRepository, PricingRepository, RiskPolicyRepository, TransactionRepository
 from utils.metrics import observe_lock_wait, record_idempotency_replay
 from utils.transient_retry import execute_with_transient_retry
 
@@ -25,6 +25,7 @@ class CreditAdvanceController(BaseController):
         self.transaction_repository = TransactionRepository(self.context)
         self.idempotency_controller = IdempotencyController(self.context)
         self.pricing_repository = PricingRepository(self.context)
+        self.risk_policy_repository = RiskPolicyRepository(self.context)
 
     @classmethod
     def create_with_transient_retry(
@@ -70,16 +71,21 @@ class CreditAdvanceController(BaseController):
             raise BankSlipNotEligible()
 
         gross_amount = sum(bank_slip.amount for bank_slip in bank_slips)
+        risk_snapshot = self.risk_policy_repository.apply_credit_advance(
+            account.customer_id, gross_amount, len(bank_slips)
+        )
         pricing = self.pricing_repository.resolve(account.customer_id, "CREDIT_ADVANCE", gross_amount)
         fee_amount = pricing.fee_amount
         credit_advance = self.credit_advance_repository.create(account.id, gross_amount, fee_amount)
         credit_advance.pricing_snapshot_id = pricing.id
+        credit_advance.risk_policy_snapshot_id = risk_snapshot.id
         for bank_slip in bank_slips:
             bank_slip.credit_advance_id = credit_advance.id
 
         operation_key = str(uuid4())
         self.transaction_repository.create_entry(
-            account, "ADVANCE_CREDIT", gross_amount, operation_key
+            account, "ADVANCE_CREDIT", gross_amount, operation_key,
+            risk_policy_snapshot_id=risk_snapshot.id,
         )
         if fee_amount > 0:
             self.transaction_repository.create_entry(
@@ -102,6 +108,8 @@ class CreditAdvanceController(BaseController):
                 "net_amount": response["net_amount"],
                 "pricing_policy_key": pricing.policy_key,
                 "pricing_policy_version": pricing.policy_version,
+                "risk_policy_key": risk_snapshot.policy_key,
+                "risk_policy_version": risk_snapshot.policy_version,
             },
         )
         self.session.commit()

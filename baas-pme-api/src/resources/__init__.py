@@ -9,3 +9,4 @@ from resources.auth import AuthResource
 from resources.audit import AuditResource
 from resources.metrics import MetricsResource
 from resources.pricing_policy import PricingPolicyResource
+from resources.risk_policy import RiskPolicyResource

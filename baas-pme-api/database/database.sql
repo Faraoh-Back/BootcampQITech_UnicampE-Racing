@@ -222,6 +222,74 @@ CREATE TABLE pricing_snapshot (
     )
 );
 
+-- Política de risco/produto: customer_id nulo representa o fallback padrão.
+-- A versão aplicada é copiada para risk_policy_snapshot; mudar uma regra não
+-- reinterpreta decisões financeiras já confirmadas.
+CREATE TABLE risk_policy (
+    id                          SERIAL PRIMARY KEY,
+    policy_key                  CHAR(36) NOT NULL UNIQUE,
+    customer_id                 INTEGER REFERENCES customer(id),
+    version                     INTEGER NOT NULL,
+    transfer_enabled            BOOLEAN NOT NULL DEFAULT TRUE,
+    billing_plan_enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+    credit_advance_enabled      BOOLEAN NOT NULL DEFAULT TRUE,
+    max_transfer_amount         BIGINT NOT NULL,
+    daily_outgoing_limit        BIGINT NOT NULL,
+    max_credit_advance_amount   BIGINT NOT NULL,
+    max_advance_bank_slips      INTEGER NOT NULL,
+    effective_from              TIMESTAMP NOT NULL DEFAULT NOW(),
+    effective_until             TIMESTAMP,
+    created_at                  TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_risk_version CHECK (version > 0),
+    CONSTRAINT chk_risk_amounts CHECK (
+        max_transfer_amount >= 0 AND daily_outgoing_limit >= 0
+        AND max_credit_advance_amount >= 0 AND max_advance_bank_slips BETWEEN 1 AND 50
+    ),
+    CONSTRAINT chk_risk_period CHECK (effective_until IS NULL OR effective_until > effective_from),
+    CONSTRAINT unq_risk_customer_version UNIQUE NULLS NOT DISTINCT (customer_id, version)
+);
+
+CREATE INDEX idx_risk_policy_resolution
+ON risk_policy (customer_id, effective_from DESC, version DESC);
+
+INSERT INTO risk_policy (
+    policy_key, customer_id, version, max_transfer_amount, daily_outgoing_limit,
+    max_credit_advance_amount, max_advance_bank_slips
+) VALUES (
+    '00000000-0000-0000-0000-000000000201', NULL, 1,
+    9223372036854775807, 9223372036854775807, 9223372036854775807, 50
+);
+
+CREATE TABLE risk_policy_snapshot (
+    id                          SERIAL PRIMARY KEY,
+    policy_key                  CHAR(36) NOT NULL,
+    policy_version              INTEGER NOT NULL,
+    customer_id                 INTEGER REFERENCES customer(id),
+    operation                   VARCHAR(40) NOT NULL,
+    transfer_enabled            BOOLEAN NOT NULL,
+    billing_plan_enabled        BOOLEAN NOT NULL,
+    credit_advance_enabled      BOOLEAN NOT NULL,
+    max_transfer_amount         BIGINT NOT NULL,
+    daily_outgoing_limit        BIGINT NOT NULL,
+    max_credit_advance_amount   BIGINT NOT NULL,
+    max_advance_bank_slips      INTEGER NOT NULL,
+    requested_amount            BIGINT NOT NULL DEFAULT 0,
+    requested_bank_slips        INTEGER NOT NULL DEFAULT 0,
+    daily_outgoing_before       BIGINT,
+    daily_outgoing_after        BIGINT,
+    applied_at                  TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_risk_snapshot_operation CHECK (operation IN ('TRANSFER', 'BILLING_PLAN', 'CREDIT_ADVANCE'))
+);
+
+CREATE TABLE customer_daily_outgoing (
+    customer_id     INTEGER NOT NULL REFERENCES customer(id),
+    operation_date  DATE NOT NULL,
+    consumed_amount BIGINT NOT NULL DEFAULT 0,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (customer_id, operation_date),
+    CONSTRAINT chk_customer_daily_outgoing_non_negative CHECK (consumed_amount >= 0)
+);
+
 CREATE TABLE account_status_event (
     id             SERIAL PRIMARY KEY,
     account_id     INTEGER NOT NULL REFERENCES account(id),
@@ -252,6 +320,7 @@ CREATE TABLE transaction (
     amount                  BIGINT NOT NULL,
     balance_after           BIGINT NOT NULL,
     pricing_snapshot_id     INTEGER REFERENCES pricing_snapshot(id),
+    risk_policy_snapshot_id INTEGER REFERENCES risk_policy_snapshot(id),
     created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_transaction_amount_not_zero CHECK (amount <> 0),
     CONSTRAINT chk_transaction_type CHECK (type IN (
@@ -270,6 +339,7 @@ CREATE TABLE credit_advance (
     fee_amount         BIGINT NOT NULL,
     net_amount         BIGINT NOT NULL,
     pricing_snapshot_id INTEGER REFERENCES pricing_snapshot(id),
+    risk_policy_snapshot_id INTEGER REFERENCES risk_policy_snapshot(id),
     created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_credit_advance_net_amount CHECK (net_amount = gross_amount - fee_amount)
 );
@@ -282,6 +352,7 @@ CREATE TABLE billing_plan (
     first_due_date   DATE NOT NULL,
     issuance_fee_amount BIGINT NOT NULL DEFAULT 0,
     issuance_pricing_snapshot_id INTEGER REFERENCES pricing_snapshot(id),
+    risk_policy_snapshot_id INTEGER REFERENCES risk_policy_snapshot(id),
     created_at       TIMESTAMP NOT NULL DEFAULT NOW()
 );
 

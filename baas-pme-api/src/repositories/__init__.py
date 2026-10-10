@@ -8,3 +8,4 @@ from repositories.credit_advance_repository import CreditAdvanceRepository
 from repositories.user_repository import UserRepository
 from repositories.audit_repository import AuditRepository
 from repositories.pricing_repository import PricingRepository
+from repositories.risk_policy_repository import RiskPolicyRepository
