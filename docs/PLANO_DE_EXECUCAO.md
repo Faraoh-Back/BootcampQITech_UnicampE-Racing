@@ -55,10 +55,10 @@
 | **R3** Transferência | S5 Transferência e tarifa | S9 Reajuste (lote 2) | S7a Concorrência (saque), T3.1 Checkpoint da RFC | ~5h |
 | **R4** Garantias | S6 Idempotência nas rotas, S7b Limite noturno | S10 Antecipação | S7c Concorrência (transferência, idempotência, antecipação) | ~6h |
 | **R4.5** Evolução operacional | S11 Identidade e autorização, S14 timeouts | S13 Observabilidade, S15 notificações | S12 Auditoria verificável, T4.5 benchmark | ~19h |
-| **R4.75** API mais completa | S16 retry transacional, S17 precificação | S18 cobrança e antecipação | T4.75 exemplos de defesa | ~14h |
+| **R4.75** API mais completa | S16 retry transacional, S17 precificação, S19 limites | S18 cobrança/antecipação, S20 cotação | T4.75 exemplos, S21 dupla aprovação | ~27h |
 | **R5** Entrega | T5.2, T5.4, T5.5, T5.7, T5.8 | T5.3, T5.6, T5.7, T5.8 | T5.1, T5.6, T5.7, T5.8, T5.9 | ~9h |
 
-Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.75 60h, R5 69h. R4.5 e R4.75 são expansões opcionais; o núcleo do desafio permanece pronto no Gate 2.
+Relógio acumulado previsto: R0 4h, R1 9h, R2 16h, R3 21h, R4 27h, R4.5 46h, R4.75 73h, R5 82h. R4.5 e R4.75 são expansões opcionais; o núcleo do desafio permanece pronto no Gate 2.
 
 ### Gates e linha de corte
 
@@ -333,7 +333,7 @@ com o Gate 2 verde.
 
 ---
 
-## 8.75 Rodada 4.75: Ajustes para deixar a API mais completa (~14h)
+## 8.75 Rodada 4.75: Ajustes para deixar a API mais completa (~27h)
 
 Esta rodada incorpora os aprendizados da defesa sem transformar decisão de
 negócio em espera automática: retry só é permitido quando uma transação foi
@@ -347,6 +347,7 @@ do pedido atual.
 - **Pronto quando:** o time explica deadlock em menos de um minuto e não promete retry automático de `422` nem chama antecipação de empréstimo sem lastro.
 
 ### S16 Retentativa transacional apenas para falhas transitórias (A, 4h)
+- **Status:** concluída em 2026-10-09. Operações idempotentes de transação e antecipação executam até duas tentativas para `40P01`/`40001`; cada retry descarta sessão abortada, recria controller/transação e preserva a chave idempotente. `QIT001025` representa esgotamento e `baas_database_transient_retries_total` registra somente `deadlock`/`serialization`. Dois testes provam um `40P01` sintético seguido de um único depósito e ausência de retry para `422 QIT001005`.
 - **Depende de:** S6 e S14. **Fazer:** executor no controller que reinicia a operação inteira com sessão/transação nova, tentativas limitadas, backoff com jitter e a mesma `Idempotency-Key`, somente para deadlock PostgreSQL (`40P01`) ou falha de serialização (`40001`).
 - **Não fazer:** retentar `400`, `401`, `403`, `404`, `409`, `422`, timeout de conector ou qualquer fluxo depois de I/O externo sem idempotência formal. `InsufficientBalance` deve responder imediatamente; crédito posterior exige nova intenção do cliente.
 - **Cuidado:** rollback completo antes da próxima tentativa; nenhum lançamento, auditoria, outbox ou reserva idempotente pode vazar. Para conectores, retry só antes do I/O ou com referência externa comprovadamente idempotente.
@@ -365,6 +366,25 @@ do pedido atual.
 - **Não fazer:** incluir contrato de empréstimo, principal sem lastro, juros parcelados, cronograma de amortização, boleto para devedor ou baixa automática. Isso é outro produto de crédito.
 - **Testar:** jornada HTTP emite, seleciona boletos da própria PME, antecipa uma vez e mostra crédito/tarifa no extrato; documentos não usam “empréstimo” como sinônimo de antecipação.
 - **Pronto quando:** um diagrama deixa claros PME, pagador do boleto e recebível que lastreia a liquidez.
+
+### S19 Política de limites e habilitações por PME (A, 5h)
+- **Depende de:** S17. **Fazer:** criar política versionada por PME, com fallback padrão, para limite por transferência, teto diário de saída, teto de antecipação, máximo de boletos por antecipação e habilitação de produtos (`TRANSFER`, `BILLING_PLAN`, `CREDIT_ADVANCE`). Definir vigência, precedência e comportamento quando não houver política específica.
+- **Integridade:** o consumo diário e a decisão de limite devem ser apurados/travados na mesma transação que lança dinheiro; duas requisições concorrentes não podem ultrapassar o teto em conjunto. A decisão aplicada, versão da política e valor consumido precisam ser auditáveis.
+- **Não fazer:** controlar limite somente em cache, confiar em contador do cliente ou alterar retroativamente uma decisão passada. Limite noturno regulatório continua regra independente, não substituível por contrato comercial.
+- **Testar:** PMEs com limites diferentes; produto desabilitado retorna erro estável; duas transferências concorrentes disputam o último valor do teto; mudança de política só vigora na data definida; histórico mostra a versão aplicada.
+- **Pronto quando:** risco e habilitação comercial variam por PME sem código condicional por cliente, preservando o mesmo rigor de lock, centavos e auditoria das transações.
+
+### S20 Cotação de tarifas e previsibilidade para o integrador (B, 4h)
+- **Depende de:** S17 e S19. **Fazer:** expor consulta de cotação para transferência, emissão de boleto e antecipação, devolvendo valor bruto, tarifa, valor líquido quando aplicável, política/versão, limites relevantes e validade curta. A cotação é informativa; a execução recalcula a regra vigente ou aceita a cotação somente se ainda válida e vinculada ao mesmo payload.
+- **Integridade:** a API nunca aceita do cliente o valor de tarifa como fonte de verdade. Caso uma cotação expire, a execução informa conflito/expiração de forma explícita; caso seja aceita, grava no fato financeiro o snapshot da política e identificador da cotação.
+- **Testar:** cotação de duas PMEs distintas; alteração futura de preço; payload diferente não reutiliza cotação; expiração; execução com cotação válida preserva exatamente a tarifa cotada; operação sem cotação continua segura e recalculada no servidor.
+- **Pronto quando:** o integrador consegue mostrar custo antes de confirmar a operação, sem abrir brecha para manipular preço ou produzir divergência entre cotação, ledger e auditoria.
+
+### S21 Aprovação em duas etapas para política comercial (C, 4h)
+- **Depende de:** S17 e S19. **Fazer:** modelar ciclo de vida de política comercial e de risco: `DRAFT`, `PENDING_APPROVAL`, `ACTIVE` e `RETIRED`. O criador propõe versão, outro usuário autorizado aprova/publica, e a publicação respeita vigência. Registrar motivo, ator criador, ator aprovador, timestamps e versões no `audit_event`.
+- **Não fazer:** permitir que o mesmo ator crie e aprove a própria alteração, sobrescrever política ativa ou tornar política pendente aplicável em operação financeira. Exceção operacional, se necessária, deve ser explícita, excepcional e auditada.
+- **Testar:** segregação de funções; tentativa de autoaprovação rejeitada; política pendente não é selecionada; aprovação concorrente resulta em uma publicação; aposentadoria não altera snapshots históricos; papéis sem autorização recebem erro estável.
+- **Pronto quando:** uma condição comercial especial para uma PME passa por controle de quatro olhos (*maker-checker*), e a API consegue provar quem propôs, quem aprovou, quando entrou em vigor e quais operações a consumiram.
 
 ---
 

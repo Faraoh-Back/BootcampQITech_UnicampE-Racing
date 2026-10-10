@@ -81,6 +81,7 @@ Todas as respostas de erro retornam payload JSON padronizado:
 | **QIT001022** | `403 Forbidden` | `AccountAccessForbidden` | Usuário autenticado não possui vínculo com a PME da conta, ou seu papel não autoriza a operação. |
 | **QIT001023** | `409 Conflict` | `DuplicatedUserEmail` | E-mail já cadastrado em `app_user`. |
 | **QIT001024** | `503 Service Unavailable` | `DatabaseOperationTimeout` | `lock_timeout` ou `statement_timeout` do PostgreSQL esgotado; a tentativa foi desfeita e pode ser repetida com segurança, observada a mesma `Idempotency-Key` nas operações financeiras. |
+| **QIT001025** | `503 Service Unavailable` | `DatabaseTransientFailure` | Deadlock (`40P01`) ou falha de serialização (`40001`) persistiu após retentativas transacionais seguras; repita a operação financeira com a mesma `Idempotency-Key`. |
 
 ### Erros de infraestrutura HTTP
 

@@ -133,6 +133,13 @@ locais de 2 segundos para trava e 10 segundos para execução; se esgotar,
 retorna `503 QIT001024`. Cada resposta preserva `X-Request-ID` para
 correlação. O orçamento de 15 segundos reduz esses limites quando necessário.
 
+Deadlock ou falha de serialização do PostgreSQL recebe no máximo uma nova
+tentativa interna, sempre em sessão/transação nova e com a mesma
+`Idempotency-Key`. A API não retenta saldo insuficiente, limite noturno, status
+inválido, erros de contrato ou chamadas externas. A métrica
+`baas_database_transient_retries_total` registra apenas `deadlock` ou
+`serialization`, sem PII.
+
 Se o cliente perder ou interromper a resposta de uma operação financeira, não
 deve criar outra chave: deve reenviar exatamente o mesmo payload com a mesma
 `Idempotency-Key`. Assim a API devolve o resultado já confirmado ou conclui uma
@@ -160,6 +167,8 @@ copie `.env.example` para `.env`. As variáveis relevantes são:
 | `DATABASE_LOCK_TIMEOUT_MS` | `2000` | Espera máxima por trava PostgreSQL por transação. |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `10000` | Execução máxima de comando PostgreSQL por transação. |
 | `REQUEST_TIMEOUT_SECONDS` | `15` | Orçamento máximo aplicado aos pontos bloqueantes conhecidos. |
+| `DATABASE_TRANSIENT_RETRY_MAX_ATTEMPTS` | `2` | Total de tentativas para `40P01`/`40001`. |
+| `DATABASE_TRANSIENT_RETRY_BASE_DELAY_MS` | `25` | Base do backoff com jitter entre tentativas transitórias. |
 | `NOTIFICATION_WEBHOOK_URL` | `http://mock:1080/notifications` | Webhook que recebe eventos da outbox; em produção, serviço de notificações. |
 | `OUTBOX_POLL_INTERVAL_SECONDS` | `1` | Intervalo de consulta do worker. |
 | `OUTBOX_LEASE_SECONDS` | `30` | Duração do lease que impede dois workers de publicar juntos. |
