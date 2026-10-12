@@ -74,14 +74,12 @@ function schemaSvg(selected, label) {
     cards.push(contents+'</g>');
     bottoms[col] += height + gap;
   }
-  const height = Math.max(...bottoms) + 34;
+  const height = Math.max(...bottoms);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escape(label)}">
 <style>text{font-family:DejaVu Sans Mono,monospace;font-size:10px}</style>
 <text x="0" y="17" fill="#12384b" font-weight="bold">${escape(label)}</text>
 <text x="0" y="32" fill="#345568">PK: chave interna | UK: única | FK: vínculo | relação aponta para este cartão; UUIDs são públicos</text>
 ${cards.join('\n')}
-<text x="0" y="${height-18}" fill="#345568">||: exatamente 1 | |o: 0 ou 1 | o{: 0 a N | relações lógicas de snapshot sem FK não são inventadas</text>
-<text x="0" y="${height-4}" fill="#345568">Fonte integral: docs/RFC.md; termos/checks complementares: DECISOES.md e database.sql</text>
 </svg>`;
 }
 for (const [name, selected, label] of [
@@ -97,8 +95,12 @@ const css = `
 .rfc .page:first-child table:last-of-type td{padding:1pt 2pt}
 .rfc .page:first-child table:last-of-type{line-height:1.1}
 .rfc .page:first-child table:last-of-type td{overflow-wrap:anywhere}
-.rfc .page:first-child p{margin:3pt 0}
-.flows{font-size:8pt;line-height:1.2}.flows p{margin:3pt 0}.flows ol{margin:3pt 0}
+.rfc .page:first-child,.rfc .page:last-child{padding-top:7mm}
+.rfc .page:first-child p{margin:2pt 0}
+.rfc .page:first-child h2{margin:4pt 0 2pt}
+.rfc .page:first-child h3{margin:3pt 0 2pt}
+.rfc .page:first-child li{margin:1pt 0}
+.flows{font-size:8pt;line-height:1.2}.flows p{margin:2pt 0}.flows ol{margin:3pt 0}
 .slides pre{margin:6pt 0;padding:8pt}
 `;
 const profile = await mkdtemp(resolve(tmpdir(), 'baas-doc-browser-'));

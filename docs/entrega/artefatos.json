@@ -4,14 +4,14 @@
   "presentation_pages": 10,
   "sha256": {
     "../RFC.md": "c7b807073a97307b9b53c487af515f27a1f73893b33f7c1c2912562d5811feef",
-    "RFC_FINAL.md": "b7fe12ecf0f77af51c4a31c68aac42aa0c7928d3f5cdee900b842f76bec21cce",
+    "RFC_FINAL.md": "3509338db5a186355afa582e8dbe5340168fc389ed6b340e4f192c8d96ff8872",
     "APRESENTACAO.md": "456b8c077ac8ce8edb2af8482f8bab0f30784d167a66ad7b5507482054b0c552",
-    "der-financeiro.svg": "2e366d3e815e567895803b8cc4eed8db3548776356df8e040c3ba232a72f5846",
-    "der-operacional.svg": "ef43c9009c14d0d2614d1b09002bd7502197e26f470500c98974ae3ff40509f3",
-    "tools/render.mjs": "7c71f1b11119e1681d1246771b5ad17f35103abaf72a427c025e0faf3a8abf32",
+    "der-financeiro.svg": "1a636187940cf5a0b0d4ff91304dac603b22ab706ca77fade179e217a3ac8729",
+    "der-operacional.svg": "cc9c77fb6a1180c4eff0f4f04b642681d29d4c47a969419509461bafa46d08c8",
+    "tools/render.mjs": "90a2d12e1a489513f6c6e78c2e5066c291fce75d95ad87720ce04739603ca1f5",
     "tools/package-lock.json": "bc411c2d5a0f2821a25645cd7c03df11e5cd7c082ebf232ff818dddefb777924",
-    "RFC_FINAL.pdf": "9d4283195fc28bfdfbeaba3e6aea87def661f0dfa83476f38ebc01ee73218e34",
-    "APRESENTACAO.pdf": "b88b60421dd95492c107cd64ce2b60e55a2351cfc2c04a739992ff30873bc866"
+    "RFC_FINAL.pdf": "ae4d819e7dd8ef2dcad4685a3e44dfe6a81e2db93f57f2207d73a235d27d631c",
+    "APRESENTACAO.pdf": "1ecefb8af50c73904c1ce097d90559f2cfec03b1ba185ac5b1b415215a0cec32"
   },
   "note": "Conteúdo e integridade rastreáveis; bytes de PDF podem variar com data/Chromium/fontes."
 }
