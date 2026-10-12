@@ -10,28 +10,28 @@
 
 ### Entendendo o problema
 
-Uma PME precisa cobrar mensalidades, movimentar caixa, pagar fornecedores e antecipar seus recebíveis. O produto oferece cadastro, contas, depósitos, saques, transferências, extrato, boletos com reajuste e antecipação lastreada. Identidade por PME, condições comerciais, limites, cotação e dupla aprovação tornam a operação controlável e explicável.
+Uma PME precisa cobrar mensalidades, movimentar o caixa, pagar fornecedores e antecipar seus recebíveis. O produto oferece cadastro, contas, depósitos, saques, transferências, extrato, boletos com reajuste e antecipação lastreada. A identidade por PME, as condições comerciais, os limites, a cotação e a dupla aprovação tornam a operação controlável e explicável.
 
-Uma duplicação de débito/crédito ou um recebível antecipado duas vezes prejudica o caixa; um saldo que o extrato não explica impede a auditoria. O compromisso é preservar essas invariantes nas operações confirmadas, inclusive sob concorrência e reenvio. O projeto também entrega histórico de estado, auditoria verificável, logs, métricas, notificações e limites de espera. Ficam fora: empréstimo, baixa/pagamento automático de boleto, estorno, múltiplas moedas, reajuste agendado e capacidade/SLO produtivo. Gateway, deploy produtivo e coletores de alerta/CPU/memória ainda são evolução.
+Um débito ou crédito duplicado, ou um recebível antecipado duas vezes, compromete o caixa; um saldo que o extrato não explica inviabiliza a auditoria. Nosso compromisso é preservar essas invariantes nas operações confirmadas, inclusive sob concorrência e reenvio. O projeto também entrega histórico de estados, auditoria verificável, logs, métricas, notificações e limites de tempo de espera. Ficam fora do escopo: empréstimo, baixa/pagamento automático de boleto, estorno, múltiplas moedas, reajuste agendado e capacidade/SLO de produção. Gateway, deploy em produção e coletores de alerta/CPU/memória permanecem como evolução futura.
 
-Apresentamos **garantias verificadas e limitações conhecidas**: testes sustentam os cenários exercitados dentro das fronteiras descritas, não segurança absoluta nem cobertura de todas as falhas. Líquido positivo na antecipação/cotação CREDIT_ADVANCE foi implementado e testado mediante autorização específica; as demais lacunas P0.4/9.5 permanecem abertas.
+Apresentamos **garantias verificadas e limitações conhecidas**: os testes sustentam os cenários exercitados dentro das fronteiras descritas, e não representam segurança absoluta nem cobertura de todas as falhas. A regra de líquido positivo na antecipação e na cotação CREDIT_ADVANCE foi implementada e testada mediante autorização específica; as demais lacunas de P0.4/9.5 permanecem abertas.
 
 ### Explicando a solução de forma macro
 
-Propomos um serviço HTTP modular FastAPI com PostgreSQL como fonte de verdade e um worker de notificações separado, compartilhando código e banco. Middlewares gerem contexto, token interno, logs e ciclo da sessão; schemas validam contratos; resources encaminham; controllers coordenam a transação; repositories persistem; DTOs serializam; conectores isolam o I/O externo. Saldo e ledger são confirmados juntos sob locks ordenados; uma chave idempotente permite recuperar o resultado confirmado. Testes usam API real e MockServer local. A auditoria integra o commit e a outbox desacopla a entrega do webhook. A revisão identificou exceções à separação estrita: regras de preço/risco nos repositories e SQL no gravador de auditoria; sua extração é pendência explícita no plano.
+Propomos um serviço HTTP modular em FastAPI, com PostgreSQL como fonte de verdade, e um worker de notificações separado que compartilha código e banco. Middlewares gerenciam contexto, token interno, logs e ciclo de vida da sessão; schemas validam contratos; resources encaminham as requisições; controllers coordenam a transação; repositories persistem; DTOs serializam; conectores isolam o I/O externo. Saldo e ledger são confirmados juntos sob locks ordenados, e uma chave de idempotência permite recuperar o resultado já confirmado. Os testes usam a API real e um MockServer local. A auditoria faz parte do mesmo commit, e a outbox desacopla a entrega do webhook. A revisão identificou exceções à separação estrita de camadas: regras de preço/risco nos repositories e SQL no gravador de auditoria; a extração desses trechos é uma pendência explícita do plano.
 
-- **Microserviço por operação** — descartado porque fragmentaria a transação financeira e exigiria coordenação distribuída. Ganharia com domínios, equipes e ciclos de deploy independentes.
-- **Lock otimista** — descartado porque disputar a mesma conta exigiria repetir leituras e decisões. Ganharia com baixa contenção e operações curtas.
-- **Dinheiro decimal** — `float` foi descartado pela imprecisão binária; `NUMERIC(14,2)` seria exato, mas centavos inteiros simplificam o contrato. Ganharia com necessidade de frações de centavo.
-- **Soft delete** — descartado porque oculta história operacional. Ganharia para remoção de dados descartáveis; PII exigiria anonimização específica, preservando fatos financeiros.
+- **Microserviço por operação** — descartado porque fragmentaria a transação financeira e exigiria coordenação distribuída. Seria vantajoso com domínios, equipes e ciclos de deploy independentes.
+- **Lock otimista** — descartado porque a disputa pela mesma conta exigiria repetir leituras e decisões. Seria vantajoso em cenários de baixa contenção e operações curtas.
+- **Dinheiro decimal** — `float` foi descartado pela imprecisão binária; `NUMERIC(14,2)` seria exato, mas centavos inteiros simplificam o contrato. Seria vantajoso caso houvesse necessidade de frações de centavo.
+- **Soft delete** — descartado porque oculta o histórico operacional. Seria vantajoso para a remoção de dados descartáveis; PII exigiria anonimização específica, preservando os fatos financeiros.
 
 ## Implementação
 
 ### Rotas
 
-Exceto raiz e saúde, todas exigem `INTERNAL-TOKEN`. Nas operações de conta, inclusive cotação, JWT é opcional para serviço técnico; quando enviado, exige sessão ativa e vínculo/papel na PME. Propostas exigem JWT OWNER. Cadastro/consulta de cliente, abertura de conta, cadastro de usuário, políticas diretas, auditoria e métricas são rotas técnicas sem RBAC JWT próprio. O token interno concede autoridade ampla: não deve chegar ao cliente remoto; o gateway que imporá essa fronteira **não foi implementado**.
+Com exceção das rotas raiz e de saúde, todas exigem `INTERNAL-TOKEN`. Nas operações de conta, inclusive na cotação, o JWT é opcional para o serviço técnico; quando enviado, exige sessão ativa e vínculo/papel na PME. Propostas exigem JWT de OWNER. Cadastro/consulta de cliente, abertura de conta, cadastro de usuário, políticas diretas, auditoria e métricas são rotas técnicas sem RBAC próprio via JWT. O token interno concede autoridade ampla e não deve chegar ao cliente remoto; o gateway que imporá essa fronteira **ainda não foi implementado**.
 
-Erros seguem contrato próprio QIT `{title, description, translation, code}`, não conformidade integral com RFC 9457. Globalmente: `403` token interno inválido; `401` JWT inválido e `403` papel/vínculo insuficiente nas rotas autorizadas; `503` timeout de banco nas rotas que o usam. Payloads e catálogo completo: [DECISOES.md](DECISOES.md).
+Os erros seguem o contrato próprio QIT `{title, description, translation, code}`, sem conformidade integral com a RFC 9457. Globalmente: `403` para token interno inválido; `401` para JWT inválido e `403` para papel/vínculo insuficiente nas rotas autorizadas; `503` para timeout de banco nas rotas que o utilizam. Payloads e catálogo completo estão em [DECISOES.md](DECISOES.md).
 
 | Método | Caminho | O que faz / idempotência | Entrada relevante | Saídas (status e quando) |
 |---|---|---|---|---|
@@ -64,7 +64,7 @@ Erros seguem contrato próprio QIT `{title, description, translation, code}`, n�
 | GET | `/audit-events/checkpoint` | Exporta ponta; leitura administrativa | token interno | `200`; `403` token |
 | GET | `/metrics` | Exporta Prometheus; leitura interna | token interno | `200`; `403` token |
 
-As cinco rotas `sample_entity` do projeto-base seguem ativas como legado, fora do produto; `bootcamp-biblioteca-api/` não participa do deploy. Bloqueio/cancelamento com resposta diferente em reenvio e a trava do lote 2 não equivalem ao replay financeiro persistido. Políticas diretas permitem contornar maker-checker; sua restrição é requisito de produção.
+As cinco rotas `sample_entity` do projeto-base seguem ativas como legado, fora do escopo do produto; `bootcamp-biblioteca-api/` não participa do deploy. O bloqueio/cancelamento, que responde de forma diferente em reenvios, e a trava do lote 2 não equivalem ao replay financeiro persistido. Políticas diretas permitem contornar o maker-checker; restringi-las é requisito para produção.
 
 ### Banco de Dados (Somente diagrama)
 
@@ -131,51 +131,51 @@ erDiagram
 
 > ## Principal desafio
 >
-> - **Qual é:** manter saldo e ledger coerentes e impedir duplicação com concorrência e resposta perdida.
-> - **Por que é difícil:** duas decisões sobre saldo lido antes da trava podem autorizar débitos incompatíveis; um timeout do cliente não revela se houve commit.
-> - **Como resolvemos:** travas pessimistas ordenadas por ID interno, recarga da entidade, CHECK de saldo e confirmação conjunta de ledger/saldo/resposta idempotente. Testes repetem disputas reais e reenvios; a garantia depende de todas as escritas seguirem esse caminho.
+> - **Qual é:** manter saldo e ledger coerentes e impedir duplicações, mesmo sob concorrência e perda de resposta.
+> - **Por que é difícil:** duas decisões baseadas em um saldo lido antes da trava podem autorizar débitos incompatíveis; além disso, um timeout no cliente não revela se houve commit.
+> - **Como resolvemos:** travas pessimistas ordenadas por ID interno, recarga da entidade, CHECK de saldo e confirmação conjunta de ledger, saldo e resposta idempotente. Os testes reproduzem disputas reais e reenvios; a garantia depende de que todas as escritas sigam esse caminho.
 
 **Cadastro, movimentação e estado — caminho feliz**
-1. Validar contrato/documento, criar cliente e conta com UUID; registrar PENDING→APPROVED.
-2. Depósito/saque travam conta APPROVED e gravam lançamento com sinal; bloqueio/cancelamento travam e criam evento, auditoria e outbox. CANCELLED é terminal.
-3. Controller confirma saldo/ledger e fatos relacionados juntos. Cancelamento pode ocorrer com saldo/boletos ativos, sem liquidação automática.
+1. Validar contrato/documento, criar cliente e conta com UUID e registrar a transição PENDING→APPROVED.
+2. Depósito/saque travam a conta APPROVED e gravam o lançamento com sinal; bloqueio/cancelamento travam a conta e criam evento, auditoria e outbox. CANCELLED é um estado terminal.
+3. O controller confirma saldo, ledger e fatos relacionados em conjunto. O cancelamento pode ocorrer com saldo ou boletos ativos, sem liquidação automática.
 
-**Falha:** unicidade responde 409, documento/saldo inválido 422 e estado incompatível 409. Rollback desfaz a tentativa; não há espera por futuro crédito.
+**Falha:** violação de unicidade retorna 409, documento/saldo inválido retorna 422 e estado incompatível, 409. O rollback desfaz a tentativa; não há espera por crédito futuro.
 
 **Transferência e risco — caminho feliz**
-1. Reservar chave; validar origem/destino e janela. Travar ambas por ID crescente com `FOR NO KEY UPDATE`, compatível com KEY SHARE da FK idempotente; reler entidades após espera.
-2. Resolver preço/risco específicos da PME ou padrão, criar snapshots, controlar teto/consumo diário sob advisory lock PME+data e validar saldo para principal+tarifa.
-3. Um `operation_key` liga TRANSFER_OUT, TRANSFER_IN e TRANSFER_FEE quando positiva; um commit confirma saldos, ledger, snapshots, consumo, auditoria e resposta.
+1. Reservar a chave; validar origem/destino e janela horária. Travar ambas as contas por ID crescente com `FOR NO KEY UPDATE`, compatível com o KEY SHARE da FK de idempotência; reler as entidades após a espera.
+2. Resolver o preço/risco específico da PME ou o padrão, criar snapshots, controlar teto/consumo diário sob advisory lock por PME+data e validar o saldo para principal+tarifa.
+3. Um `operation_key` vincula TRANSFER_OUT, TRANSFER_IN e TRANSFER_FEE (quando a tarifa for positiva); um único commit confirma saldos, ledger, snapshots, consumo, auditoria e resposta.
 
-**Falha:** produto desabilitado é 409; teto/saldo insuficiente é 422. Consumo diário e reserva são desfeitos junto com dinheiro.
+**Falha:** produto desabilitado retorna 409; teto/saldo insuficiente retorna 422. O consumo diário e a reserva são desfeitos junto com a movimentação financeira.
 
 **Exemplo prático de concorrência**
-1. A→B e B→A em uma implementação ingênua segurariam recursos opostos e esperariam um pelo outro: deadlock. Aqui ambas tentam o menor ID primeiro; uma aguarda a outra confirmar/desfazer. É **ID, nunca IP**.
-2. Se A não tem saldo, ela recebe erro de negócio. Receber B→A e depois tentar outra operação é mudança normal de estado, não motivo para retry automático.
+1. Em uma implementação ingênua, A→B e B→A segurariam recursos opostos e esperariam uma pela outra: deadlock. Aqui, ambas tentam travar o menor ID primeiro; uma aguarda a outra confirmar ou desfazer. A ordenação é por **ID, nunca IP**.
+2. Se A não tiver saldo, recebe um erro de negócio. Receber B→A e depois tentar outra operação é uma mudança normal de estado, não um motivo para retry automático.
 
-A regra noturna do produto aplica 100000 centavos por saque/transferência quando hora≥20h **ou** hora<6h em `America/Sao_Paulo`, para qualquer conta. Depósitos e tarifas não entram nesse teto. O teto diário comercial conta principal transferido; hoje sua data vem do runtime, pendência de alinhamento ao fuso.
+A regra noturna do produto aplica um teto de 100000 centavos por saque/transferência quando hora≥20h **ou** hora<6h em `America/Sao_Paulo`, para qualquer conta. Depósitos e tarifas não entram nesse teto. O teto diário comercial considera o principal transferido; hoje, sua data vem do runtime, com o alinhamento ao fuso ainda pendente.
 
-**Prova temporal determinística:** `pytest` prepara automaticamente um Compose exclusivo, banco novo e portas livres locais; a API principal usa 21:00 sem depender do relógio do avaliador. Uma segunda API da mesma imagem/banco testa 19:59/20:00, meia-noite, 05:59/06:00 e 12:00. Exemplo: R$ 1.000,01 pode sair às 19:59 com saldo/tarifa suficientes, mas uma nova operação às 20:00 retorna 422/QIT001007 sem débito; replay da operação diurna confirmada preserva sua resposta, sem cobrar de novo. É configuração do container de teste, nunca escolha por HTTP; não se altera a API/banco de desenvolvimento. Preparação Docker é infraestrutura, asserções de negócio são HTTP. Teardown recolhe métricas e remove somente recursos da sessão; SIGKILL pode deixar resíduos. [README](../baas-pme-api/README.md#relógio-determinístico-e-isolamento-automático) e [COBERTURA](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026) detalham método/evidência.
+**Prova temporal determinística:** o `pytest` prepara automaticamente um Compose exclusivo, um banco novo e portas locais livres; a API principal opera às 21:00, sem depender do relógio do avaliador. Uma segunda API, com a mesma imagem e o mesmo banco, testa 19:59/20:00, meia-noite, 05:59/06:00 e 12:00. Exemplo: R$ 1.000,01 pode sair às 19:59 com saldo/tarifa suficientes, mas uma nova operação às 20:00 retorna 422/QIT001007 sem débito; o replay da operação diurna confirmada preserva sua resposta, sem nova cobrança. O horário é configuração do container de teste, nunca escolhido via HTTP, e a API/banco de desenvolvimento não são alterados. A preparação Docker é infraestrutura; as asserções de negócio são feitas via HTTP. O teardown coleta métricas e remove somente os recursos da sessão; um SIGKILL pode deixar resíduos. O [README](../baas-pme-api/README.md#relógio-determinístico-e-isolamento-automático) e a [COBERTURA](COBERTURA.md#relógio-determinístico-e-bootstrap-automático--10102026) detalham o método e a evidência.
 
 **Idempotência, timeout e retry — caminho feliz**
-1. SHA-256 do JSON canônico e UNIQUE(conta,escopo,chave) fazem a repetição esperar a conclusão inicial. Mesmo corpo recupera 201 original e `Idempotent-Replayed: true`, sem novo fato.
-2. Somente transação e antecipação repetem a operação inteira em nova sessão para deadlock `40P01` ou serialização `40001`, até duas tentativas totais por padrão.
+1. O SHA-256 do JSON canônico e o UNIQUE(conta,escopo,chave) fazem a repetição aguardar a conclusão da requisição inicial. O mesmo corpo recupera o 201 original com `Idempotent-Replayed: true`, sem gerar novo fato.
+2. Somente transação e antecipação repetem a operação inteira em nova sessão diante de deadlock `40P01` ou falha de serialização `40001`, com até duas tentativas no total, por padrão.
 
-**Falha:** corpo conflitante é 409; operação recusada não consome chave. 422/409 e conector não são repetidos. Retry esgotado é `503 QIT001025`; lock/statement timeout é `503 QIT001024`. Cliente sem resposta reenvia a mesma chave. Orçamento de 15 s limita esperas conhecidas (externo 1 s/5 s; banco 2 s/10 s), sem cancelamento global rígido.
+**Falha:** corpo conflitante retorna 409; operação recusada não consome a chave. Erros 422/409 e falhas de conector não são repetidos. Retry esgotado retorna `503 QIT001025`; lock/statement timeout retorna `503 QIT001024`. O cliente que não recebeu resposta deve reenviar com a mesma chave. Um orçamento de 15 s limita as esperas conhecidas (externo 1 s/5 s; banco 2 s/10 s), sem cancelamento global rígido.
 
 **Cobrança e reajuste — caminho feliz**
-1. Lote 1 verifica produto/vencimento e emite 12 boletos próprios; depois trava/revalida conta, aplica preço/risco e confirma tarifa separada, plano, eventos e snapshots.
-2. Lote 2 consulta IPCA/IGPM sem lock, trava plano, impede segunda emissão local, calcula parcelas 13–24 com Decimal half-up e emite/confirma com tarifa vigente.
+1. O lote 1 verifica produto/vencimento e emite 12 boletos próprios; em seguida, trava e revalida a conta, aplica preço/risco e confirma tarifa separada, plano, eventos e snapshots.
+2. O lote 2 consulta IPCA/IGPM sem lock, trava o plano, impede uma segunda emissão local, calcula as parcelas 13–24 com Decimal half-up e emite/confirma com a tarifa vigente.
 
-**Falha:** conector responde 502 sem escrita local; tarifa sem saldo é 422. Emissão antecede a validação final de saldo/status e lote 2 mantém lock de plano durante I/O: podem existir boletos externos após rollback. Referência plano+lote ajuda reconciliação, não prova deduplicação do provedor; reenvio de criação gera plano/referência novos. Reserva persistida/compensação são evolução P1.
+**Falha:** falha no conector retorna 502 sem escrita local; tarifa sem saldo retorna 422. A emissão antecede a validação final de saldo/status, e o lote 2 mantém o lock do plano durante o I/O: podem existir boletos externos após um rollback. A referência plano+lote auxilia a reconciliação, mas não garante deduplicação no provedor; reenviar a criação gera novo plano e nova referência. Reserva persistida e compensação são evolução P1.
 
 **Antecipação de recebíveis — caminho feliz**
-1. Exigir conta aprovada e 1–50 boletos próprios PENDING sem vínculo anterior; travá-los por ID e validar risco.
-2. Somar bruto, calcular tarifa fixa + half-up(bruto×bps/10000), exigir líquido > 0 antes do snapshot de preço; persistir a mesma política/tarifa escolhidas, lançar crédito e tarifa quando positiva, vincular lastro e confirmar tudo com idempotência.
+1. Exigir conta aprovada e 1–50 boletos próprios PENDING sem vínculo anterior; travá-los por ID e validar o risco.
+2. Somar o bruto, calcular tarifa fixa + half-up(bruto×bps/10000) e exigir líquido > 0 antes do snapshot de preço; persistir a mesma política/tarifa escolhida, lançar o crédito e a tarifa (quando positiva), vincular o lastro e confirmar tudo com idempotência.
 
-**Falha:** lastro alheio/inexistente dá o mesmo 404, já consumido dá 409 e lista parcialmente inválida é desfeita integralmente. Não há empréstimo/amortização/boleto de devedor: a PME cobra pagadores externos e obtém liquidez dos próprios recebíveis. Pagador não tem cadastro/saldo/baixa nesta versão.
+**Falha:** lastro alheio ou inexistente retorna o mesmo 404; lastro já consumido retorna 409; e uma lista parcialmente inválida é desfeita integralmente. Não há empréstimo, amortização ou boleto de devedor: a PME cobra pagadores externos e obtém liquidez a partir dos próprios recebíveis. O pagador não possui cadastro, saldo ou baixa nesta versão.
 
-**Regra implementada — subparte autorizada de P0.4:** exigir `net_amount = gross_amount - fee_amount > 0` após arredondamento; tarifa ≥ bruto retorna **422/QIT001030** mesmo com saldo disponível. Cotação CREDIT_ADVANCE e execução compartilham a validação no controller: antes da quote e, na execução, antes do snapshot de preço, antecipação, dinheiro e vínculo de lastro. Reserva/snapshot de risco provisórios não confirmam: rollback desfaz a tentativa; erro de negócio não aciona retry. Replay de sucesso mantém a resposta original, mesmo após nova política. CHECKs protegem novas gravações; a migração preserva fatos históricos incompatíveis, sem reprificação.
+**Regra implementada — subparte autorizada de P0.4:** exigir `net_amount = gross_amount - fee_amount > 0` após o arredondamento; tarifa ≥ bruto retorna **422/QIT001030**, mesmo com saldo disponível. A cotação CREDIT_ADVANCE e a execução compartilham a validação no controller: na cotação, antes de gerar a quote; na execução, antes do snapshot de preço, da antecipação, da movimentação financeira e do vínculo de lastro. Reserva e snapshot de risco provisórios não são confirmados: o rollback desfaz a tentativa, e o erro de negócio não aciona retry. O replay de um sucesso mantém a resposta original, mesmo após a publicação de nova política. CHECKs protegem novas gravações; a migração preserva fatos históricos incompatíveis, sem reprecificação.
 
 | Exemplo: bruto R$ 100,00 | Líquido | Resultado da regra implementada |
 |---|---|---|
@@ -184,31 +184,31 @@ A regra noturna do produto aplica 100000 centavos por saque/transferência quand
 | Tarifa R$ 100,00 | R$ 0,00 | 422/QIT001030 |
 | Tarifa R$ 120,00 | −R$ 20,00 | 422/QIT001030 |
 
-Com saldo anterior de R$ 500,00, o último caso reduziria o saldo para R$ 480,00 se fosse permitido: coerência do ledger não basta para validar o propósito econômico. Agora retorna 422, mantém os R$ 500,00 e deixa o boleto disponível. Testes cobrem saldo zero/suficiente, arredondamento, seleção múltipla, replay e tarifa fixa + percentual que exceda BIGINT e já inviabilize o líquido: recusa antes de persistir preço. A mesma tarifa de R$ 120,00 continua válida para antecipar R$ 1.000,00 (líquido R$ 880,00); validar por operação preserva a personalização. [DECISOES 3.5.1](DECISOES.md#351-líquido-positivo-regra-implementada-e-validada) detalha contrato, evidência e preservação do legado. Cotação TRANSFER e limites numéricos gerais continuam pendentes.
+Com saldo anterior de R$ 500,00, o último caso, se permitido, reduziria o saldo para R$ 480,00: a coerência do ledger não basta para validar o propósito econômico da operação. Agora, a operação retorna 422, mantém os R$ 500,00 e deixa o boleto disponível. Os testes cobrem saldo zero/suficiente, arredondamento, seleção múltipla, replay e tarifa fixa + percentual que exceda BIGINT e já inviabilize o líquido: a recusa ocorre antes de persistir o preço. A mesma tarifa de R$ 120,00 continua válida para antecipar R$ 1.000,00 (líquido de R$ 880,00); validar por operação preserva a personalização. A seção [DECISOES 3.5.1](DECISOES.md#351-líquido-positivo-regra-implementada-e-validada) detalha o contrato, a evidência e a preservação do legado. A cotação TRANSFER e os limites numéricos gerais continuam pendentes.
 
 **Preço, cotação e quatro olhos — caminho feliz**
-1. Publicação encerra vigência anterior e cria versão; snapshots retêm a regra consumida, sem reprificação de fatos passados.
-2. Cotação persiste prévia de 60 s sem reservar saldo/lastro/limite/preço; execução recalcula e recusa tarifa/`quote_key` fornecidos pelo cliente.
-3. OWNER cria DRAFT com schema aninhado estrito; criador submete; outro OWNER da PME aprova sob lock e publica no mesmo commit, com atores auditados.
+1. A publicação encerra a vigência anterior e cria uma nova versão; os snapshots retêm a regra aplicada, sem reprecificação de fatos passados.
+2. A cotação persiste uma prévia válida por 60 s, sem reservar saldo, lastro, limite ou preço; a execução recalcula e recusa tarifa/`quote_key` fornecidos pelo cliente.
+3. Um OWNER cria o DRAFT com schema aninhado estrito; o criador submete; outro OWNER da mesma PME aprova sob lock e publica no mesmo commit, com os atores auditados.
 
-**Falha:** pendente não afeta operações; autoaprovação/reaprovação é 409, tenant/papel errado 403. Política direta contorna quatro olhos e precisa isolamento futuro. RETIRED existe no DDL, sem transição entregue. A semântica líquida de cotação de transferência, inclusive tarifa > valor, permanece lacuna de contrato.
+**Falha:** uma proposta pendente não afeta as operações; autoaprovação/reaprovação retorna 409, e tenant/papel incorreto, 403. A política direta contorna os quatro olhos e precisará ser isolada futuramente. O estado RETIRED existe no DDL, mas sem transição entregue. A semântica do líquido na cotação de transferência, inclusive com tarifa > valor, permanece como lacuna de contrato.
 
 **Identidade — caminho feliz**
-1. Cadastro técnico armazena bcrypt (até 72 bytes UTF-8); login cria JWT de 15 min e refresh opaco com hash persistido, limitado à sessão de 8 h.
-2. Dispositivos têm sessões independentes; refresh trava/rotaciona e logout revoga. VIEWER consulta/cota; OPERATOR movimenta; OWNER também altera estado.
+1. O cadastro técnico armazena a senha com bcrypt (até 72 bytes UTF-8); o login cria um JWT de 15 min e um refresh token opaco com hash persistido, limitado à sessão de 8 h.
+2. Cada dispositivo tem sessão independente; o refresh trava e rotaciona o token, e o logout revoga a sessão. VIEWER consulta e cota; OPERATOR movimenta; OWNER também altera estado.
 
-**Falha:** login inválido não revela existência do e-mail; JWT inválido/revogado nas rotas de conta é 401, vínculo/papel insuficiente 403. Bootstrap confia no serviço interno; rate limit, gestão de chaves e restrição de provisionamento são futuras.
+**Falha:** login inválido não revela a existência do e-mail; JWT inválido/revogado nas rotas de conta retorna 401, e vínculo/papel insuficiente, 403. O bootstrap confia no serviço interno; rate limit, gestão de chaves e restrição de provisionamento ficam para evoluções futuras.
 
 **Auditoria, extrato e notificação — caminho feliz**
-1. Extrato ordena created_at+ID e pagina valores assinados; consulta de lançamento exige vínculo com a conta. Offset não congela páginas sob novas escritas; a reconciliação do teste usa conta sem escrita concorrente.
-2. Auditoria encadeia SHA-256 sob trava global e exporta cadeia/checkpoint com ID sequencial administrativo. Trigger protege UPDATE/DELETE somente de audit_event; não resiste a administrador. Ledger/status/snapshots ainda dependem da aplicação.
-3. Bloqueio/cancelamento enfileiram `account.status_changed`; worker reclama por SKIP LOCKED+lease, confirma claim, envia webhook e confirma ack em outra transação.
+1. O extrato ordena por created_at+ID e pagina valores com sinal; a consulta de lançamento exige vínculo com a conta. A paginação por offset não congela páginas diante de novas escritas; a reconciliação do teste usa uma conta sem escrita concorrente.
+2. A auditoria encadeia hashes SHA-256 sob trava global e exporta cadeia/checkpoint com ID sequencial administrativo. Um trigger impede UPDATE/DELETE somente em audit_event e não resiste a um administrador. Ledger, status e snapshots ainda dependem da aplicação.
+3. Bloqueio/cancelamento enfileiram `account.status_changed`; o worker reivindica eventos via SKIP LOCKED+lease, confirma o claim, envia o webhook e confirma o ack em outra transação.
 
-**Falha:** lançamento alheio/inexistente tem mesmo 404. Webhook falho agenda backoff; queda após aceite ou expiração do lease pode reenviar. O consumidor deve deduplicar event_key: entrega é pelo menos uma vez, sem dead-letter ou versão explícita de envelope.
+**Falha:** lançamento alheio ou inexistente retorna o mesmo 404. Falha no webhook agenda nova tentativa com backoff; queda após o aceite ou expiração do lease pode gerar reenvio. O consumidor deve deduplicar por event_key: a entrega é pelo menos uma vez, sem dead-letter nem versionamento explícito de envelope.
 
 **Pipelines e evidências**
-1. CI push/PR instala dependências, valida Compose normal/de teste, compila e executa guardas estáticas e suíte completa com bootstrap automático. API/DB/mock são descartáveis, portas/horário controlados e saúde aguardada. Marcadores distinguem asserções HTTP, contratos SQL/worker e inspeção estática; o bootstrap Docker não é prova HTTP. Sem imports internos também em test_support. JUnit/métricas/metadados são preservados como artefato do job; teardown remove só o ambiente da sessão.
-2. A jornada PME prova quatro olhos, tarifas, emissão/reajuste, cotação/antecipação, transferência/replay, quatro páginas de extrato e estado/auditoria. Falha mantém status não zero e evidência, sem publicar tracebacks completos indiscriminadamente; [CI remoto e publicação foram confirmados](entrega/ENTREGA.md#51-evidência-remota-confirmada) para `1603118` em 10/10/2026. Novas revisões exigem novo CI; clone independente, aceite e ensaio do grupo continuam pendentes.
-3. Logs normais JSON correlacionam X-Request-ID sem body; tracebacks SQL/ASGI e URLs externas ainda exigem sanitização (P1.11). Prometheus interno mede HTTP, QIT tipados, replay, conectores, locks, retries, sessões e outbox. Registry é por processo; gauges de dados persistidos são recalculadas. Coletores/alertas não estão instalados.
+1. A CI em push/PR instala dependências, valida os Compose normal e de teste, compila e executa as guardas estáticas e a suíte completa com bootstrap automático. API, banco e mock são descartáveis, com portas e horário controlados e saúde aguardada. Marcadores distinguem asserções HTTP, contratos SQL/worker e inspeção estática; o bootstrap Docker não constitui prova HTTP. A restrição a imports internos também se aplica a test_support. JUnit, métricas e metadados são preservados como artefatos do job; o teardown remove apenas o ambiente da sessão.
+2. A jornada da PME comprova quatro olhos, tarifas, emissão/reajuste, cotação/antecipação, transferência/replay, quatro páginas de extrato e estado/auditoria. Em caso de falha, o job mantém status diferente de zero e preserva a evidência, sem publicar tracebacks completos indiscriminadamente; [CI remoto e publicação foram confirmados](entrega/ENTREGA.md#51-evidência-remota-confirmada) para `1603118` em 10/10/2026. Novas revisões exigem nova execução de CI; clone independente, aceite e ensaio do grupo continuam pendentes.
+3. Os logs JSON regulares correlacionam o X-Request-ID sem registrar o body; tracebacks SQL/ASGI e URLs externas ainda exigem sanitização (P1.11). O Prometheus interno mede HTTP, erros QIT tipados, replay, conectores, locks, retries, sessões e outbox. O registry é por processo; gauges de dados persistidos são recalculados. Coletores e alertas ainda não estão instalados.
 
-[COBERTURA.md](COBERTURA.md) registra resultados e lacunas; [BENCHMARK.md](BENCHMARK.md) mede 5×40 transferências cruzadas e CPU/RAM por docker stats: observação local, não SLO. README mapeia código/comandos; [PLANO_DE_EXECUCAO.md](PLANO_DE_EXECUCAO.md) distingue entrega/hardening. A [RFC de entrega em PDF](entrega/RFC_FINAL.pdf) sintetiza este conteúdo em quatro páginas no modelo oficial; [apresentação](entrega/APRESENTACAO.pdf), [roteiro de defesa](entrega/ENTREGA.md#6-defesa-técnica-e-ensaio) e [registro de entrega](entrega/ENTREGA.md) preservam fronteiras e pendências humanas/externas. Os contratos integrais acima permanecem a fonte detalhada; gerar os PDFs não implementa o backlog 9.5.
+[COBERTURA.md](COBERTURA.md) registra resultados e lacunas; [BENCHMARK.md](BENCHMARK.md) mede 5×40 transferências cruzadas e CPU/RAM via docker stats, como observação local, não como SLO. O README mapeia código e comandos; [PLANO_DE_EXECUCAO.md](PLANO_DE_EXECUCAO.md) distingue entrega de hardening. A [RFC de entrega em PDF](entrega/RFC_FINAL.pdf) sintetiza este conteúdo em quatro páginas no modelo oficial; a [apresentação](entrega/APRESENTACAO.pdf), o [roteiro de defesa](entrega/ENTREGA.md#6-defesa-técnica-e-ensaio) e o [registro de entrega](entrega/ENTREGA.md) preservam as fronteiras e as pendências humanas/externas. Os contratos integrais acima permanecem como fonte detalhada; a geração dos PDFs não implementa o backlog 9.5.
