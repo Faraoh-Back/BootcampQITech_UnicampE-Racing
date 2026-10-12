@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Time** | Cairê Belo · Pedro Campanha |
+| **Time** | Cairê Belo · Pedro Campanha · Luka Djukic |
 | **Data** | 10/10/2026 |
 | **Versão** | 3.4 — garantias verificadas, líquido positivo e testes com relógio isolado |
 
