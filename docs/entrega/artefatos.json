@@ -3,15 +3,15 @@
   "rfc_pages": 4,
   "presentation_pages": 10,
   "sha256": {
-    "../RFC.md": "8a5c8afc585e3c19efa16783c790f2b825ae64d6d32729150660ca306c187f88",
+    "../RFC.md": "c7b807073a97307b9b53c487af515f27a1f73893b33f7c1c2912562d5811feef",
     "RFC_FINAL.md": "b7fe12ecf0f77af51c4a31c68aac42aa0c7928d3f5cdee900b842f76bec21cce",
     "APRESENTACAO.md": "456b8c077ac8ce8edb2af8482f8bab0f30784d167a66ad7b5507482054b0c552",
     "der-financeiro.svg": "2e366d3e815e567895803b8cc4eed8db3548776356df8e040c3ba232a72f5846",
     "der-operacional.svg": "ef43c9009c14d0d2614d1b09002bd7502197e26f470500c98974ae3ff40509f3",
     "tools/render.mjs": "7c71f1b11119e1681d1246771b5ad17f35103abaf72a427c025e0faf3a8abf32",
     "tools/package-lock.json": "bc411c2d5a0f2821a25645cd7c03df11e5cd7c082ebf232ff818dddefb777924",
-    "RFC_FINAL.pdf": "67c6f7ef307117fcb4686af69dc2453a2e83122620826a6a3f9c07e41cf8584c",
-    "APRESENTACAO.pdf": "3c5bde46e8137dc1ccd05c20f66213c6f82f611e73bf45979af51f96f8146fe0"
+    "RFC_FINAL.pdf": "9d4283195fc28bfdfbeaba3e6aea87def661f0dfa83476f38ebc01ee73218e34",
+    "APRESENTACAO.pdf": "b88b60421dd95492c107cd64ce2b60e55a2351cfc2c04a739992ff30873bc866"
   },
   "note": "Conteúdo e integridade rastreáveis; bytes de PDF podem variar com data/Chromium/fontes."
 }
